@@ -4,7 +4,7 @@ on:
   push:
 
 jobs:
-  build:
+  runtime:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,16 +17,25 @@ jobs:
         run: |
           bun install
 
-      - name: Run lint fix and check
-        run: |
-          bun run prettier
-          bun run lint
+    lint:
+      needs: runtime
+      steps:
+        - name: Run lint fix and check
+          run: |
+            bun run prettier
+            bun run lint
+        
+    test:
+      needs: runtime
+      steps:
+        - name: Test
+          run: |
+            bun test
 
-      - name: Test
-        run: |
-          bun test
-
-      - name: Build
-        run: |
-          bun run build
+    build:
+      needs: runtime
+      steps:
+        - name: Build
+          run: |
+            bun run build
 
