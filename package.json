@@ -9,7 +9,7 @@
   "scripts": {
     "bundle": "bunchee --dts -m --cwd",
     "build": "bun bundle core && bun bundle integrations/query",
-    "commit": "./node_modules/cz-emoji"
+    "cz": "cz"
   },
   "devDependencies": {
     "@types/bun": "^1.0.11",
@@ -84,7 +84,8 @@
           "code": ":package: release:",
           "description": "new release bundle",
           "name": "release"
-        }, {
+        },
+        {
           "emoji": "🤖",
           "code": ":robot: devops:",
           "description": "ci/cd or other form of automation",
