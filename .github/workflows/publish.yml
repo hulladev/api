@@ -15,15 +15,17 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v1
+      # sucks we have to use npm over bun but otherwise npm ci won't work
+      - uses: action/setup-node@v4
         with:
-          bun-version: 'latest'
+          node-version: '20.x'
           registry-url: https://registry.npmjs.org/
-      - run: bun install
-      - run: bun run prettier
-      - run: bun run lint
-      - run: bun run test
-      - run: bun run build
+      - run: npm install
+      - run: npm ci
+      - run: npm run prettier
+      - run: npm run lint
+      - run: npm run test
+      - run: npm run build
       - run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
