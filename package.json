@@ -1,0 +1,96 @@
+{
+  "name": "@hulla/api",
+  "repository": {
+    "type": "git",
+    "url": "http://github.com/hulladev/api.git"
+  },
+  "module": "index.ts",
+  "type": "module",
+  "scripts": {
+    "bundle": "bunchee --dts -m --cwd",
+    "build": "bun bundle core && bun bundle integrations/query",
+    "commit": "./node_modules/cz-emoji"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.0.11",
+    "@typescript-eslint/eslint-plugin": "^7.4.0",
+    "@typescript-eslint/parser": "^7.4.0",
+    "bunchee": "^5.1.2",
+    "commitizen": "^4.3.0",
+    "cz-conventional-changelog": "^3.3.0",
+    "cz-emoji": "^1.3.2-canary.2",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-prettier": "^5.1.3",
+    "expect-type": "^0.19.0",
+    "msw": "^2.2.14",
+    "prettier": "^3.2.5",
+    "prettier-plugin-organize-imports": "^3.2.4",
+    "typescript": "^5.0.0"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": "./core/dist/index.mjs",
+      "module": "./core/dist/index.esm.js",
+      "require": "./core/dist/index.js"
+    }
+  },
+  "config": {
+    "commitizen": {
+      "path": "./node_modules/cz-emoji"
+    },
+    "cz-emoji": {
+      "scopes": [],
+      "types": [
+        {
+          "emoji": "✅",
+          "code": ":white_check_mark: feat:",
+          "description": "a new functionality",
+          "name": "feat"
+        },
+        {
+          "emoji": "🐞",
+          "code": ":lady_beetle: fix:",
+          "description": "a bug fix",
+          "name": "fix"
+        },
+        {
+          "emoji": "🔧",
+          "code": ":wrench: update:",
+          "description": "a code change that neither fixes a bug nor adds a feature",
+          "name": "update"
+        },
+        {
+          "emoji": "📚",
+          "code": ":books: docs:",
+          "description": "documentations",
+          "name": "docs"
+        },
+        {
+          "emoji": "🧪",
+          "code": ":test_tube: tests:",
+          "description": "tests",
+          "name": "tests"
+        },
+        {
+          "emoji": "🪛",
+          "code": ":screwdriver: config:",
+          "description": "configuration files",
+          "name": "config"
+        },
+        {
+          "emoji": "📦",
+          "code": ":package: release:",
+          "description": "new release bundle",
+          "name": "release"
+        }, {
+          "emoji": "🤖",
+          "code": ":robot: devops:",
+          "description": "ci/cd or other form of automation",
+          "name": "devops"
+        }
+      ]
+    }
+  }
+}
