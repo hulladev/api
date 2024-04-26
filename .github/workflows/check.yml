@@ -8,6 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Setup bun
         uses: oven-sh/setup-bun@v1
         with:
@@ -17,36 +18,15 @@ jobs:
         run: |
           bun install
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v2
-
-  lint:
-    needs: runtime
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download artifact
-        uses: actions/download-artifact@v2
       - name: Run lint fix and check
         run: |
           bun run prettier
           bun run lint
 
-  test:
-    needs: runtime
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download artifact
-        uses: actions/download-artifact@v2
       - name: Test
         run: |
           bun test
 
-  build:
-    needs: runtime
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download artifact
-        uses: actions/download-artifact@v2
       - name: Build
         run: |
           bun run build
