@@ -19,14 +19,16 @@ jobs:
 
   lint:
     needs: runtime
+    runs-on: ubuntu-latest
     steps:
       - name: Run lint fix and check
         run: |
           bun run prettier
           bun run lint
-      
+
   test:
     needs: runtime
+    runs-on: ubuntu-latest
     steps:
       - name: Test
         run: |
@@ -34,8 +36,8 @@ jobs:
 
   build:
     needs: runtime
+    runs-on: ubuntu-latest
     steps:
       - name: Build
         run: |
           bun run build
-
