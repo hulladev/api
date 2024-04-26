@@ -23,8 +23,8 @@
     "noUnusedParameters": true,
     "noPropertyAccessFromIndexSignature": true,
     "paths": {
-      "@/*": ["./*"],
+      "@/*": ["./*"]
     }
   },
-  "include": ["./core", "./integrations", "./tests"],
+  "include": ["./core", "./integrations", "./tests"]
 }
