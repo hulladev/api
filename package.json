@@ -1,5 +1,5 @@
 {
-  "name": "api",
+  "name": "@hulla/api",
   "namespace": "@hulla",
   "version": "0.0.0",
   "authors": "Samuel Hulla",
