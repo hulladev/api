@@ -8,7 +8,7 @@
   "type": "module",
   "scripts": {
     "bundle": "bunchee --dts -m --cwd",
-    "build": "bun bundle core && bun bundle integrations/query",
+    "build": "bun bundle core",
     "lint": "eslint --ext .ts --fix .",
     "prettier": "prettier --write .",
     "test": "bun test",

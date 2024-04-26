@@ -1,0 +1,32 @@
+name: PR Check - Lint, Test, Build
+
+on:
+  push:
+
+jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: |
+          bun install
+
+      - name: Run lint fix and check
+        run: |
+          bun run prettier
+          bun run lint
+
+      - name: Test
+        run: |
+          bun test
+
+      - name: Build
+        run: |
+          bun run build
