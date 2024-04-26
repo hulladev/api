@@ -1,11 +1,19 @@
 {
-  "name": "@hulla/api",
+  "name": "api",
+  "namespace": "@hulla",
+  "version": "0.0.0",
+  "authors": "Samuel Hulla",
+  "maintainers": [
+    "Samuel Hulla <hulla@hulla.dev>"
+  ],
+  "description": "API manager of the future",
+  "homepage": "https://hulla.dev/projects/api",
   "repository": {
     "type": "git",
-    "url": "http://github.com/hulladev/api.git"
+    "url": "https://github.com/hulladev/api.git"
   },
-  "module": "index.ts",
   "type": "module",
+  "license": "MIT",
   "scripts": {
     "bundle": "bunchee --dts -m --cwd",
     "build": "bun bundle core",
@@ -13,7 +21,9 @@
     "prettier": "prettier --write .",
     "test": "bun test",
     "prepare": "husky",
-    "commit": "bunx cz"
+    "commit": "bunx cz",
+    "package": "bunx changeset",
+    "release": "bunx changeset publish"
   },
   "lint-staged": {
     "*.ts": [
@@ -22,6 +32,7 @@
     ]
   },
   "devDependencies": {
+    "@changesets/cli": "^2.27.1",
     "@types/bun": "^1.0.11",
     "@typescript-eslint/eslint-plugin": "^7.4.0",
     "@typescript-eslint/parser": "^7.4.0",
@@ -40,6 +51,9 @@
     "prettier-plugin-organize-imports": "^3.2.4",
     "typescript": "^5.0.0"
   },
+  "main": "core/dist/index.js",
+  "module": "core/dist/index.esm.js",
+  "types": "core/dist/index.d.ts",
   "exports": {
     "./package.json": "./package.json",
     ".": {
@@ -48,6 +62,9 @@
       "require": "./core/dist/index.js"
     }
   },
+  "files": [
+    "core/dist"
+  ],
   "config": {
     "commitizen": {
       "path": "./node_modules/cz-emoji"
@@ -106,5 +123,28 @@
         }
       ]
     }
-  }
+  },
+  "keywords": [
+    "hulla",
+    "api",
+    "query",
+    "query manager",
+    "rest",
+    "graphql",
+    "rpc",
+    "http",
+    "server actions",
+    "@hulla/api",
+    "hulla api",
+    "@hulla",
+    "hulla dev",
+    "trpc",
+    "axios",
+    "swr",
+    "firebase",
+    "supabase",
+    "react-query",
+    "@tanstack/react-query",
+    "tanstack"
+  ]
 }
