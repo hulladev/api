@@ -8,8 +8,7 @@
   "type": "module",
   "scripts": {
     "bundle": "bunchee --dts -m --cwd",
-    "build": "bun bundle core && bun bundle integrations/query",
-    "cz": "cz"
+    "build": "bun bundle core && bun bundle integrations/query"
   },
   "devDependencies": {
     "@types/bun": "^1.0.11",
