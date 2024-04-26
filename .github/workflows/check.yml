@@ -28,5 +28,6 @@ jobs:
           bun test
 
       - name: Build
+        # Note we use a separate build using bunchee (rollup + swc) over bun, for slightly smaller bundle size & other than .js outputs
         run: |
           bun run build
