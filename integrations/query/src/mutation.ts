@@ -1,4 +1,4 @@
-import type { AvailableCalls, Obj, RouteArgs, RouteNamesWithMethod, RouterAdapter, RouterShape } from '@/core/src/types'
+import type { AvailableCalls, Obj, RouteArgs, RouteNamesWithMethod, RouterAdapter, RouterShape } from '@hulla/api'
 import { encodeKey as defaultEncodeMutationKey } from './keys'
 import { query } from './query'
 
