@@ -3,8 +3,9 @@ import type { Args, Fn } from './types'
 
 // this needs to be a curry so we can pass the generic arg
 // without need to specify the rest (which needs to be done by user)
-export function procedure<const APIContext, const N extends string>(route: N) {
-  return <const A extends Args, const R, const R2 = R>(
+export function procedure<const APIContext>() {
+  return <const N extends string, const A extends Args, const R, const R2 = R>(
+    route: N,
     fn: Fn<A, R>,
     resolver?: Resolver<APIContext & Context<N, 'call', A>, R, R2>
   ) => {
