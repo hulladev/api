@@ -1,8 +1,8 @@
 // import { api } from '.'
-import type { Call, CallNames, Context } from './call'
+import type { Call, Context } from './call'
 import type { Obj } from './types'
 
-export type Route = Call<string, CallNames, any, any, any, any>
+export type Route = Call<string, string, any, any, any, any>
 export type RouterShape = readonly Route[]
 
 export type RouteNames<Routes extends RouterShape> = Routes[number]['route']
@@ -48,12 +48,12 @@ export type RouteArgs<
   Routes extends RouterShape,
   M extends AvailableCalls<Routes>,
   N extends RouteNamesWithMethod<Routes, M>,
-> = Find<Routes, M, N> extends Call<string, CallNames, any, infer A, any, any> ? A : never
+> = Find<Routes, M, N> extends Call<string, string, any, infer A, any, any> ? A : never
 export type RouteReturn<
   Routes extends RouterShape,
   M extends AvailableCalls<Routes>,
   N extends RouteNamesWithMethod<Routes, M>,
-> = Find<Routes, M, N> extends Call<string, CallNames, any, any, any, infer R2> ? R2 : never
+> = Find<Routes, M, N> extends Call<string, string, any, any, any, infer R2> ? R2 : never
 export type InvokerMap<Routes extends RouterShape> = {
   [M in AvailableCalls<Routes>]: <N extends RouteNamesWithMethod<Routes, M>>(
     name: N,
