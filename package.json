@@ -1,7 +1,7 @@
 {
   "name": "@hulla/api",
   "namespace": "@hulla",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "authors": "Samuel Hulla",
   "maintainers": [
     "Samuel Hulla <hulla@hulla.dev>"
@@ -58,10 +58,10 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-     "import": {
+      "import": {
         "types": "./dist/core/index.d.ts",
         "default": "./dist/core/index.js"
-     },
+      },
       "require": {
         "types": "./dist/core/index.d.ts",
         "default": "./dist/core/index.js"
