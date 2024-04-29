@@ -1,7 +1,4 @@
-import type { Context } from './call'
-import type { LowercaseMethods } from './constants'
-import type { TypedRequestConfig } from './request'
-import type { Args, Methods } from './types'
+import type { Args, Context, LowercaseMethods, Methods, TypedRequestConfig } from './types'
 import { isURL } from './util'
 
 export function parseUrl(req: TypedRequestConfig<LowercaseMethods, unknown, unknown> | URL | string | Request): URL {
