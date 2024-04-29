@@ -29,7 +29,7 @@ function context<const CTX extends Obj>(context: CTX) {
   }
 }
 
-type NoContext = Record<string, never>
+export type NoContext = Record<string, never>
 
 /**
  * api SDK
