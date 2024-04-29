@@ -1,5 +1,5 @@
-import { call, type Context, type Resolver } from './call'
-import type { Args, Fn } from './types'
+import { call } from './call'
+import type { Args, Context, Fn, Resolver } from './types'
 
 // this needs to be a curry so we can pass the generic arg
 // without need to specify the rest (which needs to be done by user)
