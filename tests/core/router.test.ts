@@ -101,7 +101,7 @@ describe('corner cases', () => {
     expect(r.post('foo')).toStrictEqual('http://api.com/post')
     expect(r.get('foo')).toStrictEqual('http://api.com/get')
   })
-  test('routermap with duplicate keys but separate methods works', () => {
+  test('mappedRouter with duplicate keys but separate methods works', () => {
     const r = router({})(
       'test',
       api.route('foo').request(
@@ -120,10 +120,10 @@ describe('corner cases', () => {
         (req) => req
       )
     )
-    expect(r.routerMap.post.foo).toBeDefined()
-    expect(r.routerMap.get.foo).toBeDefined()
-    expect(r.routerMap.get.some).toBeDefined()
+    expect(r.mappedRouter.post.foo).toBeDefined()
+    expect(r.mappedRouter.get.foo).toBeDefined()
+    expect(r.mappedRouter.get.some).toBeDefined()
     // @ts-expect-error undefined methods (ts correctly raises error)
-    expect(r.routerMap.post.some).toBeUndefined()
+    expect(r.mappedRouter.post.some).toBeUndefined()
   })
 })
