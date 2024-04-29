@@ -1,18 +1,6 @@
-import { call, type Context, type Resolver } from './call'
-import { type LowercaseMethods } from './constants'
+import { call } from './call'
 import { response } from './response'
-import type { Args, Fn, Methods } from './types'
-
-export type StaticConfig<M extends Methods | LowercaseMethods, Data = unknown, Params = unknown> = Partial<
-  RequestInit & { method?: M; data?: Data; params?: Params }
-> & { url: URL | string }
-export type TypedRequestConfig<M extends LowercaseMethods | Methods, Data = unknown, Params = unknown> =
-  Uppercase<M> extends 'HEAD' | 'GET'
-    ? StaticConfig<Lowercase<M> | Uppercase<M>, Data, Params> & {
-        body?: `ERROR: method ${M} cannot contain a body`
-        bodyUsed?: false
-      }
-    : StaticConfig<Lowercase<M> | Uppercase<M>, Data, Params>
+import type { Args, Context, Fn, LowercaseMethods, Methods, Resolver, TypedRequestConfig } from './types'
 
 export function request<const CTX>() {
   // this needs to be a curry so we can pass the generic arg
