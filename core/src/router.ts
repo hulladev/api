@@ -22,7 +22,7 @@ export type RouterMap<Routes extends RouterShape> = Routes extends readonly [
 export type FilterMethod<Routes extends RouterShape, M extends AvailableCalls<Routes>> =
   RouterMap<Routes> extends [Call<infer N, infer Method, infer CTX, infer A, infer R, infer R2>, ...infer Rest]
     ? Method extends M
-      ? [Call<N, Method, CTX, A, R, R2>, ...(Rest extends RouterShape ? FilterMethod<Rest, M> : [])]
+      ? [Call<N, M, CTX, A, R, R2>, ...(Rest extends RouterShape ? FilterMethod<Rest, M> : [])]
       : Rest extends RouterShape
         ? FilterMethod<Rest, M>
         : []
