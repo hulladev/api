@@ -33,7 +33,7 @@ export function omit<T extends Obj, Omitted extends (keyof T)[]>(obj: T, ...omit
   )
 }
 
-type URLType = InstanceType<typeof URL>
+export type URLType = InstanceType<typeof URL>
 
 export function isURL(value: URLType | TypedRequestConfig<LowercaseMethods, unknown, unknown>): value is URLType {
   return value instanceof URL
