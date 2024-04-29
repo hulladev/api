@@ -21,5 +21,5 @@ export function queryKey<const Routes extends RouterShape, const RN extends stri
     method: M,
     name: N,
     ...args: A
-  ) => [encodeQueryKey(method, router.routerName, name), ...args] as const
+  ) => [encodeQueryKey(method, router.routerName, name), ...(args ?? [])] as const
 }
