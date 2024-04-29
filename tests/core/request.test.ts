@@ -4,15 +4,16 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:tes
 import { expectTypeOf } from 'expect-type'
 import { API_URL, createServer, mockCtx, users } from '../mock-api'
 
-const getUsers = request('/users')('GET', () => `${API_URL}/users`)
-const getUsersConfig = request('/users')('GET', () => ({ url: `${API_URL}/users` }))
-const withResolver = request('/usersResolve')(
+const getUsers = request()('/users', 'GET', () => `${API_URL}/users`)
+const getUsersConfig = request()('/users', 'GET', () => ({ url: `${API_URL}/users` }))
+const withResolver = request()(
+  '/usersResolve',
   'GET',
   () => ({ url: `${API_URL}/users` }),
   (request) => fetch(request.url).then((res) => res.json() as Promise<{ users: { id: number; name: string }[] }>)
 )
-const getUserById = request('/user/:id')('GET', (id: number) => `${API_URL}/users/${id}`)
-const example = request('/example')('POST', () => `${API_URL}/example`)
+const getUserById = request()('/user/:id', 'GET', (id: number) => `${API_URL}/users/${id}`)
+const example = request()('/example', 'POST', () => `${API_URL}/example`)
 
 const server = createServer()
 beforeAll(() => server.listen())
@@ -40,13 +41,13 @@ describe('functionality', () => {
     })
   })
   test('static configs return correct config', () => {
-    expect(request('/users')('GET', 'http://api.com/users').fn()).toStrictEqual('http://api.com/users')
-    expect(request('/users')('GET', { url: 'http://api.com/users' }).fn()).toStrictEqual({
+    expect(request()('/users', 'GET', 'http://api.com/users').fn()).toStrictEqual('http://api.com/users')
+    expect(request()('/users', 'GET', { url: 'http://api.com/users' }).fn()).toStrictEqual({
       url: 'http://api.com/users',
     })
   })
   test('static configs resolve correctly', () => {
-    const staticcfgwr = request('/users')('GET', 'http://api.com/users', resolve<{ users: typeof users }>)
+    const staticcfgwr = request()('/users', 'GET', 'http://api.com/users', resolve<{ users: typeof users }>)
     expect(staticcfgwr.resolver?.(staticcfgwr.fn(), mockCtx('/users', 'get', []))).resolves.toStrictEqual({
       users,
     })

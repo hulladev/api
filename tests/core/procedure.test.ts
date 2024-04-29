@@ -11,8 +11,9 @@ const ctx: Context<'foo', 'call', [id: number], 'router'> = {
   args: [1],
 }
 
-const testProcedure = procedure('foo')((id: number) => !!id)
-const withResolver = procedure<typeof ctx, 'foo'>('foo')(
+const testProcedure = procedure()('foo', (id: number) => !!id)
+const withResolver = procedure<typeof ctx>()(
+  'foo',
   (id: number) => id,
   // note the ctx will be passed from router in practice, but here in unit test we mock it
   (id) => ({ id, ctx })
