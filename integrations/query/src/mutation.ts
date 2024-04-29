@@ -1,11 +1,4 @@
-import type {
-  AvailableCalls,
-  RouteArgs,
-  RouteNamesWithMethod,
-  RouterAdapter,
-  RouterShape,
-} from '../../../core/src/router'
-import type { Obj } from '../../../core/src/types'
+import type { AvailableCalls, Obj, RouteArgs, RouteNamesWithMethod, RouterAdapter, RouterShape } from '@/core/src/types'
 import { encodeKey as defaultEncodeMutationKey } from './keys'
 import { query } from './query'
 

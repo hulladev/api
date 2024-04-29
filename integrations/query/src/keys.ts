@@ -1,5 +1,4 @@
-import type { AvailableCalls, RouteArgs, RouteNamesWithMethod, RouterAdapter, RouterShape } from '@/core/src/router'
-import type { Obj } from '@/core/src/types'
+import type { AvailableCalls, Obj, RouteArgs, RouteNamesWithMethod, RouterAdapter, RouterShape } from '@/core/src/types'
 
 export function encodeKey<const M extends string, const RN extends string, const N extends string>(
   method: M,
