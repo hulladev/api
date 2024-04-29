@@ -1,7 +1,7 @@
 import type { Context } from './call'
 import type { Methods } from './types'
 
-type MethodsArray = readonly Methods[]
+export type MethodsArray = readonly Methods[]
 export type LowercaseMethods = {
   [K in Methods]: Lowercase<K>
 }[Methods]
