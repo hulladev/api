@@ -2,12 +2,12 @@ import type { Router, RouterAdapter, RouterShape } from './router'
 import type { Fn, Obj } from './types'
 import { entries, omit } from './util'
 
-type Adapters<Routes extends RouterShape, RN extends string, CTX extends Obj> = Record<
+export type Adapters<Routes extends RouterShape, RN extends string, CTX extends Obj> = Record<
   string,
   (router: RouterAdapter<Routes, RN, CTX>) => any
 >
 
-type AdapterMap<
+export type AdapterMap<
   Routes extends RouterShape,
   RN extends string,
   CTX extends Obj,
