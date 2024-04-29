@@ -1,7 +1,6 @@
 {
-  "name": "@hulla/api",
-  "main": "./dist/index.js",
-  "module": "./dist/index.esm.js",
-  "types": "./dist/index.d.ts",
+  "main": "../dist/core/index.js",
+  "module": "../dist/core/index.esm.js",
+  "types": "../dist/core/index.d.ts",
   "private": true
 }
