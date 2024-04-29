@@ -1,5 +1,11 @@
 # @hulla/api
 
+## 0.1.1
+
+### Patch Changes
+
+- fixes incorrect bundle export
+
 ## 0.1.0
 
 ### Minor Changes
