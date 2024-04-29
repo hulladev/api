@@ -69,6 +69,15 @@ describe('functionality', () => {
     expect(r.get).toBeFunction()
     expect(r.post).toBeFunction()
   })
+  test('router works with custom calls', () => {
+    const r = router({})(
+      'test',
+      api.custom('foo', 'client', () => 'foo'),
+      api.custom('bar', 'client', () => 'bar')
+    )
+    expect(r.client('foo')).toStrictEqual('foo')
+    expect(r.client('bar')).toStrictEqual('bar')
+  })
 })
 
 describe('corner cases', () => {
