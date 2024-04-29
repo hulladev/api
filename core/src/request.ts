@@ -14,17 +14,19 @@ export type TypedRequestConfig<M extends LowercaseMethods | Methods, Data = unkn
       }
     : StaticConfig<Lowercase<M> | Uppercase<M>, Data, Params>
 
-export function request<const CTX, const N extends string>(route: N) {
+export function request<const CTX>() {
   // this needs to be a curry so we can pass the generic arg
   // without need to specify the rest (which needs to be done by user)
   return function createRequest<
-    M extends Methods | LowercaseMethods,
+    const N extends string,
+    const M extends Methods | LowercaseMethods,
     Data,
     Params,
     const R extends TypedRequestConfig<M, Data, Params> | string | URL,
     A extends Args = [],
     const R2 = Promise<Response>,
   >(
+    route: N,
     method: M,
     configOrConfigFn: Fn<A, R> | R,
     resolver: Resolver<CTX & Context<N, Lowercase<M>, A>, R, R2> = response

@@ -8,21 +8,42 @@ export type RouterShape = readonly Route[]
 type RouteNames<Routes extends RouterShape> = Routes[number]['route']
 export type AvailableCalls<Routes extends RouterShape> = Routes[number]['method']
 // returns a { [method]: { [route]: Call } } nested type map
-type RouterMap<Routes extends RouterShape> = {
-  [C in Routes[number] as C['method']]: {
-    [K in C['route']]: C
+export type MappedRouter<Routes extends RouterShape> = {
+  [M in AvailableCalls<Routes>]: {
+    [N in RouteNamesWithMethod<Routes, M>]: Find<Routes, M, N>
   }
 }
-export type RouteNamesWithMethod<
-  Routes extends RouterShape,
-  M extends AvailableCalls<Routes>,
-> = keyof RouterMap<Routes>[M] extends string ? keyof RouterMap<Routes>[M] : never
+export type RouterMap<Routes extends RouterShape> = Routes extends readonly [
+  Call<infer N, infer M, infer CTX, infer A, infer R, infer R2>,
+  ...infer Rest,
+]
+  ? [Call<N, M, CTX, A, R, R2>, ...(Rest extends RouterShape ? RouterMap<Rest> : [])]
+  : []
+export type FilterMethod<Routes extends RouterShape, M extends AvailableCalls<Routes>> =
+  RouterMap<Routes> extends [Call<infer N, infer Method, infer CTX, infer A, infer R, infer R2>, ...infer Rest]
+    ? Method extends M
+      ? [Call<N, M, CTX, A, R, R2>, ...(Rest extends RouterShape ? FilterMethod<Rest, M> : [])]
+      : Rest extends RouterShape
+        ? FilterMethod<Rest, M>
+        : []
+    : []
+export type RouteNamesWithMethod<Routes extends RouterShape, M extends AvailableCalls<Routes>> = FilterMethod<
+  Routes,
+  M
+>[number]['route']
 // util for finding a specific call
-type Find<
+export type Find<
   Routes extends RouterShape,
   M extends AvailableCalls<Routes>,
   N extends RouteNamesWithMethod<Routes, M>,
-> = RouterMap<Routes>[M][N]
+> =
+  FilterMethod<Routes, M> extends [infer C, ...infer Rest]
+    ? C extends Call<N, M, any, any, any, any>
+      ? C
+      : Rest extends RouterShape
+        ? Find<Rest, M, N>
+        : never
+    : never
 export type RouteArgs<
   Routes extends RouterShape,
   M extends AvailableCalls<Routes>,
@@ -45,7 +66,7 @@ export type RouterAdapter<Routes extends RouterShape, RouterName extends string,
   routeNames: RouteNames<Routes>[]
   routerName: RouterName
   methods: AvailableCalls<Routes>[]
-  routerMap: RouterMap<Routes>
+  mappedRouter: MappedRouter<Routes>
   invoke: <CN extends AvailableCalls<Routes>, N extends RouteNamesWithMethod<Routes, CN>>(
     method: CN,
     name: N,
@@ -59,7 +80,7 @@ export type RouterAdapter<Routes extends RouterShape, RouterName extends string,
 // publicly facing router type
 export type Router<Routes extends RouterShape, RouterName extends string, CTX> = Omit<
   RouterAdapter<Routes, RouterName, CTX>,
-  'invoke' | 'find' | 'routerMap'
+  'invoke' | 'find' | 'mappedRouter'
 >
 /**
  * Function for creating router
@@ -73,24 +94,23 @@ export function router<const CTX extends Obj>(context: CTX) {
   ) => {
     const routeNames: RouteNames<Routes>[] = []
     const methods: AvailableCalls<Routes>[] = []
-    const routerMap = {} as RouterMap<Routes>
+    const mappedRouter = {} as MappedRouter<Routes>
     // we use a for const for a single iteration (faster than multiple maps/filters)
     for (const route of routes) {
       routeNames.push(route.route)
       methods.push(route.method)
       if (
-        // @ts-expect-error we use a dynamic mapping of methods which are not available before runtime
-        (routerMap[route.method as keyof RouterMap<Routes>] ?? {})[
-          route.route as keyof RouterMap<Routes>[keyof RouterMap<Routes>]
+        (mappedRouter[route.method as keyof MappedRouter<Routes>] ?? {})[
+          route.route as keyof MappedRouter<Routes>[keyof MappedRouter<Routes>]
         ] !== undefined
       ) {
         throw new Error(`Route "${route.route}" with method "${route.method}" already exists`)
       }
       // note we use direct object assignment over spread/Object.assign as it's slightly faster
       // @ts-expect-error we use a dynamic mapping of methods which are not available before runtime
-      routerMap[route.method] = routerMap[route.method] || {}
+      mappedRouter[route.method] = mappedRouter[route.method] || {}
       // @ts-expect-error we use a dynamic mapping of methods which are not available before runtime
-      routerMap[route.method][route.route] = route
+      mappedRouter[route.method][route.route] = route
     }
 
     /**
@@ -103,7 +123,7 @@ export function router<const CTX extends Obj>(context: CTX) {
       method: CN,
       name: N
     ) => {
-      const match = routerMap[method]?.[name] as Routes[number]
+      const match = mappedRouter[method]?.[name] as Routes[number]
       if (!match) {
         throw new Error(
           `${method === 'call' ? 'Procedure' : 'Request'} "${name.toString()}" with method "${method}" not found`
@@ -187,7 +207,7 @@ export function router<const CTX extends Obj>(context: CTX) {
       routeNames,
       routerName,
       methods,
-      routerMap,
+      mappedRouter,
       invoke, // <- these 2 will be removed in the user-facing API
       find, // <- these 2 will be removed in the user-facing API
       // have to type-cast like this, because the shape can never know from typescript

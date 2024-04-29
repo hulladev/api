@@ -1,7 +1,7 @@
 {
   "name": "@hulla/api",
   "namespace": "@hulla",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "authors": "Samuel Hulla",
   "maintainers": [
     "Samuel Hulla <hulla@hulla.dev>"
@@ -16,7 +16,7 @@
   "license": "MIT",
   "scripts": {
     "bundle": "bunchee --dts -m --cwd",
-    "build": "bun bundle core",
+    "build": "bun bundle core && bun bundle integrations/query",
     "lint": "eslint --ext .ts --fix .",
     "prettier": "prettier --write .",
     "test": "bun test",
@@ -27,8 +27,8 @@
   },
   "lint-staged": {
     "*.ts": [
-      "eslint --fix",
-      "prettier --write"
+      "prettier --write",
+      "eslint --fix"
     ]
   },
   "devDependencies": {
@@ -60,11 +60,26 @@
       "import": "./core/dist/index.mjs",
       "module": "./core/dist/index.esm.js",
       "require": "./core/dist/index.js"
+    },
+    "./integration-query": {
+      "import": "./core/dist/integration-query.mjs",
+      "module": "./core/dist/integration-query.esm.js",
+      "require": "./core/dist/integration-query.js"
     }
   },
   "files": [
-    "core/dist"
+    "core/dist/**/*.{js,d.ts,mjs,d.mts}",
+    "core/package.json",
+    "integration-query/dist/**/*.{js,d.ts,mjs,d.mts}",
+    "integration-query/package.json"
   ],
+  "typesVersions": {
+    "*": {
+      "*": [
+        "*.d.ts"
+      ]
+    }
+  },
   "config": {
     "commitizen": {
       "path": "./node_modules/cz-emoji"
