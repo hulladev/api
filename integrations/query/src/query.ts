@@ -1,5 +1,5 @@
 // TODO: Replace with @hulla/api after first release
-import type { AvailableCalls, Obj, RouteArgs, RouteNamesWithMethod, RouterAdapter, RouterShape } from '@/core/src/types'
+import type { AvailableCalls, Obj, RouteArgs, RouteNamesWithMethod, RouterAdapter, RouterShape } from '@hulla/api'
 import { encodeKey } from './keys'
 
 export function query<const Routes extends RouterShape, const RN extends string, CTX extends Obj>(
