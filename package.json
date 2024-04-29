@@ -23,8 +23,8 @@
     "test": "bun test",
     "prepare": "husky",
     "commit": "bunx cz",
-    "package": "bunx changeset",
-    "release": "bunx changeset publish"
+    "package": "bun changeset && bun changeset version",
+    "release": "npm publish --access public"
   },
   "lint-staged": {
     "*.ts": [
