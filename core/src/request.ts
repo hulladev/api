@@ -3,7 +3,7 @@ import { type LowercaseMethods } from './constants'
 import { response } from './response'
 import type { Args, Fn, Methods } from './types'
 
-type StaticConfig<M extends Methods | LowercaseMethods, Data = unknown, Params = unknown> = Partial<
+export type StaticConfig<M extends Methods | LowercaseMethods, Data = unknown, Params = unknown> = Partial<
   RequestInit & { method?: M; data?: Data; params?: Params }
 > & { url: URL | string }
 export type TypedRequestConfig<M extends LowercaseMethods | Methods, Data = unknown, Params = unknown> =
