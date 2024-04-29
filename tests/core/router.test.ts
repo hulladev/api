@@ -14,23 +14,23 @@ describe('functionality', () => {
   test('router has correct routes', () => {
     const r = router({})(
       'test',
-      api.route('foo').procedure(() => 'foo'),
-      api.route('bar').procedure(() => 'bar')
+      api.procedure('foo', () => 'foo'),
+      api.procedure('bar', () => 'bar')
     )
     expect(r.routeNames).toStrictEqual(['foo', 'bar'])
   })
   test('router propagates context', () => {
     const r = router({ bar: 'bar' })(
       'test',
-      api.route('foo').procedure(() => 'foo')
+      api.procedure('foo', () => 'foo')
     )
     expect(r.context).toStrictEqual({ bar: 'bar' })
   })
   test('router calls procedures correctly', () => {
     const r = router({})(
       'test',
-      api.route('foo').procedure(() => 'foo'),
-      api.route('bar').procedure(() => 'bar')
+      api.procedure('foo', () => 'foo'),
+      api.procedure('bar', () => 'bar')
     )
     expect(r.call('foo')).toStrictEqual('foo')
     expect(r.call('bar')).toStrictEqual('bar')
@@ -38,16 +38,16 @@ describe('functionality', () => {
   test('router calls procedures with arguments correctly', () => {
     const r = router({})(
       'test',
-      api.route('foo').procedure((a: number, b: number) => a + b)
+      api.procedure('foo', (a: number, b: number) => a + b)
     )
     expect(r.call('foo', 1, 2)).toStrictEqual(3)
   })
   test('router correctly determines methods', () => {
     const r = router({})(
       'test',
-      api.route('foo').procedure(() => 'foo'),
-      api.route('get').request('GET', () => 'get'),
-      api.route('post').request('POST', () => 'post')
+      api.procedure('foo', () => 'foo'),
+      api.request('get', 'GET', () => 'get'),
+      api.request('post', 'POST', () => 'post')
     )
     expect(r.call).toBeFunction()
     expect(r.get).toBeFunction()
@@ -61,8 +61,8 @@ describe('functionality', () => {
   test('router doesnt have call with only requests', () => {
     const r = router({})(
       'test',
-      api.route('get').request('GET', () => 'get'),
-      api.route('post').request('POST', () => 'post')
+      api.request('get', 'GET', () => 'get'),
+      api.request('post', 'POST', () => 'post')
     )
     // @ts-expect-error undefined methods
     expect(r.call).toBeUndefined()
@@ -76,8 +76,8 @@ describe('corner cases', () => {
     try {
       router({})(
         'test',
-        api.route('foo').procedure(() => 'foo'),
-        api.route('foo').procedure(() => 'foo')
+        api.procedure('foo', () => 'foo'),
+        api.procedure('foo', () => 'foo')
       )
     } catch (e) {
       expect(e).toBeInstanceOf(Error)
@@ -87,12 +87,14 @@ describe('corner cases', () => {
   test('router with duplicate keys but separate methods works', () => {
     const r = router({})(
       'test',
-      api.route('foo').request(
+      api.request(
+        'foo',
         'POST',
         () => 'http://api.com/post',
         (req) => req
       ),
-      api.route('foo').request(
+      api.request(
+        'foo',
         'GET',
         () => 'http://api.com/get',
         (req) => req
@@ -104,17 +106,20 @@ describe('corner cases', () => {
   test('mappedRouter with duplicate keys but separate methods works', () => {
     const r = router({})(
       'test',
-      api.route('foo').request(
+      api.request(
+        'foo',
         'POST',
         () => 'http://api.com/post',
         (req) => req
       ),
-      api.route('foo').request(
+      api.request(
+        'foo',
         'GET',
         () => 'http://api.com/get',
         (req) => req
       ),
-      api.route('some').request(
+      api.request(
+        'some',
         'GET',
         () => 'http://api.com/some',
         (req) => req
