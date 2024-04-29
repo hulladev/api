@@ -10,7 +10,8 @@
   "homepage": "https://hulla.dev/projects/api",
   "repository": {
     "type": "git",
-    "url": "https://github.com/hulladev/api.git"
+    "url": "https://github.com/hulladev/api.git",
+    "directory": "packages/api"
   },
   "type": "module",
   "license": "MIT",
@@ -51,35 +52,59 @@
     "prettier-plugin-organize-imports": "^3.2.4",
     "typescript": "^5.0.0"
   },
-  "main": "core/dist/index.js",
-  "module": "core/dist/index.esm.js",
-  "types": "core/dist/index.d.ts",
+  "main": "dist/core/index.js",
+  "module": "dist/core/dist/index.esm.js",
+  "types": "dist/core/index.d.ts",
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "import": "./core/dist/index.mjs",
-      "module": "./core/dist/index.esm.js",
-      "require": "./core/dist/index.js"
+     "import": {
+        "types": "./dist/core/index.d.ts",
+        "default": "./dist/core/index.js"
+     },
+      "require": {
+        "types": "./dist/core/index.d.ts",
+        "default": "./dist/core/index.js"
+      }
     },
     "./integration-query": {
-      "import": "./core/dist/integration-query.mjs",
-      "module": "./core/dist/integration-query.esm.js",
-      "require": "./core/dist/integration-query.js"
+      "import": {
+        "types": "./dist/integration-query/index.d.ts",
+        "default": "./dist/integration-query/index.js"
+      },
+      "require": {
+        "types": "./dist/integration-query/index.d.ts",
+        "default": "./dist/integration-query/index.js"
+      }
     }
   },
   "files": [
-    "core/dist/**/*.{js,d.ts,mjs,d.mts}",
-    "core/package.json",
-    "integration-query/dist/**/*.{js,d.ts,mjs,d.mts}",
-    "integration-query/package.json"
+    "dist",
+    "integration/query"
   ],
-  "typesVersions": {
-    "*": {
-      "*": [
-        "*.d.ts"
-      ]
-    }
-  },
+  "keywords": [
+    "hulla",
+    "api",
+    "query",
+    "query manager",
+    "rest",
+    "graphql",
+    "rpc",
+    "http",
+    "server actions",
+    "@hulla/api",
+    "hulla api",
+    "@hulla",
+    "hulla dev",
+    "trpc",
+    "axios",
+    "swr",
+    "firebase",
+    "supabase",
+    "react-query",
+    "@tanstack/react-query",
+    "tanstack"
+  ],
   "config": {
     "commitizen": {
       "path": "./node_modules/cz-emoji"
@@ -144,28 +169,5 @@
         }
       ]
     }
-  },
-  "keywords": [
-    "hulla",
-    "api",
-    "query",
-    "query manager",
-    "rest",
-    "graphql",
-    "rpc",
-    "http",
-    "server actions",
-    "@hulla/api",
-    "hulla api",
-    "@hulla",
-    "hulla dev",
-    "trpc",
-    "axios",
-    "swr",
-    "firebase",
-    "supabase",
-    "react-query",
-    "@tanstack/react-query",
-    "tanstack"
-  ]
+  }
 }

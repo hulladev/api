@@ -1,21 +1,9 @@
 {
-  "name": "@hulla/api-integration-query",
-  "main": "./dist/index.js",
-  "module": "./dist/index.esm.js",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    "import": "./dist/index.mjs",
-    "module": "./dist/index.esm.js",
-    "require": "./dist/index.js"
-  },
+  "main": "../../dist/integration-query/index.js",
+  "module": "../../dist/integration-query/index.esm.js",
+  "types": "../../dist/integration-query/index.d.ts",
   "private": true,
-  "scripts": {
-    "build": "bunchee --dts -m"
-  },
   "peerDependencies": {
     "@hulla/api": "*"
-  },
-  "devDependencies": {
-    "@hulla/api": "^0.0.0"
   }
 }
