@@ -110,16 +110,22 @@
           "name": "config"
         },
         {
-          "emoji": "📦",
-          "code": ":package: release:",
-          "description": "new release bundle",
-          "name": "release"
-        },
-        {
           "emoji": "🤖",
           "code": ":robot: devops:",
           "description": "ci/cd or other form of automation",
           "name": "devops"
+        },
+        {
+          "emoji": "♻️",
+          "code": ":recycle: cleanup:",
+          "description": "code cleanup",
+          "name": "cleanup"
+        },
+        {
+          "emoji": "📦",
+          "code": ":package: release:",
+          "description": "new release bundle",
+          "name": "release"
         }
       ]
     }
