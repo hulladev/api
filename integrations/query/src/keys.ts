@@ -1,4 +1,4 @@
-import type { AvailableCalls, Obj, RouteArgs, RouteNamesWithMethod, RouterAdapter, RouterShape } from '@/core/src/types'
+import type { AvailableCalls, Obj, RouteArgs, RouteNamesWithMethod, RouterAdapter, RouterShape } from '@hulla/api'
 
 export function encodeKey<const M extends string, const RN extends string, const N extends string>(
   method: M,
