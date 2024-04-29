@@ -27,8 +27,8 @@
   },
   "lint-staged": {
     "*.ts": [
-      "eslint --fix",
-      "prettier --write"
+      "prettier --write",
+      "eslint --fix"
     ]
   },
   "devDependencies": {
@@ -63,8 +63,17 @@
     }
   },
   "files": [
-    "core/dist"
+    "core/dist/**/*.{js,d.ts,mjs,d.mts}",
+    "core/package.json"
+
   ],
+  "typesVersions": {
+    "*": {
+      "*": [
+        "*.d.ts"
+      ]
+    }
+  },
   "config": {
     "commitizen": {
       "path": "./node_modules/cz-emoji"
