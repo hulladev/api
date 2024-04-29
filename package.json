@@ -1,7 +1,7 @@
 {
   "name": "@hulla/api",
   "namespace": "@hulla",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "authors": "Samuel Hulla",
   "maintainers": [
     "Samuel Hulla <hulla@hulla.dev>"
