@@ -21,7 +21,7 @@ jobs:
           bun install
           cd ../swr
           bun install
-          cd ..
+          cd ../..
 
       - name: Run lint fix and check
         run: |
