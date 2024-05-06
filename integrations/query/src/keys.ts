@@ -1,4 +1,20 @@
-import type { AvailableCalls, Obj, RouteArgs, RouteNamesWithMethod, RouterAdapter, RouterShape } from '@hulla/api'
+import type { AvailableCalls, Obj, RouteArgs, RouteNamesWithMethod, RouterAdapter, RouterShape } from '@/core/src/types'
+
+type TupleVariants<T extends readonly unknown[], U extends readonly unknown[] = []> = T extends readonly [
+  infer Head,
+  ...infer Tail,
+]
+  ? Tail extends readonly unknown[]
+    ? // if u pass the head first, it will be infinitely deep (ts error)
+      // hence we do this and then reverse the tuple order
+      [Head, ...U] | TupleVariants<Tail, [Head, ...U]>
+    : never
+  : []
+type ReverseTuple<T extends any[], R extends any[] = []> = T extends readonly [infer Head, ...infer Tail]
+  ? ReverseTuple<Tail, [Head, ...R]>
+  : R
+
+export type QueryKey<T extends readonly unknown[]> = ReverseTuple<TupleVariants<T>, []>
 
 export function encodeKey<const M extends string, const RN extends string, const N extends string>(
   method: M,
@@ -15,7 +31,7 @@ export function queryKey<const Routes extends RouterShape, const RN extends stri
   return <
     const M extends AvailableCalls<Routes>,
     const N extends RouteNamesWithMethod<Routes, M>,
-    const A extends RouteArgs<Routes, M, N>,
+    const A extends QueryKey<RouteArgs<Routes, M, N>>,
   >(
     method: M,
     name: N,
