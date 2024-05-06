@@ -1,5 +1,5 @@
-import { encodeKey, queryKey } from '@/integrations/query/src'
-import { api } from '@hulla/api'
+import { api } from '@/core/src/api'
+import { encodeKey, queryKey } from '@/integrations/query/src/keys'
 import { describe, expect, test } from 'bun:test'
 import { expectTypeOf } from 'expect-type'
 
@@ -26,8 +26,11 @@ describe('main functionality', () => {
       'test',
       api.procedure('foo', (a: number, b: string) => a + b)
     )
-    expect(queryKey(router)('call', 'foo', 2, 'bar')).toStrictEqual(['call/test/foo', 2, 'bar'])
+    expect(queryKey(router)('call', 'foo')).toStrictEqual(['call/test/foo'])
     expect(queryKey(router)('call', 'foo', 2)).toStrictEqual(['call/test/foo', 2])
+    expect(queryKey(router)('call', 'foo', 2, 'bar')).toStrictEqual(['call/test/foo', 2, 'bar'])
+    // @ts-expect-error overflow
+    expect(queryKey(router)('call', 'foo', 2, 'bar', 3)).toStrictEqual(['call/test/foo', 2, 'bar', 3])
   })
 })
 
@@ -51,5 +54,17 @@ describe('types', () => {
     )
     const key = queryKey(router)('call', 'foo', 2)
     expectTypeOf(key).toEqualTypeOf<readonly ['call/test/foo', 2]>()
+  })
+  test('resulting queryKey correctly resolves EXACT type even with variadic tuple length', () => {
+    const router = api.router(
+      'test',
+      api.procedure('foo', (a: number, b: string) => a + b)
+    )
+    const key = queryKey(router)('call', 'foo', 2, 'bar')
+    const key2 = queryKey(router)('call', 'foo')
+    expectTypeOf(key).toEqualTypeOf<readonly ['call/test/foo', 2, 'bar']>()
+    expectTypeOf(key2).toEqualTypeOf<readonly ['call/test/foo']>()
+    expectTypeOf(key).not.toEqualTypeOf<readonly ['call/test/foo']>()
+    expectTypeOf(key2).not.toEqualTypeOf<readonly ['call/test/foo', 2, 'bar']>()
   })
 })
