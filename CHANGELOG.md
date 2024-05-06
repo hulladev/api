@@ -1,5 +1,11 @@
 # @hulla/api
 
+## 0.1.5
+
+### Patch Changes
+
+- Updates to queryKey encoding + tests
+
 ## 0.1.4
 
 ### Patch Changes
