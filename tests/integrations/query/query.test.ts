@@ -1,5 +1,5 @@
-import { api } from '@/core/src/api'
-import { query } from '@/integrations/query/src'
+import { api } from '@hulla/api'
+import { query } from '@hulla/api/integration-query'
 import { describe, expect, test } from 'bun:test'
 
 const users = [

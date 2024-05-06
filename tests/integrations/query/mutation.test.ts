@@ -1,5 +1,5 @@
-import { api } from '@/core/src/api'
-import { mutation } from '@/integrations/query/src'
+import { api } from '@hulla/api'
+import { mutation } from '@hulla/api/integration-query'
 import { describe, expect, test } from 'bun:test'
 
 const users = [
@@ -9,7 +9,7 @@ const users = [
 
 const routes = [
   api.procedure('all', () => users),
-  api.procedure('byId', (id: number) => users.find((u) => u.id === id)),
+  api.procedure('byId', async (id: number) => users.find((u) => u.id === id)),
   api.request('getter', 'GET', () => 'aa'),
 ] as const
 
@@ -31,6 +31,6 @@ describe('main functionality', () => {
     const all = usersAPI.mutation('call', 'all')
     const byId = usersAPI.mutation('call', 'byId', 1)
     expect(all.mutationFn()).toStrictEqual(users)
-    expect(byId.mutationFn()).toStrictEqual(users[0])
+    expect(byId.mutationFn()).resolves.toStrictEqual(users[0])
   })
 })
