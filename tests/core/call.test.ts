@@ -1,4 +1,5 @@
-import { call, type Call } from '@/core/src/call'
+import type { Call } from '@/core/src'
+import { call } from '@/core/src/call'
 import { describe, expect, test } from 'bun:test'
 import { expectTypeOf } from 'expect-type'
 
