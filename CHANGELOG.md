@@ -1,5 +1,17 @@
 # @hulla/api
 
+## 0.2.0
+
+### Minor Changes
+
+- swr integration
+
+## 0.1.6
+
+### Patch Changes
+
+- improved test coverage + automated publishing
+
 ## 0.1.5
 
 ### Patch Changes
