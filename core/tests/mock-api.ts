@@ -1,6 +1,6 @@
-import type { LowercaseMethods } from '@/core/src/constants'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
+import type { LowercaseMethods } from '../src/types'
 
 export const API_URL = 'http://api.com'
 

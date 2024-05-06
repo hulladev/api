@@ -1,6 +1,6 @@
-import { parseBody, parseRequest, parseUrl, response } from '@/core/src/response'
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test'
-import { createServer, mockCtx } from '../mock-api'
+import { parseBody, parseRequest, parseUrl, response } from '../src/response'
+import { createServer, mockCtx } from './mock-api'
 
 const server = createServer()
 beforeAll(() => server.listen())

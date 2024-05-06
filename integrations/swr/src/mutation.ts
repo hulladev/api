@@ -1,6 +1,6 @@
 import type { AvailableCalls, Obj, RouteArgs, RouteNamesWithMethod, RouterAdapter, RouterShape } from '@hulla/api'
 import { encodeKey as defaultEncodeMutationKey } from './keys'
-import { query } from './query'
+import { swr } from './swr'
 
 export function mutation<Routes extends RouterShape, RN extends string, AD extends Obj>(
   router: RouterAdapter<Routes, RN, AD>,
@@ -12,10 +12,7 @@ export function mutation<Routes extends RouterShape, RN extends string, AD exten
     ...args: RouteArgs<Routes, M, N>
   ) => {
     // the query function is the same as the mutation function, with just different keys
-    const { queryFn, queryKey } = query(router, encodeMutationKey)(method, name, ...args)
-    return {
-      mutationFn: queryFn,
-      mutationKey: queryKey,
-    }
+    const [mutationKey, mutationFn] = swr(router, encodeMutationKey)(method, name, ...args)
+    return [mutationKey, mutationFn]
   }
 }

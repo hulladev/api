@@ -1,27 +1,5 @@
-import type { Router, RouterAdapter, RouterShape } from './router'
-import type { Fn, Obj } from './types'
+import type { API, AdapterMap, Adapters, Obj, RouterAdapter, RouterShape } from './types'
 import { entries, omit } from './util'
-
-type Adapters<Routes extends RouterShape, RN extends string, CTX extends Obj> = Record<
-  string,
-  (router: RouterAdapter<Routes, RN, CTX>) => any
->
-
-type AdapterMap<
-  Routes extends RouterShape,
-  RN extends string,
-  CTX extends Obj,
-  AD extends Adapters<Routes, RN, CTX>,
-> = {
-  [K in keyof AD]: AD[K] extends Fn<any, infer R> ? R : never
-}
-
-export type API<
-  Routes extends RouterShape,
-  N extends string,
-  CTX extends Obj,
-  AD extends Adapters<Routes, N, CTX>,
-> = Router<Routes, N, CTX> & AdapterMap<Routes, N, CTX, AD>
 
 /**
  * Creates a new API instance

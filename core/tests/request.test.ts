@@ -1,8 +1,8 @@
-import { request } from '@/core/src/request'
-import { resolve } from '@/core/src/resolve'
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test'
 import { expectTypeOf } from 'expect-type'
-import { API_URL, createServer, mockCtx, users } from '../mock-api'
+import { request } from '../src/request'
+import { resolve } from '../src/resolve'
+import { API_URL, createServer, mockCtx, users } from './mock-api'
 
 const getUsers = request()('/users', 'GET', () => `${API_URL}/users`)
 const getUsersConfig = request()('/users', 'GET', () => ({ url: `${API_URL}/users` }))

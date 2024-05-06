@@ -1,5 +1,6 @@
 import { RESERVED_CONTEXT } from './constants'
 import { create } from './create'
+import { custom } from './custom'
 import { procedure } from './procedure'
 import { request } from './request'
 import { router } from './router'
@@ -24,12 +25,13 @@ function context<const CTX extends Obj>(context: CTX) {
   return {
     procedure: procedure<CTX>(),
     request: request<CTX>(),
+    custom: custom<CTX>(),
     router: router<CTX>(context),
     create: create,
   }
 }
 
-type NoContext = Record<string, never>
+export type NoContext = Record<string, never>
 
 /**
  * api SDK
@@ -52,6 +54,7 @@ export const api = {
   // uses {} as default context (unspecified)
   procedure: procedure<NoContext>(),
   request: request<NoContext>(),
+  custom: custom<NoContext>(),
   router: router<NoContext>({} as NoContext),
   context,
   create,

@@ -1,6 +1,6 @@
-import { api } from '@/core/src/api'
-import { query } from '@/integrations/query/src'
+import { api } from '@hulla/api'
 import { describe, expect, test } from 'bun:test'
+import { query } from '../src/query'
 
 const users = [
   { id: 1, name: 'John' },

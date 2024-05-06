@@ -1,8 +1,5 @@
-import type { Context } from './call'
-import type { LowercaseMethods } from './constants'
-import type { TypedRequestConfig } from './request'
 import { response } from './response'
-import type { Args, Methods } from './types'
+import type { Args, Context, LowercaseMethods, Methods, TypedRequestConfig } from './types'
 
 export function resolve<
   R,

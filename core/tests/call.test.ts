@@ -1,6 +1,7 @@
-import { call, type Call } from '@/core/src/call'
 import { describe, expect, test } from 'bun:test'
 import { expectTypeOf } from 'expect-type'
+import { call } from '../src/call'
+import type { Call } from '../src/types'
 
 const testCall = call('route', 'call', (id: number) => !!id)
 

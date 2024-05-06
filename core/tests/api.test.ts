@@ -1,5 +1,5 @@
-import { api } from '@/core/src/api'
 import { describe, expect, test } from 'bun:test'
+import { api } from '../src/api'
 
 // These are general all purpose tests that mainly check user-facing calls behaviour
 // the testing of the individual methods is done in separate tests

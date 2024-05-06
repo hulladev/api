@@ -2,7 +2,7 @@
 import type { AvailableCalls, Obj, RouteArgs, RouteNamesWithMethod, RouterAdapter, RouterShape } from '@hulla/api'
 import { encodeKey } from './keys'
 
-export function query<const Routes extends RouterShape, const RN extends string, CTX extends Obj>(
+export function swr<const Routes extends RouterShape, const RN extends string, CTX extends Obj>(
   router: RouterAdapter<Routes, RN, CTX>,
   encodeQueryKey: typeof encodeKey = encodeKey
 ) {
@@ -19,9 +19,6 @@ export function query<const Routes extends RouterShape, const RN extends string,
     const queryKey = [encodedName, ...args] as const
     // we don't care if we potentially pass an extra (options) argument here, as it just gets consumed and gc dropped
     const queryFn = () => router.invoke(method, name, args as unknown as RouteArgs<Routes, M, N>)
-    return {
-      queryKey,
-      queryFn,
-    }
+    return [queryKey, queryFn] as const
   }
 }

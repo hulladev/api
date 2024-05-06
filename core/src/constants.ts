@@ -1,10 +1,4 @@
-import type { Context } from './call'
-import type { Methods } from './types'
-
-type MethodsArray = readonly Methods[]
-export type LowercaseMethods = {
-  [K in Methods]: Lowercase<K>
-}[Methods]
+import type { Context, LowercaseMethods, Methods, MethodsArray } from './types'
 
 export const METHODS = [
   'CONNECT',
@@ -42,5 +36,6 @@ export const RESERVED_CONTEXT = [
 export const RESERVED_KEYWORDS = [
   ...(METHODS.map((m) => m.toLowerCase()) as Lowercase<Methods>[]),
   'call',
+  'requet',
   'context',
 ] as const

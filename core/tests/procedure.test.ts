@@ -1,7 +1,7 @@
-import type { Context } from '@/core/src/call'
 import { describe, expect, test } from 'bun:test'
 import { expectTypeOf } from 'expect-type'
-import { procedure } from '../../core/src/procedure'
+import { procedure } from '../src/procedure'
+import type { Context } from '../src/types'
 
 const ctx: Context<'foo', 'call', [id: number], 'router'> = {
   method: 'call',

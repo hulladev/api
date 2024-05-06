@@ -17,6 +17,11 @@ jobs:
       - name: Install dependencies
         run: |
           bun install
+          cd integrations/query
+          bun install
+          cd ../swr
+          bun install
+          cd ../..
 
       - name: Run lint fix and check
         run: |
