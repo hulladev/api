@@ -1,5 +1,5 @@
-import { api } from '@/core/src'
-import { encodeKey, queryKey } from '@/integrations/query/src/keys'
+import { encodeKey, queryKey } from '@/integrations/query/src'
+import { api } from '@hulla/api'
 import { describe, expect, test } from 'bun:test'
 import { expectTypeOf } from 'expect-type'
 
@@ -19,6 +19,14 @@ describe('main functionality', () => {
       'test',
       api.procedure('foo', (a: number) => a)
     )
+    expect(queryKey(router)('call', 'foo', 2)).toStrictEqual(['call/test/foo', 2])
+  })
+  test('queryKey allows variable arg length', () => {
+    const router = api.router(
+      'test',
+      api.procedure('foo', (a: number, b: string) => a + b)
+    )
+    expect(queryKey(router)('call', 'foo', 2, 'bar')).toStrictEqual(['call/test/foo', 2, 'bar'])
     expect(queryKey(router)('call', 'foo', 2)).toStrictEqual(['call/test/foo', 2])
   })
 })
