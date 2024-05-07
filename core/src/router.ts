@@ -1,5 +1,6 @@
 import type {
   AvailableCalls,
+  Context,
   InvokerMap,
   MappedRouter,
   Obj,
@@ -8,6 +9,7 @@ import type {
   RouteNamesWithMethod,
   RouteReturn,
   RouterAdapter,
+  RouterConfig,
   RouterShape,
 } from './types'
 
@@ -18,14 +20,14 @@ import type {
  */
 export function router<const CTX extends Obj>(context: CTX) {
   return <const RouterName extends string, const Routes extends RouterShape>(
-    routerName: RouterName,
-    ...routes: Routes
+    config: RouterConfig<RouterName, Routes, CTX>
   ) => {
+    const { name: routerName, routes, argInterceptor, resultInterceptor } = config
     const routeNames: RouteNames<Routes>[] = []
     const methods: AvailableCalls<Routes>[] = []
     const mappedRouter = {} as MappedRouter<Routes>
     // we use a for const for a single iteration (faster than multiple maps/filters)
-    for (const route of routes) {
+    for (const route of routes as Routes) {
       routeNames.push(route.route)
       methods.push(route.method)
       if (
@@ -68,30 +70,48 @@ export function router<const CTX extends Obj>(context: CTX) {
      * @param args (type-safe) arguments to pass to the call
      * @returns returntype of the call (if resolver, resolver type, otherwise fn type)
      */
-    const invoke = <CN extends AvailableCalls<Routes>, N extends RouteNamesWithMethod<Routes, CN>>(
+    const invoke = <
+      CN extends AvailableCalls<Routes>,
+      N extends RouteNamesWithMethod<Routes, CN>,
+      A extends RouteArgs<Routes, CN, N>,
+    >(
       method: CN,
       name: N,
-      args: RouteArgs<Routes, CN, N>
+      args: A
     ): RouteReturn<Routes, CN, N> => {
       const { route, call } = find(method, name)
-      if (call.resolver) {
-        // @ts-expect-error by object definition, key can potentially be a | number | symbol, but
-        // we always treat them as string
-        const ctx: CTX & Context<CN, RouteArgs<Routes, CN, N>, N, RouterName> = {
-          ...context,
-          routerName,
-          route,
-          args,
-          type: call.method === 'call' ? 'procedure' : 'request',
-          method,
-        }
-        return call.resolver(call.fn(...args), ctx)
+      // @ts-expect-error by object definition, key can potentially be a | number | symbol, but
+      // we always treat them as string
+      const ctx: CTX & Context<N, CN, A, RouterName> = {
+        ...context,
+        routerName,
+        route,
+        args,
+        type: call.method === 'call' ? 'procedure' : 'request',
+        method,
       }
-      return call.fn(...args)
+      // format args with argInterceptor (if available)
+      if (argInterceptor) {
+        argInterceptor(ctx)
+      }
+      // use resolver if provided
+      if (call.resolver) {
+        const res = call.resolver(call.fn(...args), ctx)
+        if (resultInterceptor) {
+          resultInterceptor({ ...ctx, result: res })
+        }
+        return res
+      }
+      // otherwise just execute the call
+      const res = call.fn(...args)
+      if (resultInterceptor) {
+        resultInterceptor({ ...ctx, result: res })
+      }
+      return res
     }
 
     /**
-     * internal API for calling requests (user is exposed individual methods @see invokerMap)
+     * internal API for calling requests (user is exposed individual methods @see invokerMap
      * @param method method of the request
      * @param name name of the request
      * @param args arguments to pass to the request
