@@ -65,8 +65,26 @@ export type LowercaseMethods = {
 /*                                   router                                   */
 /* -------------------------------------------------------------------------- */
 // params extenders
-export type Route = Call<string, string, any, any, any, any>
+export type Route = Call<string, string, any, any, any>
 export type RouterShape = readonly Route[]
+export type RouterConfig<RN extends string, Routes extends RouterShape, CTX extends Obj> = {
+  name: RN
+  routes: Routes extends RouterMap<Routes> ? Routes : never
+  argInterceptor?: <
+    M extends AvailableCalls<Routes>,
+    N extends RouteNamesWithMethod<Routes, M>,
+    A extends RouteArgs<Routes, M, N>,
+  >(
+    context: CTX & Context<N, M, A>
+  ) => void
+  resultInterceptor?: <
+    M extends AvailableCalls<Routes>,
+    N extends RouteNamesWithMethod<Routes, M>,
+    A extends RouteArgs<Routes, M, N>,
+  >(
+    contextWithResult: CTX & Context<N, M, A> & { result: RouteReturn<Routes, M, N> }
+  ) => void
+}
 // util for extracting route names and methods
 export type RouteNames<Routes extends RouterShape> = Routes[number]['route']
 export type AvailableCalls<Routes extends RouterShape> = Routes[number]['method']
