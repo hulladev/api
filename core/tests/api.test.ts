@@ -23,23 +23,22 @@ describe('main functionality', () => {
     expect(apiWithContext.context).toBeUndefined()
   })
   test('api router initializes properly', () => {
-    const router = api.router(
-      'test',
-      api.procedure('a', (id: number) => id.toString())
-    )
+    const router = api.router({ name: 'test', routes: [api.procedure('a', (id: number) => id.toString())] })
     expect(router).toBeDefined()
     expect(router.call('a', 2)).toStrictEqual('2')
   })
   test('context is accessible within the router', () => {
     const c = api.context({ hello: 'world' })
-    const router = c.router(
-      'a',
-      c.procedure(
-        'foo',
-        () => 'd',
-        (_, ctx) => ctx.hello
-      )
-    )
+    const router = c.router({
+      name: 'a',
+      routes: [
+        c.procedure(
+          'foo',
+          () => 'd',
+          (_, ctx) => ctx.hello
+        ),
+      ],
+    })
     const a = c.create(router)
     expect(a.call('foo')).toStrictEqual('world')
   })
