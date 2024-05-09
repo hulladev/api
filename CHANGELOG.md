@@ -1,5 +1,11 @@
 # @hulla/api
 
+## 0.3.0
+
+### Minor Changes
+
+- new request and query syntax
+
 ## 0.2.1
 
 ### Patch Changes
