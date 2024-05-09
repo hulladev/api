@@ -32,8 +32,8 @@ describe('functionality', () => {
       name: 'test',
       routes: [
         api.procedure('foo', () => 'foo'),
-        api.request('get', 'GET', () => 'get'),
-        api.request('post', 'POST', () => 'post'),
+        api.request.get('get', () => 'get'),
+        api.request.post('post', () => 'post'),
       ],
     })
     expect(r.call).toBeFunction()
@@ -48,7 +48,7 @@ describe('functionality', () => {
   test('router doesnt have call with only requests', () => {
     const r = router({})({
       name: 'test',
-      routes: [api.request('get', 'GET', () => 'get'), api.request('post', 'POST', () => 'post')],
+      routes: [api.request.get('get', () => 'get'), api.request.post('post', () => 'post')],
     })
     // @ts-expect-error undefined methods
     expect(r.call).toBeUndefined()
@@ -78,15 +78,13 @@ describe('corner cases', () => {
     const r = router({})({
       name: 'test',
       routes: [
-        api.request(
+        api.request.post(
           'foo',
-          'POST',
           () => 'http://api.com/post',
           (req) => req
         ),
-        api.request(
+        api.request.get(
           'foo',
-          'GET',
           () => 'http://api.com/get',
           (req) => req
         ),
@@ -99,21 +97,18 @@ describe('corner cases', () => {
     const r = router({})({
       name: 'test',
       routes: [
-        api.request(
+        api.request.post(
           'foo',
-          'POST',
           () => 'http://api.com/post',
           (req) => req
         ),
-        api.request(
+        api.request.get(
           'foo',
-          'GET',
           () => 'http://api.com/get',
           (req) => req
         ),
-        api.request(
+        api.request.get(
           'some',
-          'GET',
           () => 'http://api.com/some',
           (req) => req
         ),
