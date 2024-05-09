@@ -1,1 +1,2 @@
-export { encodeKey, queryKey } from '@hulla/api/integration-query'
+// these function the same way
+export { encodeKey, queryKey } from '../../query/src/keys'
