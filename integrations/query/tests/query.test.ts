@@ -8,13 +8,14 @@ const users = [
   { id: 2, name: 'Jane' },
 ]
 
-const routes = [
-  api.procedure('all', () => users),
-  api.procedure('byId', (id: number) => users.find((u) => u.id === id)!),
-  api.request('a', 'GET', () => 'aa'),
-] as const
-
-export const router = api.router('users', ...routes)
+export const router = api.router({
+  name: 'users',
+  routes: [
+    api.procedure('all', () => users),
+    api.procedure('byId', (id: number) => users.find((u) => u.id === id)!),
+    api.request.get('a', () => 'aa'),
+  ],
+})
 const usersAPI = api.create(router, { query })
 
 describe('main functionality', () => {
