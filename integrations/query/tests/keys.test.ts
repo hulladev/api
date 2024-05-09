@@ -44,7 +44,7 @@ describe('types', () => {
     expectTypeOf(key).toEqualTypeOf<readonly ['call/test/foo', 2]>()
   })
   test('resulting queryKey correctly resolves EXACT type even with variadic tuple length', () => {
-    const router = api.router({ name: 'test', routes: [api.procedure('foo', (a: number, b: string) => a + b)]})
+    const router = api.router({ name: 'test', routes: [api.procedure('foo', (a: number, b: string) => a + b)] })
     const key = queryKey(router).call('foo', 2, 'bar')
     const key2 = queryKey(router).call('foo')
     expectTypeOf(key).toEqualTypeOf<readonly ['call/test/foo', 2, 'bar']>()
