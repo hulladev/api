@@ -24,6 +24,21 @@ export type Call<N extends string, CN extends string, CTX, A extends Args, R, R2
   method: CN
 }
 
+export type RequestMap<CTX> = {
+  [M in LowercaseMethods]: <
+    const N extends string,
+    Data,
+    Params,
+    const R extends TypedRequestConfig<M | Uppercase<M>, Data, Params> | string | URL,
+    A extends Args = [],
+    const R2 = Promise<Response>,
+  >(
+    route: N,
+    configOrConfigFn: Fn<A, R> | R,
+    resolver?: Resolver<CTX & Context<N, M, A>, R, R2>
+  ) => Call<N, M, CTX, A, R, R2>
+}
+
 export type ParsedRequestRoute<N extends string> = N extends `${infer M}${infer Rest}`
   ? M extends Methods
     ? [Lowercase<M>, Rest]
