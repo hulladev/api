@@ -15,8 +15,10 @@ jobs:
           bun-version: latest
 
       - name: Install dependencies
+        # for some reason in CI env bun install does not install dependencies in sub-directories, even though it does locally, doing it manually for now even though it does slow thing down a bit
         run: |
           bun install
+          cd packages/core && bun install && cd ../request && bun install && cd ../swr && bun install && cd ../query 
 
       - name: Run lint fix and check
         run: |
