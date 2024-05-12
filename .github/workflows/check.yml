@@ -29,14 +29,14 @@ jobs:
 
       - name: Run lint fix and check
         run: |
-          bun run format
-          bun run lint
+          pnpm run format
+          pnpm run lint
 
       - name: Test
         run: |
-          bun run test
+          pnpm run test
 
       - name: Build
         # Note we use a separate build using bunchee (rollup + swc) over bun, for slightly smaller bundle size & other than .js outputs
         run: |
-          bun run build
+          pnpm run build
