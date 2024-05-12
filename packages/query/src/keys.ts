@@ -1,4 +1,4 @@
-import type { Obj, RouteArgs, RouteNamesWithMethod, RouterAdapter, RouterShape } from '@hulla/api'
+import type { Obj, RouteArgs, RouteNamesWithMethod, RouterAdapter, RouterShape } from '../../core/src/types'
 import type { KeyMapping, QueryKey } from './types'
 import { keys } from './utils'
 

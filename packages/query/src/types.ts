@@ -1,4 +1,4 @@
-import type { AvailableCalls, RouteArgs, RouteNamesWithMethod, RouteReturn, RouterShape } from '@hulla/api'
+import type { AvailableCalls, RouteArgs, RouteNamesWithMethod, RouteReturn, RouterShape } from '../../core/src/types'
 
 /* ------------------------------- query keys ------------------------------- */
 type ReverseTuple<T extends readonly unknown[], R extends any[] = []> = T extends readonly [infer Head, ...infer Tail]

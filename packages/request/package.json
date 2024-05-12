@@ -31,8 +31,11 @@
       "default": "./dist/index.js"
     }
   },
-  "peerDependencies": {
+  "devDependencies": {
     "@hulla/api": "*"
+  },
+  "peerDependencies": {
+    "@hulla/api": "workspace:*"
   },
   "scripts": {
     "lint": "eslint --ext .ts --fix .",

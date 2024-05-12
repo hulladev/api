@@ -31,6 +31,9 @@
       "default": "./dist/index.js"
     }
   },
+  "devDependencies": {
+    "@hulla/api": "*"
+  },
   "peerDependencies": {
     "@hulla/api": "workspace:*"
   },

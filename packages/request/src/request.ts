@@ -1,4 +1,4 @@
-import type { Args, Call, Context, Fn, Resolver } from '@hulla/api'
+import type { Args, Call, Context, Fn, Resolver } from '../../core/src/types'
 import { METHODS_LOWERCASE } from './constants'
 import { response } from './response'
 import type { LowercaseMethods, RequestMap, TypedRequestConfig } from './types'
@@ -33,7 +33,7 @@ export function request<const CTX>(_ctx?: CTX) {
       }
     }
   return METHODS_LOWERCASE.reduce((acc, method) => {
-    // @ts-expect-error dynamic method mapping, the RequestMapType is correct
+    // @ts-expect-error dynamic type mapping
     acc[method] = createRequest(method)
     return acc
   }, {} as RequestMap<CTX>)
