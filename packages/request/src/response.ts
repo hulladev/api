@@ -1,4 +1,4 @@
-import type { Args, Context } from '@hulla/api'
+import type { Args, Context } from '../../core/src/types'
 import type { LowercaseMethods, Methods, TypedRequestConfig } from './types'
 import { isURL } from './utils'
 

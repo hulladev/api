@@ -1,6 +1,6 @@
 {
   "name": "@hulla/api-swr",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "The next-gen API/RPC manager 🚀",
   "author": {
     "name": "Samuel Hulla",
@@ -31,6 +31,9 @@
       "default": "./dist/index.js"
     }
   },
+  "devDependencies": {
+    "@hulla/api": "*"
+  },
   "peerDependencies": {
     "@hulla/api": "workspace:*"
   },
@@ -38,7 +41,7 @@
     "lint": "eslint --ext .ts --fix .",
     "format": "prettier --write .",
     "build": "bunchee -m",
-    "test": "bun test"
+    "test": "vitest run"
   },
   "keywords": [
     "hulla",

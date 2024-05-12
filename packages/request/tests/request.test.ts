@@ -1,5 +1,5 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test'
 import { expectTypeOf } from 'expect-type'
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import { request } from '../src/request'
 import { resolve } from '../src/resolve'
 import { API_URL, createServer, mockCtx, users } from './mock-api'

@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test'
 import { expectTypeOf } from 'expect-type'
+import { describe, expect, test } from 'vitest'
 import { call } from '../src/call'
 import type { Call } from '../src/types'
 

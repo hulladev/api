@@ -1,4 +1,11 @@
-import type { AvailableCalls, Obj, RouteArgs, RouteNamesWithMethod, RouterAdapter, RouterShape } from '@hulla/api'
+import type {
+  AvailableCalls,
+  Obj,
+  RouteArgs,
+  RouteNamesWithMethod,
+  RouterAdapter,
+  RouterShape,
+} from '../../core/src/types'
 import { encodeKey } from './keys'
 import type { Mapping } from './types'
 import { keys } from './utils'

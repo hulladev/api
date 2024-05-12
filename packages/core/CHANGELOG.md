@@ -1,5 +1,11 @@
 # @hulla/api
 
+## 1.0.1
+
+### Patch Changes
+
+- Update type imports and remove bun dependency
+
 ## 1.0.0
 
 ### Minor Changes

@@ -1,6 +1,7 @@
-import { api } from '@hulla/api'
-import { describe, expect, test } from 'bun:test'
 import { expectTypeOf } from 'expect-type'
+import { describe, expect, test } from 'vitest'
+import { Call } from '../../core/src'
+import { api as init } from '../../core/src/api'
 import { swr } from '../src/swr'
 
 const users = [
@@ -8,12 +9,20 @@ const users = [
   { id: 2, name: 'Jane' },
 ]
 
+const api = init()
+
 export const router = api.router({
   name: 'users',
   routes: [
     api.procedure('all', () => users),
     api.procedure('byId', (id: number) => users.find((u) => u.id === id)!),
-    api.request.get('a', () => 'aa'),
+    { method: 'get', route: 'a', fn: () => new Promise((res) => res) } as Call<
+      'a',
+      'get',
+      Record<string, never>,
+      [],
+      Promise<Response>
+    >,
   ],
 })
 const usersAPI = api.create(router, { swr })

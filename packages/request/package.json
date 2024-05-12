@@ -1,6 +1,6 @@
 {
   "name": "@hulla/api-request",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "The next-gen API/RPC manager 🚀",
   "author": {
     "name": "Samuel Hulla",
@@ -31,14 +31,17 @@
       "default": "./dist/index.js"
     }
   },
-  "peerDependencies": {
+  "devDependencies": {
     "@hulla/api": "*"
+  },
+  "peerDependencies": {
+    "@hulla/api": "workspace:*"
   },
   "scripts": {
     "lint": "eslint --ext .ts --fix .",
     "build": "bunchee -m",
     "format": "prettier --write .",
-    "test": "bun test"
+    "test": "vitest run"
   },
   "keywords": [
     "hulla",
