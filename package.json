@@ -1,7 +1,6 @@
 {
   "name": "api",
   "namespace": "@hulla",
-  "version": "0.3.0",
   "description": "The next-gen API/RPC manager 🚀",
   "author": {
     "name": "Samuel Hulla",
@@ -22,7 +21,8 @@
   ],
   "scripts": {
     "build": "turbo build",
-    "publish": "turbo run build lint format test && bun run changeset version && bun run changeset publish",
+    "bundle": "turbo run lint format test build && bun run changeset && bun run changeset version",
+    "publish": "turbo run lint format test build && bun run changeset publish",
     "lint": "turbo lint",
     "format": "turbo format",
     "test": "turbo test",

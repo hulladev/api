@@ -1,6 +1,6 @@
 {
   "name": "@hulla/api",
-  "version": "0.3.0",
+  "version": "1.0.0",
   "description": "The next-gen API/RPC manager 🚀",
   "author": {
     "name": "Samuel Hulla",
@@ -17,7 +17,9 @@
     "directory": "packages/api"
   },
   "license": "MIT",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "main": "./dist/index.js",
   "exports": {
     "import": {
