@@ -1,7 +1,9 @@
-import { api } from '@hulla/api'
 import { expectTypeOf } from 'expect-type'
 import { describe, expect, test } from 'vitest'
+import { api as init } from '../../core/src/index'
 import { encodeKey, queryKey } from '../src/keys'
+
+const api = init()
 
 describe('main functionality', () => {
   test('encodeKey', () => {
