@@ -21,8 +21,8 @@
   ],
   "scripts": {
     "build": "turbo build",
-    "bundle": "turbo run lint format test build && bun run changeset && bun run changeset version",
-    "publish": "turbo run lint format test build && bun run changeset publish",
+    "bundle": "turbo run lint format test build && pnpm run changeset && pnpm run changeset version",
+    "publish": "turbo run lint format test build && pnpm run changeset publish",
     "lint": "turbo lint",
     "format": "turbo format",
     "test": "turbo test",
