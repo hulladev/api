@@ -1,6 +1,6 @@
 import { api } from '@hulla/api'
-import { describe, expect, test } from 'bun:test'
 import { expectTypeOf } from 'expect-type'
+import { describe, expect, test } from 'vitest'
 import { mutation } from '../src/mutation'
 import { router } from './query.test'
 
