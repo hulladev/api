@@ -17,11 +17,6 @@ jobs:
       - name: Install dependencies
         run: |
           bun install
-          cd integrations/query
-          bun install
-          cd ../swr
-          bun install
-          cd ../..
 
       - name: Run lint fix and check
         run: |
@@ -30,7 +25,7 @@ jobs:
 
       - name: Test
         run: |
-          bun test
+          bun run test
 
       - name: Build
         # Note we use a separate build using bunchee (rollup + swc) over bun, for slightly smaller bundle size & other than .js outputs
