@@ -1,6 +1,6 @@
 import { api } from '@hulla/api'
-import { describe, expect, test } from 'bun:test'
 import { expectTypeOf } from 'expect-type'
+import { describe, expect, test } from 'vitest'
 import { query } from '../src/query'
 
 const users = [
