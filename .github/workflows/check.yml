@@ -20,7 +20,7 @@ jobs:
         uses: actions/setup-node@v2
         with:
           node-version: 20
-          cache: pnp
+          cache: pnpm
 
       - name: Install dependencies
         # for some reason in CI env bun install does not install dependencies in sub-directories, even though it does locally, doing it manually for now even though it does slow thing down a bit
