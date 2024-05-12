@@ -1,6 +1,0 @@
-{
-  "main": "../dist/core/index.js",
-  "module": "../dist/core/index.esm.js",
-  "types": "../dist/core/index.d.ts",
-  "private": true
-}

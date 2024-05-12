@@ -1,9 +1,0 @@
-{
-  "main": "../../dist/integration-swr/index.js",
-  "module": "../../dist/integration-swr/index.esm.js",
-  "types": "../../dist/integration-swr/index.d.ts",
-  "private": true,
-  "peerDependencies": {
-    "@hulla/api": "*"
-  }
-}
