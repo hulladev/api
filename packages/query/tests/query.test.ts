@@ -1,7 +1,9 @@
-import { api } from '@hulla/api'
 import { expectTypeOf } from 'expect-type'
 import { describe, expect, test } from 'vitest'
+import { Call, api as init } from '../../core/src/index'
 import { query } from '../src/query'
+
+const api = init()
 
 const users = [
   { id: 1, name: 'John' },
@@ -13,7 +15,13 @@ export const router = api.router({
   routes: [
     api.procedure('all', () => users),
     api.procedure('byId', (id: number) => users.find((u) => u.id === id)!),
-    api.request.get('a', () => 'aa'),
+    { method: 'get', route: 'a', fn: () => new Promise((res) => res) } as Call<
+      'a',
+      'get',
+      Record<string, never>,
+      [],
+      Promise<Response>
+    >,
   ],
 })
 const usersAPI = api.create(router, { query })
