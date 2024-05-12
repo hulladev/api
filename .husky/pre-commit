@@ -1,1 +1,1 @@
-bun run eslint --fix $(git diff --diff-filter=ACM --name-only HEAD | grep -E '\.(ts|js)$' | xargs)
+pnpm eslint --fix $(git diff --diff-filter=ACM --name-only HEAD | grep -E '\.(ts|js)$' | xargs)
