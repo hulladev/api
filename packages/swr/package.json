@@ -41,7 +41,7 @@
     "lint": "eslint --ext .ts --fix .",
     "format": "prettier --write .",
     "build": "bunchee -m",
-    "test": "bun test"
+    "test": "vitest run"
   },
   "keywords": [
     "hulla",

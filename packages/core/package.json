@@ -35,7 +35,7 @@
     "lint": "eslint --ext .ts --fix .",
     "build": "bunchee -m",
     "format": "prettier --write .",
-    "test": "pnpm test"
+    "test": "vitest run"
   },
   "keywords": [
     "hulla",
