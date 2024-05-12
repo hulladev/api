@@ -20,7 +20,7 @@ jobs:
 
       - name: Run lint fix and check
         run: |
-          bun run prettier
+          bun run format
           bun run lint
 
       - name: Test
