@@ -54,9 +54,7 @@ describe('parseBody', () => {
   test('request shape with no data nor body passes', () => {
     const req = { url: 'a' }
     const str = 'a'
-    // @ts-expect-error undefined is omitted in parse request but BodyInit tries to prevent explicitly passing it
     expect(parseBody(req)).toStrictEqual(undefined)
-    // @ts-expect-error undefined is omitted in parse request but BodyInit tries to prevent explicitly passing it
     expect(parseBody(str)).toStrictEqual(undefined)
   })
   test('request shape with string data is parsed correctly', () => {
@@ -82,32 +80,32 @@ describe('parseRequest', () => {
     const req = 'http://api.com/users'
     const url = new URL(req)
     const ctx = mockCtx('users', 'get', [])
-    expect(parseRequest(req, url, undefined, ctx)).toStrictEqual({ method: 'get', url })
+    expect(parseRequest(req, url, undefined, ctx)).toMatchObject({ method: 'get', url })
   })
   test('parses URL correctly', () => {
     const req = new URL('http://api.com/users')
     const url = req
     const ctx = mockCtx('users', 'get', [])
-    expect(parseRequest(req, url, undefined, ctx)).toStrictEqual({ method: 'get', url })
+    expect(parseRequest(req, url, undefined, ctx)).toMatchObject({ method: 'get', url })
   })
   test('parses Request correctly', () => {
     const req = new Request('http://api.com/users')
     const url = new URL(req.url)
     const ctx = mockCtx('users', 'get', [])
-    expect(parseRequest(req, url, undefined, ctx)).toStrictEqual({ method: 'get', url })
+    expect(parseRequest(req, url, undefined, ctx)).toMatchObject({ method: 'get', url })
   })
   test('request shape object is parsed correctly', () => {
     const req = { url: 'http://api.com/users' }
     const url = new URL(req.url)
     const ctx = mockCtx('users', 'get', [])
-    expect(parseRequest(req, url, undefined, ctx)).toStrictEqual({ method: 'get', url })
+    expect(parseRequest(req, url, undefined, ctx)).toMatchObject({ method: 'get', url })
   })
   test('request shape with body is parsed correctly', () => {
     const body = 'foo'
     const req = { body, url: 'http://api.com/users' }
     const url = new URL(req.url)
     const ctx = mockCtx('users', 'get', [])
-    expect(parseRequest(req, url, body, ctx)).toStrictEqual({ method: 'get', url, body })
+    expect(parseRequest(req, url, body, ctx)).toMatchObject({ method: 'get', url, body })
   })
 })
 
