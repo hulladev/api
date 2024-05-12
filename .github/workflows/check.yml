@@ -7,19 +7,25 @@ jobs:
   runtime:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Setup bun
-        uses: oven-sh/setup-bun@v1
+      - name: Setup Node.js
+        uses: actions/setup-node@v2
         with:
-          bun-version: latest
+          node-version: 20
+          cache: pnpm
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+          run_install: false
 
       - name: Install dependencies
         # for some reason in CI env bun install does not install dependencies in sub-directories, even though it does locally, doing it manually for now even though it does slow thing down a bit
         run: |
-          bun install
-          cd packages/core && bun install && cd ../request && bun install && cd ../swr && bun install && cd ../query
-          cd ../..
+          pnpm install --frozen-lockfile --prefer-offline
 
       - name: Run lint fix and check
         run: |
