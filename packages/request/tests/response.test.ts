@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test'
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import { parseBody, parseRequest, parseUrl, response } from '../src/response'
 import { createServer, mockCtx } from './mock-api'
 
