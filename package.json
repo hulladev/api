@@ -26,8 +26,7 @@
     "lint": "turbo lint",
     "format": "turbo format",
     "test": "turbo test",
-    "prepare": "husky",
-    "commit": "bunx cz"
+    "prepare": "husky"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.1",
