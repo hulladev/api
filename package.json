@@ -2,19 +2,21 @@
   "name": "api",
   "namespace": "@hulla",
   "version": "0.3.0",
-  "authors": "Samuel Hulla",
+  "description": "The next-gen API/RPC manager 🚀",
+  "author": {
+    "name": "Samuel Hulla",
+    "email": "hulla@hulla.dev",
+    "url": "https://hulla.dev"
+  },
   "maintainers": [
     "Samuel Hulla <hulla@hulla.dev>"
   ],
-  "description": "API manager of the future",
   "homepage": "https://hulla.dev/projects/api",
   "repository": {
     "type": "git",
     "url": "https://github.com/hulladev/api.git",
     "directory": "packages/api"
   },
-  "type": "module",
-  "license": "MIT",
   "workspaces": [
     "packages/*"
   ],
@@ -49,72 +51,6 @@
     "typescript": "^5.0.0",
     "vite": "^5.2.11"
   },
-  "main": "dist/core/index.js",
-  "module": "dist/core/dist/index.esm.js",
-  "types": "dist/core/index.d.ts",
-  "exports": {
-    "./package.json": "./package.json",
-    ".": {
-      "import": {
-        "types": "./dist/core/index.d.ts",
-        "default": "./dist/core/index.js"
-      },
-      "require": {
-        "types": "./dist/core/index.d.ts",
-        "default": "./dist/core/index.js"
-      }
-    },
-    "./integration-query": {
-      "import": {
-        "types": "./dist/integration-query/index.d.ts",
-        "default": "./dist/integration-query/index.js"
-      },
-      "require": {
-        "types": "./dist/integration-query/index.d.ts",
-        "default": "./dist/integration-query/index.js"
-      }
-    },
-    "./integration-swr": {
-      "import": {
-        "types": "./dist/integration-swr/index.d.ts",
-        "default": "./dist/integration-swr/index.js"
-      },
-      "require": {
-        "types": "./dist/integration-swr/index.d.ts",
-        "default": "./dist/integration-swr/index.js"
-      }
-    }
-  },
-  "files": [
-    "dist",
-    "integration/query",
-    "integration/swr"
-  ],
-  "keywords": [
-    "hulla",
-    "api",
-    "query",
-    "query manager",
-    "rest",
-    "graphql",
-    "rpc",
-    "http",
-    "server actions",
-    "@hulla/api",
-    "hulla api",
-    "@hulla",
-    "hulla dev",
-    "trpc",
-    "axios",
-    "swr",
-    "firebase",
-    "supabase",
-    "mutation",
-    "react-query",
-    "@tanstack/react-query",
-    "tanstack",
-    "swr"
-  ],
   "config": {
     "commitizen": {
       "path": "./node_modules/cz-emoji"
