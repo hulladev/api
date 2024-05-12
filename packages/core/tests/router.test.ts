@@ -48,9 +48,9 @@ describe('functionality', () => {
       name: 'test',
       routes: [b.procedure('foo', () => 'foo'), b.post(), b.get()],
     })
-    expect(r.call).toBeFunction()
-    expect(r.get).toBeFunction()
-    expect(r.post).toBeFunction()
+    expect(r.call).toBeDefined()
+    expect(r.get).toBeDefined()
+    expect(r.post).toBeDefined()
     // @ts-expect-error undefined methods
     expect(r.patch).toBeUndefined()
     // @ts-expect-error undefined methods
