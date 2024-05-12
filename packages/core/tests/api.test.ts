@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 import { api } from '../src/api'
 
 // These are general all purpose tests that mainly check user-facing calls behaviour
