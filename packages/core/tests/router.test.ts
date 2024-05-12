@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 import { api } from '../src/api'
 import { router } from '../src/router'
 import { Args, Call, Fn } from '../src/types'
