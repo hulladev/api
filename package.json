@@ -1,41 +1,40 @@
 {
-  "name": "@hulla/api",
+  "name": "api",
   "namespace": "@hulla",
-  "version": "0.2.1",
-  "authors": "Samuel Hulla",
+  "description": "The next-gen API/RPC manager 🚀",
+  "author": {
+    "name": "Samuel Hulla",
+    "email": "hulla@hulla.dev",
+    "url": "https://hulla.dev"
+  },
   "maintainers": [
     "Samuel Hulla <hulla@hulla.dev>"
   ],
-  "description": "API manager of the future",
   "homepage": "https://hulla.dev/projects/api",
   "repository": {
     "type": "git",
     "url": "https://github.com/hulladev/api.git",
     "directory": "packages/api"
   },
-  "type": "module",
-  "license": "MIT",
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
-    "build": "bun run scripts/build.ts",
-    "release": "bun run scripts/release.ts",
-    "lint": "eslint --ext .ts --fix .",
-    "prettier": "prettier --write .",
-    "test": "bun test",
+    "build": "turbo build",
+    "bundle": "turbo run lint format test build && bun run changeset && bun run changeset version",
+    "publish": "turbo run lint format test build && bun run changeset publish",
+    "lint": "turbo lint",
+    "format": "turbo format",
+    "test": "turbo test",
     "prepare": "husky",
     "commit": "bunx cz"
-  },
-  "lint-staged": {
-    "*.ts": [
-      "prettier --write",
-      "eslint --fix"
-    ]
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.1",
     "@types/bun": "^1.0.11",
     "@typescript-eslint/eslint-plugin": "^7.4.0",
     "@typescript-eslint/parser": "^7.4.0",
-    "bunchee": "^5.1.5",
+    "bunchee": "latest",
     "commitizen": "^4.3.0",
     "cz-conventional-changelog": "^3.3.0",
     "cz-emoji": "^1.3.2-canary.2",
@@ -48,75 +47,10 @@
     "prettier": "^3.2.5",
     "prettier-plugin-organize-imports": "^3.2.4",
     "publint": "^0.2.7",
+    "turbo": "latest",
     "typescript": "^5.0.0",
     "vite": "^5.2.11"
   },
-  "main": "dist/core/index.js",
-  "module": "dist/core/dist/index.esm.js",
-  "types": "dist/core/index.d.ts",
-  "exports": {
-    "./package.json": "./package.json",
-    ".": {
-      "import": {
-        "types": "./dist/core/index.d.ts",
-        "default": "./dist/core/index.js"
-      },
-      "require": {
-        "types": "./dist/core/index.d.ts",
-        "default": "./dist/core/index.js"
-      }
-    },
-    "./integration-query": {
-      "import": {
-        "types": "./dist/integration-query/index.d.ts",
-        "default": "./dist/integration-query/index.js"
-      },
-      "require": {
-        "types": "./dist/integration-query/index.d.ts",
-        "default": "./dist/integration-query/index.js"
-      }
-    },
-    "./integration-swr": {
-      "import": {
-        "types": "./dist/integration-swr/index.d.ts",
-        "default": "./dist/integration-swr/index.js"
-      },
-      "require": {
-        "types": "./dist/integration-swr/index.d.ts",
-        "default": "./dist/integration-swr/index.js"
-      }
-    }
-  },
-  "files": [
-    "dist",
-    "integration/query",
-    "integration/swr"
-  ],
-  "keywords": [
-    "hulla",
-    "api",
-    "query",
-    "query manager",
-    "rest",
-    "graphql",
-    "rpc",
-    "http",
-    "server actions",
-    "@hulla/api",
-    "hulla api",
-    "@hulla",
-    "hulla dev",
-    "trpc",
-    "axios",
-    "swr",
-    "firebase",
-    "supabase",
-    "mutation",
-    "react-query",
-    "@tanstack/react-query",
-    "tanstack",
-    "swr"
-  ],
   "config": {
     "commitizen": {
       "path": "./node_modules/cz-emoji"
@@ -181,6 +115,5 @@
         }
       ]
     }
-  },
-  "nx": {}
+  }
 }
