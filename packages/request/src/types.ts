@@ -1,4 +1,4 @@
-import type { Args, Call, Context, Fn, Resolver } from '../../core/src/types'
+import type { Args, Call, Context, Fn, Resolver } from '@hulla/api'
 
 export type Methods = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS' | 'HEAD' | 'CONNECT' | 'TRACE'
 

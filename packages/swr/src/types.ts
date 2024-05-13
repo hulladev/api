@@ -1,4 +1,4 @@
-import type { AvailableCalls, RouteArgs, RouteNamesWithMethod, RouteReturn, RouterShape } from '../../core/src/types'
+import type { AvailableCalls, RouteArgs, RouteNamesWithMethod, RouteReturn, RouterShape } from '@hulla/api'
 
 export type Options<
   Routes extends RouterShape,
