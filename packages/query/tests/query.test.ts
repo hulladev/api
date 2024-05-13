@@ -1,6 +1,6 @@
+import { Call, api as init } from '@hulla/api'
 import { expectTypeOf } from 'expect-type'
 import { describe, expect, test } from 'vitest'
-import { Call, api as init } from '../../core/src/index'
 import { query } from '../src/query'
 
 const api = init()
