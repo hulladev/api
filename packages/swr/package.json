@@ -34,14 +34,12 @@
   "devDependencies": {
     "@hulla/api": "*"
   },
-  "peerDependencies": {
-    "@hulla/api": "workspace:*"
-  },
   "scripts": {
     "lint": "eslint --ext .ts --fix .",
     "format": "prettier --write .",
     "build": "bunchee -m",
-    "test": "vitest run"
+    "test": "vitest run",
+    "clean": "rm -rf node_modules dist"
   },
   "keywords": [
     "hulla",

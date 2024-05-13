@@ -35,7 +35,8 @@
     "lint": "eslint --ext .ts --fix .",
     "build": "bunchee -m",
     "format": "prettier --write .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "clean": "rm -rf node_modules dist"
   },
   "keywords": [
     "hulla",
