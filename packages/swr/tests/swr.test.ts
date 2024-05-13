@@ -1,7 +1,6 @@
+import { api as init, type Call } from '@hulla/api'
 import { expectTypeOf } from 'expect-type'
 import { describe, expect, test } from 'vitest'
-import { Call } from '../../core/src'
-import { api as init } from '../../core/src/api'
 import { swr } from '../src/swr'
 
 const users = [
