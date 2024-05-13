@@ -1,4 +1,4 @@
-import type { Args, Call, Context, Fn, Resolver } from '../../core/src/types'
+import type { Args, Call, Context, Fn, Resolver } from '@hulla/api'
 import { METHODS_LOWERCASE } from './constants'
 import { response } from './response'
 import type { LowercaseMethods, RequestMap, TypedRequestConfig } from './types'
