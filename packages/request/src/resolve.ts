@@ -1,6 +1,6 @@
-import type { Args, Context } from '../../core/src/types'
+import type { Args, Context } from '@hulla/api'
 import { response } from './response'
-import type { LowercaseMethods, Methods, TypedRequestConfig } from './types'
+import type { Callables, LowercaseMethods, Methods, TypedRequestConfig } from './types'
 
 export function resolve<
   R,
@@ -8,6 +8,7 @@ export function resolve<
     | TypedRequestConfig<LowercaseMethods | Methods>
     | string
     | URL,
->(req: Req, ctx: Context<string, LowercaseMethods, Args, string>) {
-  return response(req, ctx).then((res) => res.json()) as R
+  T extends Callables<Response> = 'json',
+>(req: Req, ctx: Context<string, LowercaseMethods, Args, string>, transformer?: T) {
+  return response(req, ctx).then((res) => res[transformer ?? 'json']()) as R
 }

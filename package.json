@@ -21,6 +21,7 @@
   ],
   "scripts": {
     "build": "turbo build",
+    "clean": "turbo clean && rm -rf pnpm-lock.yaml node_modules",
     "bundle": "turbo run lint format test build && pnpm changeset && pnpm changeset version",
     "release": "turbo run lint format test build && pnpm changeset publish",
     "lint": "turbo lint",
@@ -51,6 +52,7 @@
     "vite": "^5.2.11",
     "vitest": "^1.6.0"
   },
+  "packageManager": "pnpm@9.1.1",
   "config": {
     "commitizen": {
       "path": "./node_modules/cz-emoji"

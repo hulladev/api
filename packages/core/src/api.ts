@@ -14,10 +14,10 @@ import type { APIConfig, APISDK, CustomMethods, MappedCM, Obj } from './types'
  * // define your router
  * const router = a.router({
  *   name: 'users',
- *   routes: {
- *     getUserById: a.procedure(yourGetter)
+ *   routes: [
+ *     a.procedure('getUserById', yourGetter)
  *     // ...
- *   }
+ *   ]
  * })
  * // create and export your API for further use
  * export const usersAPI = a.create(router)

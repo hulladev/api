@@ -1,4 +1,4 @@
-import type { Obj, RouterAdapter, RouterShape } from '../../core/src/types'
+import type { Obj, RouterAdapter, RouterShape } from '@hulla/api'
 import { encodeKey as defaultEncodeMutationKey } from './keys'
 import { createMapping } from './swr'
 

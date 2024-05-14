@@ -2,6 +2,7 @@ import { expectTypeOf } from 'expect-type'
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import { request } from '../src/request'
 import { resolve } from '../src/resolve'
+import { rq } from '../src/rq'
 import { API_URL, createServer, mockCtx, users } from './mock-api'
 
 const getUsers = request().get('/users', () => `${API_URL}/users`)
@@ -26,7 +27,6 @@ describe('functionality', () => {
   })
   // standardly we'll be invoking from a router, but for unit testing we have to do with mocking the context
   test('requests resolve correctly', () => {
-    expect
     expect(withResolver.resolver?.(withResolver.fn(), mockCtx('/usersResolve', 'get', []))).resolves.toStrictEqual({
       users,
     })
@@ -51,6 +51,11 @@ describe('functionality', () => {
       users,
     })
   })
+  test('with rq', () => {
+    request().post('/example', rq({ url: 'aaa', method: 'POST' }))
+    request().post('/example', rq({ url: 'bb/:userId/?w', method: 'POST', params: { userId: '1', w: 'w' } }))
+    request().post('/example', () => rq({ url: 'bb/:userId/?w', method: 'POST', params: { userId: '1', w: 'w' } }))
+  })
 })
 
 // note these will always pass in a test suite - however they do throw a type error in IDE/build time
@@ -63,5 +68,30 @@ describe('types', () => {
   test('request has correct type', () => {
     expectTypeOf(getUsers.fn).returns.toEqualTypeOf<'http://api.com/users'>()
     expectTypeOf(withResolver.resolver).returns.toEqualTypeOf<Promise<{ users: { name: string; id: number }[] }>>()
+  })
+})
+
+describe('dynamic paths / search params', () => {
+  test('static rq params', () => {
+    const req = request().get(
+      '/users/:id',
+      rq({ url: `${API_URL}/users/:id`, method: 'GET', params: { id: 0 } }),
+      resolve<(typeof users)[0]>
+    )
+
+    expect(req.fn()).toStrictEqual({ url: 'http://api.com/users/:id', method: 'GET', params: { id: 0 } })
+    expect(req.resolver?.(req.fn(), mockCtx('/users/:id', 'get', []))).resolves.toStrictEqual({ id: 0, name: 'John' })
+  })
+  test('dynamic rq params', () => {
+    const dReq = request().get(
+      '/users/:id',
+      (id: number) => rq({ url: `${API_URL}/users/:id`, method: 'GET', params: { id } }),
+      resolve<(typeof users)[number]>
+    )
+    expect(dReq.fn(1)).toStrictEqual({ url: 'http://api.com/users/:id', method: 'GET', params: { id: 1 } })
+    expect(dReq.resolver?.(dReq.fn(1), mockCtx('/users/:id', 'get', [1]))).resolves.toStrictEqual({
+      id: 1,
+      name: 'Jane',
+    })
   })
 })

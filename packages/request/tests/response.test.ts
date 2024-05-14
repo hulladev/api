@@ -1,11 +1,41 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
-import { parseBody, parseRequest, parseUrl, response } from '../src/response'
-import { createServer, mockCtx } from './mock-api'
+import { resolve } from '../src/resolve'
+import { addParams, parseBody, parseRequest, parseUrl, response } from '../src/response'
+import { createServer, mockCtx, users } from './mock-api'
 
 const server = createServer()
 beforeAll(() => server.listen())
 beforeEach(() => server.resetHandlers())
 afterAll(() => server.close())
+
+describe('addParams', () => {
+  test('doesnt mutate if no params exist', () => {
+    expect(addParams({ url: 'aa.bb.cc' })).toStrictEqual('aa.bb.cc')
+  })
+  test('path params', () => {
+    expect(addParams({ url: 'aa/:bb/cc', params: { bb: 'test' } })).toStrictEqual('aa/test/cc')
+  })
+  test('search params', () => {
+    expect(addParams({ url: 'aa.bb.cc?foo', params: { foo: 'bar' } })).toStrictEqual('aa.bb.cc?foo=bar')
+    expect(addParams({ url: 'aa.bb.cc?foo&bar', params: { foo: true, bar: 2 } })).toStrictEqual(
+      'aa.bb.cc?foo=true&bar=2'
+    )
+    expect(addParams({ url: 'a?foo&bar&baz', params: { foo: 1, bar: 2, baz: 3 } })).toStrictEqual('a?foo=1&bar=2&baz=3')
+  })
+  test('combined', () => {
+    expect(addParams({ url: 'users/:userId/cc?foo&bar', params: { userId: 2, foo: true, bar: 'baz' } })).toStrictEqual(
+      'users/2/cc?foo=true&bar=baz'
+    )
+  })
+  test('corner case - KITCHEN SINK 🦍', () => {
+    expect(
+      addParams({
+        url: 'users/:userId/cc?foo&bar/:route/something&baz',
+        params: { userId: 1, foo: false, 'bar/:route/something': 'eww', route: 'insane', baz: 'bosh' },
+      })
+    ).toStrictEqual('users/1/cc?foo=false&bar/insane/something=eww&baz=bosh')
+  })
+})
 
 describe('parseUrl', () => {
   test('parses string correctly', () => {
@@ -121,5 +151,12 @@ describe('response', () => {
     const res = await response(req, ctx)
     expect(res.ok).toStrictEqual(true)
     expect(res.url).toStrictEqual('http://api.com/users')
+  })
+})
+
+describe('baseURL', () => {
+  test('baseURL is working', async () => {
+    const ctx = { ...mockCtx('users', 'get', []), baseURL: 'http://api.com' }
+    expect(resolve('/users', ctx)).resolves.toStrictEqual({ users })
   })
 })
