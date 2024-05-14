@@ -1,5 +1,11 @@
 # @hulla/api-query
 
+## 1.0.2
+
+### Patch Changes
+
+- request params, baseURL, constants cleanup
+
 ## 1.0.1
 
 ### Patch Changes
