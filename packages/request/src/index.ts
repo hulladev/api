@@ -1,3 +1,4 @@
 export { resolve } from './resolve'
-export { parseBody, parseRequest, parseUrl, response } from './response'
+export { addParams, parseBody, parseRequest, parseUrl, response } from './response'
+export { rq } from './rq'
 export type * from './types'
