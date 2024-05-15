@@ -1,3 +1,4 @@
+import { ADAPTER_PROPERTIES } from './constants'
 import type { API, AdapterMap, Adapters, Obj, RouterAdapter, RouterShape } from './types'
 import { entries, omit } from './utils'
 
@@ -25,10 +26,8 @@ export function create<
           {} as AdapterMap<Routes, RN, CTX, AD>
         ),
       },
-      'find',
-      'invoke',
-      'mappedRouter'
+      ...ADAPTER_PROPERTIES
     ) as API<Routes, RN, CTX, AD>
   }
-  return omit(router, 'find', 'invoke') as API<Routes, RN, CTX, AD>
+  return omit(router, ...ADAPTER_PROPERTIES) as API<Routes, RN, CTX, AD>
 }
