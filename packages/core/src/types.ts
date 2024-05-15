@@ -19,6 +19,14 @@ export type Context<N extends string, CN extends string, A extends Args, RR exte
   args: A
 }
 
+export type ContextWithResult<
+  R,
+  N extends string,
+  CN extends string,
+  A extends Args,
+  RR extends string = string,
+> = Context<N, CN, A, RR> & { result: R }
+
 export type ResolverArgs<CTX, R> = [R, CTX]
 export type Resolver<CTX, R, R2 = R> = Fn<ResolverArgs<CTX, R>, R2>
 
@@ -56,20 +64,38 @@ export type RouterShape = readonly Route[]
 export type RouterConfig<RN extends string, Routes extends RouterShape, CTX extends Obj> = {
   name: RN
   routes: Routes extends RouterMap<Routes> ? Routes : never
-  argInterceptor?: <
-    M extends AvailableCalls<Routes>,
-    N extends RouteNamesWithMethod<Routes, M>,
-    A extends RouteArgs<Routes, M, N>,
-  >(
-    context: CTX & Context<N, M, A>
-  ) => void
-  resultInterceptor?: <
-    M extends AvailableCalls<Routes>,
-    N extends RouteNamesWithMethod<Routes, M>,
-    A extends RouteArgs<Routes, M, N>,
-  >(
-    contextWithResult: CTX & Context<N, M, A> & { result: RouteReturn<Routes, M, N> }
-  ) => void
+  interceptors?: {
+    // we cannot use generics here, because then it enforces strict inferrence and raises type errors
+    // that type could be potentially unrelated to generic. Useful for type-safety but not very practical
+    // for everday users, hence we make it more lenient and just accept a match of any of the possible
+    // instead of requiring type narrowing for every single individual route
+    args?: (
+      context: CTX &
+        Context<
+          AvailableCalls<Routes>,
+          RouteNamesWithMethod<Routes, AvailableCalls<Routes>>,
+          RouteArgs<Routes, AvailableCalls<Routes>, RouteNamesWithMethod<Routes, AvailableCalls<Routes>>>
+        >
+    ) => RouteArgs<Routes, AvailableCalls<Routes>, RouteNamesWithMethod<Routes, AvailableCalls<Routes>>>
+    fn?: (
+      contextWithResult: CTX &
+        ContextWithResult<
+          FnReturn<Routes, AvailableCalls<Routes>, RouteNamesWithMethod<Routes, AvailableCalls<Routes>>>,
+          AvailableCalls<Routes>,
+          RouteNamesWithMethod<Routes, AvailableCalls<Routes>>,
+          RouteArgs<Routes, AvailableCalls<Routes>, RouteNamesWithMethod<Routes, AvailableCalls<Routes>>>
+        >
+    ) => FnReturn<Routes, AvailableCalls<Routes>, RouteNamesWithMethod<Routes, AvailableCalls<Routes>>>
+    resolver?: (
+      contextWithResult: CTX &
+        ContextWithResult<
+          RouteReturn<Routes, AvailableCalls<Routes>, RouteNamesWithMethod<Routes, AvailableCalls<Routes>>>,
+          AvailableCalls<Routes>,
+          RouteNamesWithMethod<Routes, AvailableCalls<Routes>>,
+          RouteArgs<Routes, AvailableCalls<Routes>, RouteNamesWithMethod<Routes, AvailableCalls<Routes>>>
+        >
+    ) => RouteReturn<Routes, AvailableCalls<Routes>, RouteNamesWithMethod<Routes, AvailableCalls<Routes>>>
+  }
 }
 // util for extracting route names and methods
 export type RouteNames<Routes extends RouterShape> = Routes[number]['route']
@@ -125,6 +151,11 @@ export type RouteReturn<
   M extends AvailableCalls<Routes>,
   N extends RouteNamesWithMethod<Routes, M>,
 > = Find<Routes, M, N> extends Call<string, string, any, any, any, infer R2> ? R2 : never
+export type FnReturn<
+  Routes extends RouterShape,
+  M extends AvailableCalls<Routes>,
+  N extends RouteNamesWithMethod<Routes, M>,
+> = Find<Routes, M, N> extends Call<string, string, any, any, infer R, any> ? R : never
 // maps individual methods to the router
 export type InvokerMap<Routes extends RouterShape> = {
   [M in AvailableCalls<Routes>]: <N extends RouteNamesWithMethod<Routes, M>>(
@@ -149,6 +180,11 @@ export type RouterAdapter<Routes extends RouterShape, RouterName extends string,
     name: N
   ) => { route: N; call: Find<Routes, CN, N> }
 }
+
+export type AdapterProperties = {
+  [K in keyof RouterAdapter<[], string, any>]: K extends keyof Router<[], string, any> ? never : K
+}[keyof RouterAdapter<[], string, any>]
+
 // publicly facing router type
 export type Router<Routes extends RouterShape, RouterName extends string, CTX> = Omit<
   RouterAdapter<Routes, RouterName, CTX>,
