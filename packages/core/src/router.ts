@@ -22,7 +22,8 @@ export function router<const CTX extends Obj>(context: CTX) {
   return <const RouterName extends string, const Routes extends RouterShape>(
     config: RouterConfig<RouterName, Routes, CTX>
   ) => {
-    const { name: routerName, routes, argInterceptor, resultInterceptor } = config
+    const { name: routerName, routes, interceptors } = config
+    const { args: argInterceptor, fn: fnInterceptor, resolver: resolverInterceptor } = interceptors ?? {}
     const routeNames: RouteNames<Routes>[] = []
     const methods: AvailableCalls<Routes>[] = []
     const mappedRouter = {} as MappedRouter<Routes>
@@ -91,23 +92,18 @@ export function router<const CTX extends Obj>(context: CTX) {
         method,
       }
       // format args with argInterceptor (if available)
+      let a = args
       if (argInterceptor) {
-        argInterceptor(ctx)
+        a = argInterceptor(ctx) as A
       }
       // use resolver if provided
+      const fnCall = () => (fnInterceptor ? fnInterceptor({ ...ctx, result: call.fn(...a) }) : call.fn(...a))
       if (call.resolver) {
-        const res = call.resolver(call.fn(...args), ctx)
-        if (resultInterceptor) {
-          resultInterceptor({ ...ctx, result: res })
-        }
-        return res
+        const resolverCall = () => call.resolver?.(fnCall(), ctx)
+        return resolverInterceptor ? resolverInterceptor({ ...ctx, result: resolverCall() }) : resolverCall()
       }
-      // otherwise just execute the call
-      const res = call.fn(...args)
-      if (resultInterceptor) {
-        resultInterceptor({ ...ctx, result: res })
-      }
-      return res
+      // otherwise just call fn
+      return fnCall()
     }
 
     /**

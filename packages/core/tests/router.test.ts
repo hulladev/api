@@ -106,3 +106,80 @@ describe('corner cases', () => {
     expect(r.mappedRouter.call.foo).toBeDefined()
   })
 })
+
+describe('interceptors', () => {
+  test('argInterceptor', () => {
+    const argRouter = a.router({
+      name: 'args',
+      routes: [
+        a.procedure('fn only', (id: number) => id),
+        a.procedure(
+          'resolver',
+          (id: number) => id,
+          (res) => res.toString()
+        ),
+      ],
+      interceptors: {
+        args: (ctx) => [(ctx.args[0] as number) + 1] as const,
+      },
+    })
+    expect(argRouter.call('fn only', 1)).toStrictEqual(2)
+    expect(argRouter.call('resolver', 1)).toStrictEqual('2')
+  })
+  test('fnInterceptor', () => {
+    const fnRouter = a.router({
+      name: 'fn',
+      routes: [
+        a.procedure('fn only', (id: number) => id),
+        a.procedure(
+          'resolver',
+          (id: number) => id,
+          (res) => res.toString()
+        ),
+      ],
+      interceptors: {
+        fn: (ctx) => ctx.result + 1,
+      },
+    })
+    expect(fnRouter.call('fn only', 1)).toStrictEqual(2)
+    expect(fnRouter.call('resolver', 1)).toStrictEqual('2')
+  })
+  test('resolverInterceptor', () => {
+    const fnRouter = a.router({
+      name: 'res',
+      routes: [
+        a.procedure('fn only', (id: number) => id),
+        a.procedure(
+          'resolver',
+          (id: number) => id,
+          (res) => res.toString()
+        ),
+      ],
+      interceptors: {
+        resolver: (ctx) => ctx.result + 1,
+      },
+    })
+    expect(fnRouter.call('fn only', 1)).toStrictEqual(1) // returns before resolverInterceptor hits
+    expect(fnRouter.call('resolver', 1)).toStrictEqual('11') // '1' + 1 === '11'
+  })
+  test('combined', () => {
+    const rt = a.router({
+      name: 'combined',
+      routes: [
+        a.procedure('fn only', (id: number) => id),
+        a.procedure(
+          'resolver',
+          (id: number) => id,
+          (res) => res.toString()
+        ),
+      ],
+      interceptors: {
+        args: (ctx) => [ctx.args[0] + 1] as const,
+        fn: (ctx) => ctx.result + 1,
+        resolver: (ctx) => ctx.result + 1,
+      },
+    })
+    expect(rt.call('fn only', 1)).toStrictEqual(3) // arg + fn
+    expect(rt.call('resolver', 1)).toStrictEqual('31') // arg + fn + resolver
+  })
+})
