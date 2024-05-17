@@ -1,5 +1,11 @@
 # @hulla/api-query
 
+## 1.0.4
+
+### Patch Changes
+
+- Method override, update interceptor types
+
 ## 1.0.3
 
 ### Patch Changes
