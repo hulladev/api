@@ -1,3 +1,4 @@
+import { api } from '@hulla/api'
 import { expectTypeOf } from 'expect-type'
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import { request } from '../src/request'
@@ -93,5 +94,21 @@ describe('dynamic paths / search params', () => {
       id: 1,
       name: 'Jane',
     })
+  })
+})
+
+describe('in api syntax', () => {
+  test('methods', () => {
+    const a = api({
+      context: { foo: 'foo' },
+      methods: (ctx) => ({
+        request: request(ctx),
+      }),
+    })
+    const router = a.router({
+      name: 'test',
+      routes: [a.request.get('users', `${API_URL}/users`, resolve)],
+    })
+    expect(router.get('users')).resolves.toStrictEqual({ users })
   })
 })
