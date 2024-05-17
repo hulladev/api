@@ -182,4 +182,29 @@ describe('interceptors', () => {
     expect(rt.call('fn only', 1)).toStrictEqual(3) // arg + fn
     expect(rt.call('resolver', 1)).toStrictEqual('31') // arg + fn + resolver
   })
+  test('narrowing types', () => {
+    const reusable = (res: string, ctx: { foo: string }) => ctx.foo + res
+    const b = api({ context: { foo: 'foo' } })
+    const rt = b.router({
+      name: 'narrow',
+      routes: [
+        b.procedure(
+          'num',
+          (a: number) => a,
+          (res) => res
+        ),
+        b.procedure('str', (a: string) => a, reusable),
+      ],
+      interceptors: {
+        fn: (ctx) => {
+          if (ctx.route === 'num') {
+            return (ctx.result as number) + 1
+          }
+          return (ctx.result as string) + 'baz'
+        },
+      },
+    })
+    expect(rt.call('num', 1)).toStrictEqual(2)
+    expect(rt.call('str', 'bar')).toStrictEqual('foobarbaz')
+  })
 })
