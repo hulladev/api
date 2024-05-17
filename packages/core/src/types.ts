@@ -11,9 +11,9 @@ export type Methods = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS' | 
 export type Fn<A extends Args, R> = (...args: A) => R
 export type FnShape = <A extends Args, R>(...args: A) => R
 
-export type Context<N extends string, CN extends string, A extends Args, RR extends string = string> = {
-  method: CN
-  type: CN extends 'call' ? 'procedure' : CN extends LowercaseMethods ? 'request' : 'custom'
+export type Context<N extends string, M extends string, A extends Args, RR extends string = string> = {
+  method: M
+  type: M extends 'call' ? 'procedure' : M extends LowercaseMethods ? 'request' : 'custom'
   route: N
   routerName: RR
   args: A
@@ -55,6 +55,17 @@ export type LowercaseMethods = {
   [K in Methods]: Lowercase<K>
 }[Methods]
 
+type PossibleFnReturns<Routes extends RouterShape> = ReturnType<Routes[number]['fn']>
+type PossibleResReturns<Routes> = Routes extends RouterShape
+  ? RouterMap<Routes> extends [infer C, ...infer Rest]
+    ? C extends Call<string, string, any, any, infer R, infer R2>
+      ? R extends R2
+        ? PossibleResReturns<Rest>
+        : R2 | PossibleResReturns<Rest>
+      : never
+    : never
+  : never
+
 /* -------------------------------------------------------------------------- */
 /*                                   router                                   */
 /* -------------------------------------------------------------------------- */
@@ -72,31 +83,38 @@ export type RouterConfig<RN extends string, Routes extends RouterShape, CTX exte
     args?: (
       context: CTX &
         Context<
-          AvailableCalls<Routes>,
           RouteNamesWithMethod<Routes, AvailableCalls<Routes>>,
+          AvailableCalls<Routes>,
           RouteArgs<Routes, AvailableCalls<Routes>, RouteNamesWithMethod<Routes, AvailableCalls<Routes>>>
         >
     ) => RouteArgs<Routes, AvailableCalls<Routes>, RouteNamesWithMethod<Routes, AvailableCalls<Routes>>>
     fn?: (
       contextWithResult: CTX &
         ContextWithResult<
-          FnReturn<Routes, AvailableCalls<Routes>, RouteNamesWithMethod<Routes, AvailableCalls<Routes>>>,
-          AvailableCalls<Routes>,
+          PossibleFnReturns<Routes>,
           RouteNamesWithMethod<Routes, AvailableCalls<Routes>>,
+          AvailableCalls<Routes>,
           RouteArgs<Routes, AvailableCalls<Routes>, RouteNamesWithMethod<Routes, AvailableCalls<Routes>>>
         >
-    ) => FnReturn<Routes, AvailableCalls<Routes>, RouteNamesWithMethod<Routes, AvailableCalls<Routes>>>
+    ) => PossibleFnReturns<Routes>
     resolver?: (
       contextWithResult: CTX &
         ContextWithResult<
-          RouteReturn<Routes, AvailableCalls<Routes>, RouteNamesWithMethod<Routes, AvailableCalls<Routes>>>,
-          AvailableCalls<Routes>,
+          PossibleResReturns<Routes>,
           RouteNamesWithMethod<Routes, AvailableCalls<Routes>>,
+          AvailableCalls<Routes>,
           RouteArgs<Routes, AvailableCalls<Routes>, RouteNamesWithMethod<Routes, AvailableCalls<Routes>>>
         >
-    ) => RouteReturn<Routes, AvailableCalls<Routes>, RouteNamesWithMethod<Routes, AvailableCalls<Routes>>>
+    ) => PossibleResReturns<Routes>
   }
 }
+export type FnReturn<
+  Routes extends RouterShape,
+  M extends AvailableCalls<Routes>,
+  N extends RouteNamesWithMethod<Routes, M>,
+> = Find<Routes, M, N> extends Call<string, string, any, any, infer R, any> ? R : never
+
+export type InterceptorKeys = keyof Required<RouterConfig<string, any, any>>['interceptors']
 // util for extracting route names and methods
 export type RouteNames<Routes extends RouterShape> = Routes[number]['route']
 export type AvailableCalls<Routes extends RouterShape> = Routes[number]['method']
@@ -151,11 +169,6 @@ export type RouteReturn<
   M extends AvailableCalls<Routes>,
   N extends RouteNamesWithMethod<Routes, M>,
 > = Find<Routes, M, N> extends Call<string, string, any, any, any, infer R2> ? R2 : never
-export type FnReturn<
-  Routes extends RouterShape,
-  M extends AvailableCalls<Routes>,
-  N extends RouteNamesWithMethod<Routes, M>,
-> = Find<Routes, M, N> extends Call<string, string, any, any, infer R, any> ? R : never
 // maps individual methods to the router
 export type InvokerMap<Routes extends RouterShape> = {
   [M in AvailableCalls<Routes>]: <N extends RouteNamesWithMethod<Routes, M>>(
@@ -250,19 +263,3 @@ export type APISDK<CTX extends CustomContext, CM extends CustomMethods> = Mapped
   router: ReturnType<typeof router<CTX>>
   create: typeof create
 }
-
-// export type FnWithContext<CTX extends Obj, R> = <C extends CTX>(context: C) => R
-
-// export type MethodMap<CTX extends Obj, CM extends CustomMethods<CTX>> = {
-//   [M in keyof CM]: CM[M] extends FnWithContext<CTX, infer R>
-//     ? R extends Record<string, infer RT>
-//       ? RT extends CallConstructor<CTX>
-//         ? R
-//         : never
-//       : R extends CallConstructor<CTX>
-//         ? R extends (...args: infer AX) => Call<infer N, infer M, CTX, infer A, infer R, infer R2>
-//           ? (...args: AX) => Call<N, M, CTX, A, R, R2>
-//           : never
-//         : never
-//     : never
-// }
