@@ -9,8 +9,8 @@ What is `@hulla/api`?  The next-gen API/RPC manager of the future 🚀
 - Platform agnostic - client, server, serverless or all of the combined? No problem! 💎
 - Framework agnostic - will work in any _(js/ts based)_ language/library/framework.🏆
 - An advanced typescript checker enforcing best practices and prevents mistakes 🦸
-- Minimal - [97.6% smaller than comparable packages](#caveat-package-size) _(with same/better functionality)_ 🤯
-- Extensible - Comes with official [integrations](api/integrations), or allows you to even create your own [methods](/docs/api/advanced/custom) & [adapters](/docs/api/advanced/adapters) 🧩
+- Minimal - [97.7% smaller than comparable packages](https://hulla.dev/docs/api/#caveat-package-size) _(with same/better functionality)_ 🤯
+- Extensible - Comes with official [integrations](https://hulla.dev/docs/api/integrations) 🧩
 
 ## Useful Links 🔗
 
