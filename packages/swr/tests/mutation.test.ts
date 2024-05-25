@@ -2,7 +2,6 @@ import { expectTypeOf } from 'expect-type'
 import { describe, expect, test } from 'vitest'
 import { usersAPI } from './swr.test'
 
-
 // Since mutation is implemented by the same function as query, there's no point writing
 // separate functional tests for it. The only thing worth checking is wether the returned
 // object has been correctly changed from query to mutation
