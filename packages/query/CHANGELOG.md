@@ -1,5 +1,11 @@
 # @hulla/api-query
 
+## 1.0.5
+
+### Patch Changes
+
+- add adapters to router, add method util, remove create method
+
 ## 1.0.4
 
 ### Patch Changes
