@@ -78,19 +78,19 @@ importers:
     devDependencies:
       '@hulla/api':
         specifier: '*'
-        version: 1.0.4
+        version: 1.0.5
 
   packages/request:
     devDependencies:
       '@hulla/api':
         specifier: '*'
-        version: 1.0.4
+        version: 1.0.5
 
   packages/swr:
     devDependencies:
       '@hulla/api':
         specifier: '*'
-        version: 1.0.4
+        version: 1.0.5
 
 packages:
 
@@ -347,8 +347,8 @@ packages:
   '@fastify/deepmerge@1.3.0':
     resolution: {integrity: sha512-J8TOSBq3SoZbDhM9+R/u77hP93gz/rajSA+K2kGyijPpORPWUXHUpTaleoj+92As0S9uPRP7Oi8IqMf0u+ro6A==}
 
-  '@hulla/api@1.0.4':
-    resolution: {integrity: sha512-WSeQD9YKjTmgeww16Wtm8EZo5JUKApNq/HaDD3D5m8Itu2M414Me3dbVppMiNH+yHcmeh4ZUUmHG9YzOWPBoRA==}
+  '@hulla/api@1.0.5':
+    resolution: {integrity: sha512-Enb45vgHTGmDNWK4JOZmv0eXwy5KYOaMlj6sJO6vuurYJtlo/KRI4SRwo0AS9058WmcLViSELXxR/1YZ4Idj8w==}
 
   '@humanwhocodes/config-array@0.11.14':
     resolution: {integrity: sha512-3T8LkOmg45BV5FICb15QQMsyUSWrQ8AygVfC7ZG32zOalnqrilm018ZVCw0eapXux8FtA33q8PSRSstjee3jSg==}
@@ -3108,7 +3108,7 @@ snapshots:
 
   '@fastify/deepmerge@1.3.0': {}
 
-  '@hulla/api@1.0.4': {}
+  '@hulla/api@1.0.5': {}
 
   '@humanwhocodes/config-array@0.11.14':
     dependencies:
