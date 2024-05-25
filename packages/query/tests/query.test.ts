@@ -10,7 +10,7 @@ const users = [
   { id: 2, name: 'Jane' },
 ]
 
-export const router = api.router({
+export const usersAPI = api.router({
   name: 'users',
   routes: [
     api.procedure('all', () => users),
@@ -23,8 +23,10 @@ export const router = api.router({
       Promise<Response>
     >,
   ],
+  adapters: {
+    query,
+  },
 })
-const usersAPI = api.create(router, { query })
 
 describe('main functionality', () => {
   test('query has correct format', () => {

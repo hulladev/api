@@ -1,6 +1,7 @@
 import { api as init, type Call } from '@hulla/api'
 import { expectTypeOf } from 'expect-type'
 import { describe, expect, test } from 'vitest'
+import { mutation } from '../src/mutation'
 import { swr } from '../src/swr'
 
 const users = [
@@ -10,7 +11,7 @@ const users = [
 
 const api = init()
 
-export const router = api.router({
+export const usersAPI = api.router({
   name: 'users',
   routes: [
     api.procedure('all', () => users),
@@ -23,8 +24,11 @@ export const router = api.router({
       Promise<Response>
     >,
   ],
+  adapters: {
+    swr,
+    mutation,
+  },
 })
-const usersAPI = api.create(router, { swr })
 
 describe('main functionality', () => {
   test('query has correct format', () => {

@@ -1,11 +1,31 @@
-import { api as init } from '@hulla/api'
+import { Call, api as init } from '@hulla/api'
 import { expectTypeOf } from 'expect-type'
 import { describe, expect, test } from 'vitest'
 import { mutation } from '../src/mutation'
-import { router } from './query.test'
 
 const api = init()
-const usersAPI = api.create(router, { mutation })
+const users = [
+  { id: 1, name: 'John' },
+  { id: 2, name: 'Jane' },
+]
+
+export const usersAPI = api.router({
+  name: 'users',
+  routes: [
+    api.procedure('all', () => users),
+    api.procedure('byId', (id: number) => users.find((u) => u.id === id)!),
+    { method: 'get', route: 'a', fn: () => new Promise((res) => res) } as Call<
+      'a',
+      'get',
+      Record<string, never>,
+      [],
+      Promise<Response>
+    >,
+  ],
+  adapters: {
+    mutation,
+  },
+})
 
 // Since mutation is implemented by the same function as query, there's no point writing
 // separate functional tests for it. The only thing worth checking is wether the returned
