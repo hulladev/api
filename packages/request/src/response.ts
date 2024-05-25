@@ -29,11 +29,11 @@ export function parseUrl<CTX extends Obj>(
   }
   // passed as URL
   if (isURL(req)) {
-    return req as URL
+    return new URL(`${baseURL}${req.href}`) as URL
   }
   // passed as Request
   if (isRequest(req)) {
-    return new URL(req.url)
+    return new URL(`${baseURL}${req.url}`)
   }
   // otherwise must be a TypedRequestConfig
   const url = addParams(req)
