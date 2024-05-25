@@ -98,17 +98,26 @@ describe('dynamic paths / search params', () => {
 })
 
 describe('in api syntax', () => {
+  const a = api({
+    context: { foo: 'foo' },
+    methods: (ctx) => ({
+      request: request(ctx),
+    }),
+  })
   test('methods', () => {
-    const a = api({
-      context: { foo: 'foo' },
-      methods: (ctx) => ({
-        request: request(ctx),
-      }),
-    })
     const router = a.router({
       name: 'test',
       routes: [a.request.get('users', `${API_URL}/users`, resolve)],
     })
     expect(router.get('users')).resolves.toStrictEqual({ users })
+  })
+  test('correctly raises type-error', () => {
+    expect(
+      a.router({
+        name: 'example',
+        // @ts-expect-error body can't be passed to GET
+        routes: [a.request.get('body', rq({ url: 'aaa', method: 'GET', body: 'aa' }))],
+      })
+    )
   })
 })

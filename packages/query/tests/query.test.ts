@@ -1,4 +1,4 @@
-import { Call, api as init } from '@hulla/api'
+import { api as init, type Call } from '@hulla/api'
 import { expectTypeOf } from 'expect-type'
 import { describe, expect, test } from 'vitest'
 import { query } from '../src/query'
