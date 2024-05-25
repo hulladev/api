@@ -1,4 +1,7 @@
 import type {
+  API,
+  AdapterMap,
+  Adapters,
   AvailableCalls,
   Context,
   InvokerMap,
@@ -12,6 +15,7 @@ import type {
   RouterConfig,
   RouterShape,
 } from './types'
+import { entries } from './utils'
 
 /**
  * Function for creating router
@@ -19,9 +23,13 @@ import type {
  * @returns A ready to use router-adapter
  */
 export function router<const CTX extends Obj>(context: CTX) {
-  return <const RouterName extends string, const Routes extends RouterShape>(
-    config: RouterConfig<RouterName, Routes, CTX>
-  ) => {
+  return <
+    const RouterName extends string,
+    const Routes extends RouterShape,
+    const AD extends Adapters<Routes, RouterName, CTX>,
+  >(
+    config: RouterConfig<RouterName, Routes, CTX, AD>
+  ): API<Routes, RouterName, CTX, AD> => {
     const { name: routerName, routes, interceptors } = config
     const { args: argInterceptor, fn: fnInterceptor, resolver: resolverInterceptor } = interceptors ?? {}
     const routeNames: RouteNames<Routes>[] = []
@@ -133,17 +141,33 @@ export function router<const CTX extends Obj>(context: CTX) {
       {} as InvokerMap<Routes>
     )
 
-    return {
+    const api = {
       ...invokerMap,
       context,
       routeNames,
       routerName,
       methods,
-      mappedRouter,
-      invoke, // <- these 2 will be removed in the user-facing API
-      find, // <- these 2 will be removed in the user-facing API
-      // have to type-cast like this, because the shape can never know from typescript
-      // which types are available before routes with call and methods are passed
-    } as unknown as RouterAdapter<Routes, RouterName, CTX>
+    } as API<Routes, RouterName, CTX, AD>
+
+    if (config.adapters) {
+      const apiWidthAdapters = {
+        ...api,
+        mappedRouter,
+        find,
+        invoke,
+      } as RouterAdapter<Routes, RouterName, CTX>
+      return {
+        ...api,
+        ...entries(config.adapters).reduce(
+          (acc, [adapterName, adapterVal]) => {
+            acc[adapterName] = adapterVal(apiWidthAdapters)
+            return acc
+          },
+          {} as AdapterMap<Routes, RouterName, CTX, AD>
+        ),
+      }
+    }
+
+    return api
   }
 }
