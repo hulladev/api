@@ -1,7 +1,6 @@
 /* -------------------------------------------------------------------------- */
 /*                         calls, procedures, requests                        */
 
-import type { create } from './create'
 import type { procedure } from './procedure'
 import type { router } from './router'
 
@@ -72,7 +71,12 @@ type PossibleResReturns<Routes> = Routes extends RouterShape
 // params extenders
 export type Route = Call<string, string, any, any, any>
 export type RouterShape = readonly Route[]
-export type RouterConfig<RN extends string, Routes extends RouterShape, CTX extends Obj> = {
+export type RouterConfig<
+  RN extends string,
+  Routes extends RouterShape,
+  CTX extends Obj,
+  AD extends Adapters<Routes, RN, CTX>,
+> = {
   name: RN
   routes: Routes extends RouterMap<Routes> ? Routes : never
   interceptors?: {
@@ -107,6 +111,7 @@ export type RouterConfig<RN extends string, Routes extends RouterShape, CTX exte
         >
     ) => PossibleResReturns<Routes>
   }
+  adapters?: AD
 }
 export type FnReturn<
   Routes extends RouterShape,
@@ -114,7 +119,7 @@ export type FnReturn<
   N extends RouteNamesWithMethod<Routes, M>,
 > = Find<Routes, M, N> extends Call<string, string, any, any, infer R, any> ? R : never
 
-export type InterceptorKeys = keyof Required<RouterConfig<string, any, any>>['interceptors']
+export type InterceptorKeys = keyof Required<RouterConfig<string, any, any, any>>['interceptors']
 // util for extracting route names and methods
 export type RouteNames<Routes extends RouterShape> = Routes[number]['route']
 export type AvailableCalls<Routes extends RouterShape> = Routes[number]['method']
@@ -261,5 +266,4 @@ export type CustomContext = Record<string, unknown> & {
 export type APISDK<CTX extends CustomContext, CM extends CustomMethods> = MappedCM<CM> & {
   procedure: ReturnType<typeof procedure<CTX>>
   router: ReturnType<typeof router<CTX>>
-  create: typeof create
 }

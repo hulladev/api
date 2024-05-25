@@ -2,19 +2,17 @@ import { describe, expect, test } from 'vitest'
 import { api } from '../src/api'
 
 // These are general all purpose tests that mainly check user-facing calls behaviour
-// the testing of the individual methods is done in separate tests
+// the testing of the individual router methods is done in separate tests
 describe('main functionality', () => {
   test('api initializes correctly', () => {
     const a = api()
     expect(a).toBeDefined()
-    expect(a.create).toBeDefined()
     expect(a.procedure).toBeDefined()
     expect(a.router).toBeDefined()
   })
   test('api context is working', () => {
     const context = { hello: 'world' }
     const apiWithContext = api({ context })
-    expect(apiWithContext.create).toBeDefined()
     expect(apiWithContext.procedure).toBeDefined()
     expect(apiWithContext.router).toBeDefined()
   })
@@ -35,8 +33,7 @@ describe('main functionality', () => {
         ),
       ],
     })
-    const a = c.create(router)
-    expect(a.call('foo')).toStrictEqual('world')
+    expect(router.call('foo')).toStrictEqual('world')
   })
   test('custom methods work', () => {
     const a = api({

@@ -51,9 +51,7 @@ describe('functionality', () => {
     expect(r.call).toBeDefined()
     expect(r.get).toBeDefined()
     expect(r.post).toBeDefined()
-    // @ts-expect-error undefined methods
     expect(r.patch).toBeUndefined()
-    // @ts-expect-error undefined methods
     expect(r.put).toBeUndefined()
     // ...etc
   })
@@ -62,7 +60,6 @@ describe('functionality', () => {
       name: 'test',
       routes: [],
     })
-    // @ts-expect-error undefined methods
     expect(r.call).toBeUndefined()
   })
 })
@@ -102,8 +99,6 @@ describe('corner cases', () => {
     })
     expect(r.call('foo')).toStrictEqual('http://api.com/foo')
     expect(r.get('foo')).toStrictEqual('http://api.com/get')
-    expect(r.mappedRouter.get.foo).toBeDefined()
-    expect(r.mappedRouter.call.foo).toBeDefined()
   })
 })
 
@@ -206,5 +201,53 @@ describe('interceptors', () => {
     })
     expect(rt.call('num', 1)).toStrictEqual(2)
     expect(rt.call('str', 'bar')).toStrictEqual('foobarbaz')
+  })
+})
+
+describe('adapters', () => {
+  const a = api()
+  test('adapters are correctly initialized', () => {
+    const rt = a.router({
+      name: 'router',
+      routes: [a.procedure('foo', (num: number) => num)],
+      adapters: {
+        bar: () => (str: string) => str,
+      },
+    })
+    expect(rt.bar('hello')).toStrictEqual('hello')
+    expect(rt.call('foo', 2))
+  })
+  test('router is propagated to adapter', () => {
+    const rt = a.router({
+      name: 'router',
+      routes: [a.procedure('foo', (num: number) => num)],
+      adapters: {
+        foo: (rt) => rt.routerName,
+      },
+    })
+    expect(rt.routerName).toStrictEqual('router')
+  })
+  test('custom context is propagated to adapter', () => {
+    const routerWithContext = api({ context: { bar: 'baz' } }).router({
+      name: 'router',
+      routes: [api().procedure('foo', (num: number) => num)],
+      adapters: {
+        foo: (rt) => rt.context.bar,
+      },
+    })
+    expect(routerWithContext.foo).toStrictEqual('baz')
+  })
+  test('adapter works with custom call with same name', () => {
+    const rt = a.router({
+      name: 'router',
+      routes: [a.procedure('foo', (num: number) => num)],
+      adapters: {
+        foo: () => (str: string) => str,
+      },
+    })
+    expect(rt.foo('bar')).toStrictEqual('bar')
+    // @ts-expect-error adapter takes precedence over custom call
+    expect(rt.foo('bar', 2)).toStrictEqual('bar')
+    expect(rt.call('foo', 2)).toStrictEqual(2)
   })
 })
