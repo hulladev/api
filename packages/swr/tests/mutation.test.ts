@@ -1,11 +1,6 @@
-import { api as init } from '@hulla/api'
 import { expectTypeOf } from 'expect-type'
 import { describe, expect, test } from 'vitest'
-import { mutation } from '../src/mutation'
-import { router } from './swr.test'
-
-const api = init()
-const usersAPI = api.create(router, { mutation })
+import { usersAPI } from './swr.test'
 
 // Since mutation is implemented by the same function as query, there's no point writing
 // separate functional tests for it. The only thing worth checking is wether the returned
