@@ -1,4 +1,3 @@
-import { create } from './create'
 import { procedure } from './procedure'
 import { router } from './router'
 import type { APIConfig, APISDK, CustomMethods, MappedCM, Obj } from './types'
@@ -12,15 +11,13 @@ import type { APIConfig, APISDK, CustomMethods, MappedCM, Obj } from './types'
  * // a pseudocall, can be any function
  * const yourGetter = (id: string) => db.users.find(id)
  * // define your router
- * const router = a.router({
+ * export const usersAPI = a.router({
  *   name: 'users',
  *   routes: [
  *     a.procedure('getUserById', yourGetter)
  *     // ...
  *   ]
  * })
- * // create and export your API for further use
- * export const usersAPI = a.create(router)
  * */
 export function api<const CTX extends Obj = Record<string, never>, const CM extends CustomMethods = CustomMethods>(
   config?: APIConfig<CTX, CM>
@@ -30,6 +27,5 @@ export function api<const CTX extends Obj = Record<string, never>, const CM exte
     ...((config?.methods?.(context) ?? {}) as MappedCM<CM>),
     router: router<CTX>(context),
     procedure: procedure<CTX>(),
-    create: create,
   }
 }
