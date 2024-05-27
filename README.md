@@ -5,7 +5,7 @@
 
 ## About
 
-What is `@hulla/api`? The next-gen API/RPC manager of the future 🚀
+What is `@hulla/api`? The next-gen API/RPC manager 🚀
 
 - RPC manager that organizes API _(or any other calls)_ for you ✅
 - Platform agnostic - client, server, serverless or all of the combined? No problem! 💎
