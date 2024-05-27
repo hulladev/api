@@ -1,9 +1,11 @@
 # @hulla/api
+
 <a href="https://pkg-size.dev/@hulla/api"><img src="https://pkg-size.dev/badge/bundle/1216" title="Bundle size for @hulla/api"></a>
 <a href="https://github.com/hulladev/api/actions/workflows/check.yml"><img src="https://github.com/hulladev/api/actions/workflows/check.yml/badge.svg" title="Passing test"></a>
 
 ## About
-What is `@hulla/api`?  The next-gen API/RPC manager of the future 🚀
+
+What is `@hulla/api`? The next-gen API/RPC manager 🚀
 
 - RPC manager that organizes API _(or any other calls)_ for you ✅
 - Platform agnostic - client, server, serverless or all of the combined? No problem! 💎
@@ -13,7 +15,6 @@ What is `@hulla/api`?  The next-gen API/RPC manager of the future 🚀
 - Extensible - Comes with official [integrations](https://hulla.dev/docs/api/integrations) 🧩
 
 ## Useful Links 🔗
-
 
 - [Project page 👀](https://hulla.dev/projects/api)
 - [Documentation 📚](https://hulla.dev/docs/api)
