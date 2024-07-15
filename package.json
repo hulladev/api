@@ -23,7 +23,7 @@
     "build": "turbo build",
     "clean": "turbo clean && rm -rf pnpm-lock.yaml node_modules",
     "bundle": "turbo run lint format test build && pnpm changeset && pnpm changeset version",
-    "release": "turbo run lint format test build && pnpm changeset publish",
+    "release": "pnpm changeset publish",
     "lint": "turbo lint",
     "format": "turbo format",
     "test": "turbo test",
@@ -47,7 +47,7 @@
     "prettier": "^3.2.5",
     "prettier-plugin-organize-imports": "^3.2.4",
     "publint": "^0.2.7",
-    "turbo": "latest",
+    "turbo": "^2.0.5",
     "typescript": "^5.0.0",
     "vite": "^5.2.11",
     "vitest": "^1.6.0"
