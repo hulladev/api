@@ -38,7 +38,13 @@
   - Overhaul api configuration and custom methods
   - Shrink bundle size even further
 
-### Patch Changes
+## 1.1.0
 
-- Updated dependencies
-  - @hulla/api@1.0.0
+### Minor Changes
+
+- - Chainable procedures
+  - Revamped DX
+  - More performant router
+  - More performant sdk
+  - Replace custom methods with extensions
+  - Add validation
