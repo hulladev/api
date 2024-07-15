@@ -1,16 +1,19 @@
-import type { AvailableCalls, RouteArgs, RouteNamesWithMethod, RouteReturn, RouterShape } from '@hulla/api'
+import type { Methods, RouteArgs, RouteNamesWithMethod, RouteReturn, Routes } from '@hulla/api'
 
 export type Options<
-  Routes extends RouterShape,
+  R extends Routes,
   RN extends string,
-  M extends AvailableCalls<Routes>,
-  N extends RouteNamesWithMethod<Routes, M>,
-  A extends RouteArgs<Routes, M, N>,
-> = readonly [[`${M}/${RN}/${N}`, ...A], () => RouteReturn<Routes, M, N>]
+  M extends Methods<R>,
+  N extends RouteNamesWithMethod<R, M>,
+  A extends RouteArgs<R, M, N>,
+> = readonly [
+  [`${M extends string ? M : never}/${RN}/${N extends string ? N : never}`, ...A],
+  () => RouteReturn<R, M, N>,
+]
 
-export type Mapping<Routes extends RouterShape, RN extends string> = {
-  [M in AvailableCalls<Routes>]: <const N extends RouteNamesWithMethod<Routes, M>, RA extends RouteArgs<Routes, M, N>>(
+export type Mapping<R extends Routes, RN extends string> = {
+  [M in Methods<R>]: <const N extends RouteNamesWithMethod<R, M>, RA extends RouteArgs<R, M, N>>(
     route: N,
     ...args: RA
-  ) => Options<Routes, RN, M, N, RA>
+  ) => Options<R, RN, M, N, RA>
 }
