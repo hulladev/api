@@ -1,23 +1,17 @@
-import { expectTypeOf } from 'expect-type'
-import { describe, expect, test } from 'vitest'
-import { usersAPI } from './swr.test'
+import { describe, expect, expectTypeOf, test } from 'vitest'
+import { users, usersAPI } from './swr.test'
 
 // Since mutation is implemented by the same function as query, there's no point writing
 // separate functional tests for it. The only thing worth checking is wether the returned
 // object has been correctly changed from query to mutation
 
 describe('type checks', () => {
-  test('request has correct type', () => {
-    expectTypeOf(usersAPI.mutation.get('a')).toEqualTypeOf<readonly [['get/users/a'], () => Promise<Response>]>()
-  })
   test('no args has correct type and queryKey', () => {
-    expectTypeOf(usersAPI.mutation.call('all')).toEqualTypeOf<
-      readonly [['call/users/all'], () => { id: number; name: string }[]]
-    >()
+    expectTypeOf(usersAPI.mutation.call('all')).toEqualTypeOf<readonly [['call/users/all'], () => typeof users]>()
   })
   test('with args has correct type and queryKey', () => {
-    expectTypeOf(usersAPI.mutation.call('byId', 2)).toEqualTypeOf<
-      readonly [['call/users/byId', number], () => { id: number; name: string }]
+    expectTypeOf(usersAPI.mutation.get('byId', 2)).toEqualTypeOf<
+      readonly [['get/users/byId', 2], () => Promise<{ id: number; name: string }>]
     >()
   })
   test('mutation has access to correct methods', () => {
