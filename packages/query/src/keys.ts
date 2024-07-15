@@ -1,4 +1,4 @@
-import type { Obj, RouteArgs, RouteNamesWithMethod, RouterAdapter, RouterShape } from '@hulla/api'
+import type { Adapters, Obj, RouteArgs, RouteNamesWithMethod, RouterAdapter, Routes } from '@hulla/api'
 import type { KeyMapping, QueryKey } from './types'
 import { keys } from './utils'
 
@@ -10,20 +10,25 @@ export function encodeKey<const M extends string, const RN extends string, const
   return `${method}/${router}/${name}` as const
 }
 
-export function queryKey<const Routes extends RouterShape, const RN extends string, const AD extends Obj>(
-  router: RouterAdapter<Routes, RN, AD>
-) {
-  return keys(router.mappedRouter).reduce(
+export function queryKey<
+  const R extends Routes,
+  const RN extends string,
+  CTX extends Obj,
+  const PK extends string,
+  const AD extends Adapters<CTX, PK, R, RN>,
+>(router: RouterAdapter<R, RN, CTX, PK, AD>) {
+  return keys(router.routerMap).reduce(
     (acc, method) => {
+      // @ts-expect-error dynamic mapping
       acc[method] = <
-        const N extends RouteNamesWithMethod<Routes, typeof method>,
-        const A extends QueryKey<RouteArgs<Routes, typeof method, N>>,
+        const N extends RouteNamesWithMethod<R, typeof method>,
+        const A extends QueryKey<RouteArgs<R, typeof method, N>>,
       >(
         route: N,
         ...args: A
-      ) => [encodeKey(method, router.routerName, route), ...args] as const
+      ) => [encodeKey(method as string, router.name, route as string), ...args] as const
       return acc
     },
-    {} as KeyMapping<Routes, RN>
+    {} as KeyMapping<R, RN>
   )
 }
