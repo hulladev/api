@@ -72,7 +72,21 @@ importers:
         specifier: ^1.6.0
         version: 1.6.0(@types/node@20.14.8)
 
-  packages/core: {}
+  packages/core:
+    devDependencies:
+      zod:
+        specifier: ^3.23.8
+        version: 3.23.8
+
+  packages/fetch:
+    dependencies:
+      '@hulla/fetch':
+        specifier: '*'
+        version: 0.0.0
+    devDependencies:
+      '@hulla/api':
+        specifier: '*'
+        version: 1.1.0
 
   packages/new-core:
     devDependencies:
@@ -93,8 +107,8 @@ importers:
   packages/query:
     devDependencies:
       '@hulla/api':
-        specifier: '*'
-        version: 1.1.0
+        specifier: ^1.2.0
+        version: 1.2.0
 
   packages/request:
     devDependencies:
@@ -105,8 +119,8 @@ importers:
   packages/swr:
     devDependencies:
       '@hulla/api':
-        specifier: '*'
-        version: 1.1.0
+        specifier: ^1.2.0
+        version: 1.2.0
 
 packages:
 
@@ -368,6 +382,9 @@ packages:
 
   '@hulla/api@1.1.0':
     resolution: {integrity: sha512-ioZdEFH379Vx6RXbMdH0GKo9+bcs+tAmK0kDhJvVtJC0DPoPbg2QW2aIdaE05I+ZjSR9yv8J2n+vUMPMUcJwvA==}
+
+  '@hulla/api@1.2.0':
+    resolution: {integrity: sha512-wyoWOF0szr+/ev9JSfwGh72Exgh28tsCHuWUB0olH32VRicYu8dOjZ4lTcLtXHDKcvmBgLRAovqu0EspKMbUmw==}
 
   '@hulla/fetch@0.0.0':
     resolution: {integrity: sha512-3RyOkz9GACmQsTtlAv+hKUAC+6zKQ2yF7LMZOtOyYwP8Yz/EwvYt5jvknqtFfpgCYM+/LlrInuWUBbKexPJ7BA==}
@@ -2813,6 +2830,8 @@ snapshots:
   '@fastify/deepmerge@1.3.0': {}
 
   '@hulla/api@1.1.0': {}
+
+  '@hulla/api@1.2.0': {}
 
   '@hulla/fetch@0.0.0': {}
 
