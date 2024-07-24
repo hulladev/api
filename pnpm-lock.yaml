@@ -81,34 +81,21 @@ importers:
   packages/fetch:
     dependencies:
       '@hulla/fetch':
-        specifier: '*'
-        version: 0.0.0
+        specifier: ^0.0.5
+        version: 0.0.5
     devDependencies:
       '@hulla/api':
-        specifier: '*'
-        version: 1.1.0
-
-  packages/new-core:
-    devDependencies:
-      zod:
-        specifier: ^3.23.8
-        version: 3.23.8
-
-  packages/new-request:
-    dependencies:
-      '@hulla/fetch':
-        specifier: ^0.0.0
-        version: 0.0.0
-    devDependencies:
-      '@hulla/api':
-        specifier: '*'
-        version: 1.1.0
+        specifier: ^1.2.4
+        version: 1.2.4
+      msw:
+        specifier: ^2.2.14
+        version: 2.3.1(typescript@5.5.2)
 
   packages/query:
     devDependencies:
       '@hulla/api':
-        specifier: ^1.2.0
-        version: 1.2.0
+        specifier: ^1.2.4
+        version: 1.2.4
 
   packages/request:
     devDependencies:
@@ -119,8 +106,8 @@ importers:
   packages/swr:
     devDependencies:
       '@hulla/api':
-        specifier: ^1.2.0
-        version: 1.2.0
+        specifier: ^1.2.4
+        version: 1.2.4
 
 packages:
 
@@ -383,11 +370,11 @@ packages:
   '@hulla/api@1.1.0':
     resolution: {integrity: sha512-ioZdEFH379Vx6RXbMdH0GKo9+bcs+tAmK0kDhJvVtJC0DPoPbg2QW2aIdaE05I+ZjSR9yv8J2n+vUMPMUcJwvA==}
 
-  '@hulla/api@1.2.0':
-    resolution: {integrity: sha512-wyoWOF0szr+/ev9JSfwGh72Exgh28tsCHuWUB0olH32VRicYu8dOjZ4lTcLtXHDKcvmBgLRAovqu0EspKMbUmw==}
+  '@hulla/api@1.2.4':
+    resolution: {integrity: sha512-txTAVsUakHVvb0aNc3kqCO13tjANHw3FBkPgx38bWMOG9o7kT3AZBVBOaeGQMHWLTVM/m2nyBr5VBaXDu1KO1g==}
 
-  '@hulla/fetch@0.0.0':
-    resolution: {integrity: sha512-3RyOkz9GACmQsTtlAv+hKUAC+6zKQ2yF7LMZOtOyYwP8Yz/EwvYt5jvknqtFfpgCYM+/LlrInuWUBbKexPJ7BA==}
+  '@hulla/fetch@0.0.5':
+    resolution: {integrity: sha512-jcD0KFpGyUFUZwB37kLRgE+2mWxU31H1Fca6OaMo1648sF7qYYr1+vU1vDTgLl6WGptReMbX+6+bK+uxMCQLCg==}
 
   '@humanwhocodes/config-array@0.11.14':
     resolution: {integrity: sha512-3T8LkOmg45BV5FICb15QQMsyUSWrQ8AygVfC7ZG32zOalnqrilm018ZVCw0eapXux8FtA33q8PSRSstjee3jSg==}
@@ -2831,9 +2818,9 @@ snapshots:
 
   '@hulla/api@1.1.0': {}
 
-  '@hulla/api@1.2.0': {}
+  '@hulla/api@1.2.4': {}
 
-  '@hulla/fetch@0.0.0': {}
+  '@hulla/fetch@0.0.5': {}
 
   '@humanwhocodes/config-array@0.11.14':
     dependencies:
