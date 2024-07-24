@@ -1,5 +1,11 @@
 # @hulla/api-swr
 
+## 1.2.4
+
+### Patch Changes
+
+- version bump
+
 ## 1.2.3
 
 ### Patch Changes

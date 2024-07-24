@@ -1,5 +1,11 @@
 # @hulla/api
 
+## 1.2.4
+
+### Patch Changes
+
+- allow async output validation
+
 ## 1.2.3
 
 ### Patch Changes
