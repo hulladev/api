@@ -1,5 +1,29 @@
 # @hulla/api
 
+## 1.2.3
+
+### Patch Changes
+
+- Groups syntax update + allowed methods
+
+## 1.2.2
+
+### Patch Changes
+
+- Split groups and integrations to separate entities
+
+## 1.2.1
+
+### Patch Changes
+
+- Include parseKey in the override options
+
+## 1.2.0
+
+### Minor Changes
+
+- Groups and middleware
+
 ## 1.0.5
 
 ### Patch Changes
