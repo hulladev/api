@@ -1,6 +1,6 @@
 # @hulla/api
 
-<a href="https://pkg-size.dev/@hulla/api"><img src="https://pkg-size.dev/badge/bundle/1216" title="Bundle size for @hulla/api"></a>
+<a href="https://pkg-size.dev/@hulla/api"><img src="https://pkg-size.dev/badge/bundle/2038" title="Bundle size for @hulla/api"></a>
 <a href="https://github.com/hulladev/api/actions/workflows/check.yml"><img src="https://github.com/hulladev/api/actions/workflows/check.yml/badge.svg" title="Passing test"></a>
 
 ## About
