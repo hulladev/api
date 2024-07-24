@@ -211,7 +211,16 @@ export type SDK<
         ? R
         : never
       : ReturnType<
-          typeof procedure<CTX, RContext<CTX, G[K]>, PK, RDM<DM, G[K]>, K, RInput<PK, G[K]>, ROutput<PK, G[K]>, string>
+          typeof procedure<
+            CTX,
+            RContext<CTX, G[K]>,
+            PK,
+            RDM<DM, G[K]>,
+            K,
+            RInput<PK, G[K]>,
+            ROutput<PK, G[K]>,
+            RAM<G[K]>
+          >
         >
     : never
 }
@@ -248,10 +257,20 @@ export type ROutput<PK extends string, G> = G extends { defaults: { output: infe
       : undefined
   : undefined
 
+export type RAM<G> = G extends { allowedMethods: infer AM } ? (AM extends string[] ? AM[number] : string) : string
+
 export type ResOutput<PK extends string, O> =
   O extends OutputFn<infer R> ? R : O extends Schema<any, infer R, PK> ? R : O
 
-export type RDM<DM extends string, G> = G extends { defaults: { method: infer M } } ? (M extends string ? M : DM) : DM
+type RDMProcess<DM extends string, G> = G extends { allowedMethods: string[]; defaults: { method: infer M } }
+  ? M extends RAM<G>
+    ? M
+    : never
+  : G extends { defaults: { method: infer M } }
+    ? M
+    : DM
+
+export type RDM<DM extends string, G> = RDMProcess<DM, G> extends RAM<G> ? RDMProcess<DM, G> : never
 
 /* ------------------------------ api export ✨ ------------------------------ */
 export type InvokerMap<R extends Routes> = {
