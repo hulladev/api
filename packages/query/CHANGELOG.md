@@ -1,5 +1,11 @@
 # @hulla/api-query
 
+## 1.2.5
+
+### Patch Changes
+
+- version bump
+
 ## 1.2.4
 
 ### Patch Changes

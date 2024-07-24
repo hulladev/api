@@ -1,6 +1,6 @@
 {
   "name": "@hulla/api-fetch",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "description": "The next-gen API/RPC manager 🚀",
   "author": {
     "name": "Samuel Hulla",
@@ -35,7 +35,7 @@
     "@hulla/fetch": "^0.0.5"
   },
   "devDependencies": {
-    "@hulla/api": "^1.2.4",
+    "@hulla/api": "^1.2.5",
     "msw": "^2.2.14"
   },
   "scripts": {

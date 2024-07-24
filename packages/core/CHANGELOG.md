@@ -1,5 +1,11 @@
 # @hulla/api
 
+## 1.2.5
+
+### Patch Changes
+
+- fix: allowed methods in groups type + chore: update pnpm version
+
 ## 1.2.4
 
 ### Patch Changes

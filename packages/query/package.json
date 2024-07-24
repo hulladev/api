@@ -1,6 +1,6 @@
 {
   "name": "@hulla/api-query",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "description": "The next-gen API/RPC manager 🚀",
   "author": {
     "name": "Samuel Hulla",
@@ -32,7 +32,7 @@
     }
   },
   "devDependencies": {
-    "@hulla/api": "^1.2.4"
+    "@hulla/api": "^1.2.5"
   },
   "scripts": {
     "lint": "eslint --ext .ts --fix .",
