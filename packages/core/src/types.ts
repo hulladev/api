@@ -127,45 +127,91 @@ export type MiddlewareOptions<CTX extends Obj, PK extends string, G extends stri
   input: I extends Schema<any, infer R, PK> ? R : I extends Fn<any, infer R> ? R : unknown
 }
 
-export type Group<CTX extends Obj, PK extends string, DM extends string, GN extends string> = {
-  name: GN
-  defaultMethod?: string
-  context?:
-    | Obj
-    | ((options: MiddlewareOptions<CTX, PK, GN, DM, unknown>) => Obj)
-    | ((options: MiddlewareOptions<CTX, PK, GN, DM, unknown>) => Promise<Obj>)
-  defaultInput?: Schema<any, any, PK> | Fn<any, any>
-  defaultOutput?: Schema<any, any, PK> | OutputFn<any>
-  _override?: (options: Omit<MiddlewareOptions<CTX, PK, GN, DM, unknown>, 'input'>) => any
-}
+export type Group<CTX extends Obj, PK extends string, DM extends string, GN extends string> =
+  | {
+      defaults?: {
+        method?: string
+        input?: Schema<any, any, PK> | Fn<any, any>
+        output?: Schema<any, any, PK> | OutputFn<any>
+      }
+      context?:
+        | Obj
+        | ((options: MiddlewareOptions<CTX, PK, GN, DM, unknown>) => Obj)
+        | ((options: MiddlewareOptions<CTX, PK, GN, DM, unknown>) => Promise<Obj>)
+    }
+  | {
+      defaults: {
+        method: string
+        input?: Schema<any, any, PK> | Fn<any, any>
+        output?: Schema<any, any, PK> | OutputFn<any>
+      }
+      context?:
+        | Obj
+        | ((options: MiddlewareOptions<CTX, PK, GN, DM, unknown>) => Obj)
+        | ((options: MiddlewareOptions<CTX, PK, GN, DM, unknown>) => Promise<Obj>)
+      allowedMethods: string[]
+    }
 
-export type SDKConfig<CTX extends Obj, PK extends string, DM extends string> = {
-  context?: CTX
-  parseKey?: PK
-  defaultMethod?: DM
-}
+export type IntegrationFn<CTX extends Obj, PK extends string, K extends string, DM extends string> = (options: {
+  context: CTX
+  defaultMethod: DM
+  parseKey: PK
+  integrationName: K
+}) => any
 
-export type SDK<CTX extends Obj, PK extends string, DM extends string, G extends Record<string, unknown>> = {
+export type SDKConfig<
+  CTX extends Obj,
+  PK extends string,
+  DM extends string,
+  G extends {
+    [K in string]: Group<CTX, PK, DM, K>
+  },
+  DI extends Schema<any, any, PK> | Fn<any, any>,
+  DO extends Schema<any, any, PK> | OutputFn<any>,
+  AM extends string[],
+> =
+  | {
+      context?: CTX
+      defaults?: {
+        method?: DM
+        input?: DI
+        output?: DO
+      }
+      parseKey?: PK
+      groups?: G
+    }
+  | {
+      context: CTX
+      defaults: {
+        method: DM
+        input?: DI
+        output?: DO
+      }
+      parseKey?: PK
+      groups?: G
+      allowedMethods: AM
+    }
+
+export type SDK<
+  CTX extends Obj,
+  PK extends string,
+  DM extends AM,
+  G extends Record<string, unknown>,
+  DI extends Schema<any, any, PK> | Fn<any, any>,
+  DO extends Schema<any, any, PK> | OutputFn<any>,
+  AM extends string,
+> = {
   router: ReturnType<typeof router<CTX, PK>>
-  procedure: ReturnType<typeof procedure<CTX, CTX, PK, DM, 'procedure', undefined, undefined>>
-  group: <
-    const GN extends string,
-    const GC extends
-      | Pick<Omit<Group<CTX, PK, DM, GN>, 'name'> & { name?: GN }, 'name' | '_override'>
-      | (Omit<Group<CTX, PK, DM, GN>, 'name' | '_override'> & { name?: GN }),
-  >(
-    groupName: GN,
-    groupConfig?: GC
-  ) => SDK<CTX, PK, DM, G & Record<GN, GC>>
+  procedure: ReturnType<typeof procedure<CTX, CTX, PK, DM, 'procedure', DI, DO, AM>>
+  groups: G
 } & {
-  // todo: overrides
   [K in keyof G]: K extends string
-    ? G[K] extends { _override: infer O }
-      ? O extends Fn<any, infer R>
+    ? G[K] extends { integration: infer I }
+      ? I extends Fn<any, infer R>
         ? R
         : never
       : ReturnType<
-          typeof procedure<CTX, RContext<CTX, G[K]>, PK, RDM<DM, G[K]>, K, RInput<PK, G[K]>, ROutput<PK, G[K]>>
+          typeof procedure<CTX, RContext<CTX, G[K]>, PK, RDM<DM, G[K]>, K, RInput<PK, G[K]>, ROutput<PK, G[K]>, string>
         >
     : never
 }
@@ -186,7 +232,7 @@ export type ResContext<CTX> = CTX extends Obj
       : R
     : never
 
-export type RInput<PK extends string, G> = G extends { defaultInput: infer I }
+export type RInput<PK extends string, G> = G extends { defaults: { input: infer I } }
   ? I extends Schema<any, any, PK>
     ? I
     : I extends Fn<any, any>
@@ -194,7 +240,7 @@ export type RInput<PK extends string, G> = G extends { defaultInput: infer I }
       : undefined
   : undefined
 
-export type ROutput<PK extends string, G> = G extends { defaultOutput: infer O }
+export type ROutput<PK extends string, G> = G extends { defaults: { output: infer O } }
   ? O extends Schema<any, any, PK>
     ? O
     : O extends OutputFn<any>
@@ -205,7 +251,7 @@ export type ROutput<PK extends string, G> = G extends { defaultOutput: infer O }
 export type ResOutput<PK extends string, O> =
   O extends OutputFn<infer R> ? R : O extends Schema<any, infer R, PK> ? R : O
 
-export type RDM<DM extends string, G> = G extends { defaultMethod: infer M } ? (M extends string ? M : DM) : DM
+export type RDM<DM extends string, G> = G extends { defaults: { method: infer M } } ? (M extends string ? M : DM) : DM
 
 /* ------------------------------ api export ✨ ------------------------------ */
 export type InvokerMap<R extends Routes> = {

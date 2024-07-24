@@ -13,7 +13,7 @@ import type {
   SomePromise,
 } from './types'
 
-const uniteInput = <A extends Args, R, I extends Schema<A, R, PK> | Fn<A, R>, PK extends string>(
+export const uniteInput = <A extends Args, R, I extends Schema<A, R, PK> | Fn<A, R>, PK extends string>(
   sofn: I,
   parseKey: PK
 ): ((...args: InputArgs<I, PK>) => InputResult<I, PK>) =>
@@ -21,8 +21,10 @@ const uniteInput = <A extends Args, R, I extends Schema<A, R, PK> | Fn<A, R>, PK
     ? (sofn as (...args: InputArgs<I, PK>) => InputResult<I, PK>)
     : (...args: InputArgs<I, PK>) => (sofn as Schema<A, R, PK>)[parseKey](...(args as A)) as InputResult<I, PK>
 
-const uniteOutput = <OA extends Args, O, PK extends string>(sofn: Schema<OA, O, PK> | OutputFn<O>, parseKey: PK) =>
-  typeof sofn === 'function' ? sofn : (...outputArgs: OA) => (sofn as Schema<OA, O, PK>)[parseKey](...outputArgs)
+export const uniteOutput = <OA extends Args, O, PK extends string>(
+  sofn: Schema<OA, O, PK> | OutputFn<O>,
+  parseKey: PK
+) => (typeof sofn === 'function' ? sofn : (...outputArgs: OA) => (sofn as Schema<OA, O, PK>)[parseKey](...outputArgs))
 
 export function procedure<
   const DCTX extends Obj, // default context
@@ -31,10 +33,11 @@ export function procedure<
     | ((options: MiddlewareOptions<DCTX, PK, G, DM, DI>) => Obj)
     | ((options: MiddlewareOptions<DCTX, PK, G, DM, DI>) => Promise<Obj>), // custom context
   const PK extends string, // parseKey
-  const DM extends string, // defaultMethod
+  const DM extends AM, // defaultMethod
   const G extends string, // group
   const DI extends Schema<any, any, PK> | Fn<any, any> | undefined = undefined, // input
   const DO extends Schema<any, any, PK> | OutputFn<any> | undefined = undefined, // output
+  const AM extends string = string,
 >({
   context: customContext,
   defaultContext,
@@ -51,8 +54,12 @@ export function procedure<
   defaultInput?: DI
   defaultOutput?: DO
   defaultContext: DCTX
+  allowedMethods?: AM
 }) {
-  return <N extends string, M extends string = DM>(name: N, method: M = defaultMethod as unknown as M) => {
+  return <N extends string, M extends AM = DM extends AM ? DM : never>(
+    name: N,
+    method: M = defaultMethod as unknown as M
+  ) => {
     const meta: ProcedureMeta<N, M, G> = {
       route: name,
       method,
@@ -102,7 +109,7 @@ export function procedure<
       return {
         name,
         method,
-        // @ts-expect-error the generic ternary operator can not determine in advance which type of fn it will be
+        // @ts-expect-error we fake sync/async functions into a single "sync-like" function. There will always be type mismatch
         fn: (...args: InputArgs<I, PK>) => {
           const getRes = (...args: InputArgs<I, PK>) => {
             const input = uniteInput(inputFn ?? defaultInput ?? (() => undefined), parseKey)(...args) as InputResult<
