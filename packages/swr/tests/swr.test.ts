@@ -1,28 +1,24 @@
-import { api as init, type Call } from '@hulla/api'
+import { api } from '@hulla/api'
 import { expectTypeOf } from 'expect-type'
 import { describe, expect, test } from 'vitest'
 import { mutation } from '../src/mutation'
 import { swr } from '../src/swr'
 
-const users = [
+export const users = [
   { id: 1, name: 'John' },
   { id: 2, name: 'Jane' },
-]
+] as const
 
-const api = init()
+const a = api()
 
-export const usersAPI = api.router({
+export const usersAPI = a.router({
   name: 'users',
   routes: [
-    api.procedure('all', () => users),
-    api.procedure('byId', (id: number) => users.find((u) => u.id === id)!),
-    { method: 'get', route: 'a', fn: () => new Promise((res) => res) } as Call<
-      'a',
-      'get',
-      Record<string, never>,
-      [],
-      Promise<Response>
-    >,
+    a.procedure('all').define(() => users),
+    a
+      .procedure('byId', 'get')
+      .input((id: number) => users.find((u) => u.id === id)!)
+      .define(({ input }): Promise<{ id: number; name: string }> => new Promise((res) => res(input))),
   ],
   adapters: {
     swr,
@@ -31,33 +27,19 @@ export const usersAPI = api.router({
 })
 
 describe('main functionality', () => {
-  test('query has correct format', () => {
-    expect(usersAPI.swr.call('byId', 1)).toStrictEqual([['call/users/byId', 1], expect.any(Function)])
+  test('swr has correct format', () => {
+    expect(usersAPI.swr.get('byId', 1)).toStrictEqual([['get/users/byId', 1], expect.any(Function)])
     expect(usersAPI.swr.call('all')).toStrictEqual([['call/users/all'], expect.any(Function)])
   })
   test('queryFn executes correctly (does not mutate procedures/requests)', () => {
     const [allKey, all] = usersAPI.swr.call('all')
-    const [byIdKey, byId] = usersAPI.swr.call('byId', 1)
+    const [byIdKey, byId] = usersAPI.swr.get('byId', 1)
     expect(all()).toStrictEqual(users)
-    expect(byId()).toStrictEqual(users[0])
+    expect(byId()).resolves.toStrictEqual(users[0])
     expect(allKey).toStrictEqual(['call/users/all'])
-    expect(byIdKey).toStrictEqual(['call/users/byId', 1])
+    expect(byIdKey).toStrictEqual(['get/users/byId', 1])
   })
   test('query has access to correct methods', () => {
-    // these break typescript with expectTypeOf (even tho they are correct), and matching functions does not work
-    // test('query has access to correct methods', () => {
-    //   expect(usersAPI.query.call).toStrictEqual(
-    //     <N extends RouteNamesWithMethod<typeof routes, 'call'>, A extends RouteArgs<typeof routes, 'call', N>>(
-    //       route: N,
-    //       ...args: A
-    //     ) => ({ queryKey: [`call/users/${route}`, ...args], queryFn: () => router.invoke('call', route, args) })
-    //   )
-    //   expect(usersAPI.query.get).toStrictEqual(
-    //     <N extends RouteNamesWithMethod<typeof routes, 'get'>, A extends RouteArgs<typeof routes, 'get', N>>(
-    //       route: N,
-    //       ...args: A
-    //     ) => ({ queryKey: [`get/users/${route}`, ...args], queryFn: () => router.invoke('get', route, args) })
-    //   )
     expect(usersAPI.swr.call).toBeDefined()
     expect(usersAPI.swr.get).toBeDefined()
     // @ts-expect-error accessing non-existent method
@@ -66,17 +48,12 @@ describe('main functionality', () => {
 })
 
 describe('type checks', () => {
-  test('request has correct type', () => {
-    expectTypeOf(usersAPI.swr.get('a')).toEqualTypeOf<readonly [['get/users/a'], () => Promise<Response>]>()
-  })
   test('no args has correct type and queryKey', () => {
-    expectTypeOf(usersAPI.swr.call('all')).toEqualTypeOf<
-      readonly [['call/users/all'], () => { id: number; name: string }[]]
-    >()
+    expectTypeOf(usersAPI.swr.call('all')).toEqualTypeOf<readonly [['call/users/all'], () => typeof users]>()
   })
   test('with args has correct type and queryKey', () => {
-    expectTypeOf(usersAPI.swr.call('byId', 2)).toEqualTypeOf<
-      readonly [['call/users/byId', number], () => { id: number; name: string }]
+    expectTypeOf(usersAPI.swr.get('byId', 2)).toEqualTypeOf<
+      readonly [['get/users/byId', 2], () => Promise<{ id: number; name: string }>]
     >()
   })
 })

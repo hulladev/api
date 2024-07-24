@@ -1,33 +1,46 @@
-import { api as init } from '@hulla/api'
-import { expectTypeOf } from 'expect-type'
-import { describe, expect, test } from 'vitest'
+import { api } from '@hulla/api'
+import { describe, expect, expectTypeOf, test } from 'vitest'
 import { encodeKey, queryKey } from '../src/keys'
 
-const api = init()
+const a = api()
 
 describe('main functionality', () => {
   test('encodeKey', () => {
     expect(encodeKey('GET', 'test', 'foo')).toStrictEqual('GET/test/foo')
   })
   test('queryKey', () => {
-    const a = api.router({ name: 'test', routes: [api.procedure('foo', () => 'foo')], adapters: { queryKey } })
-    expect(a.queryKey.call('foo')).toStrictEqual(['call/test/foo'])
+    const x = a.router({ name: 'test', routes: [a.procedure('foo').define(() => 'foo')], adapters: { queryKey } })
+    expect(x.queryKey.call('foo')).toStrictEqual(['call/test/foo'])
   })
   test('queryKey with arg', () => {
-    const router = api.router({ name: 'aa', routes: [api.procedure('foo', (b: number) => b)], adapters: { queryKey } })
+    const router = a.router({
+      name: 'aa',
+      routes: [
+        a
+          .procedure('foo')
+          .input((num: number) => num)
+          .define(({ input }) => input),
+      ],
+      adapters: { queryKey },
+    })
     expect(router.queryKey.call('foo', 2)).toStrictEqual(['call/aa/foo', 2])
   })
   test('queryKey allows variable arg length', () => {
-    const a = api.router({
+    const x = a.router({
       name: 'test',
-      routes: [api.procedure('foo', (a: number, b: string) => a + b)],
+      routes: [
+        a
+          .procedure('foo')
+          .input((a: number, b: string) => a + b)
+          .define((opts) => opts.input),
+      ],
       adapters: { queryKey },
     })
-    expect(a.queryKey.call('foo')).toStrictEqual(['call/test/foo'])
-    expect(a.queryKey.call('foo', 2)).toStrictEqual(['call/test/foo', 2])
-    expect(a.queryKey.call('foo', 2, 'bar')).toStrictEqual(['call/test/foo', 2, 'bar'])
+    expect(x.queryKey.call('foo')).toStrictEqual(['call/test/foo'])
+    expect(x.queryKey.call('foo', 2)).toStrictEqual(['call/test/foo', 2])
+    expect(x.queryKey.call('foo', 2, 'bar')).toStrictEqual(['call/test/foo', 2, 'bar'])
     // @ts-expect-error passing too many arguments on purpose
-    expect(a.queryKey.call('foo', 2, 'bar', 3)).toStrictEqual(['call/test/foo', 2, 'bar', 3])
+    expect(x.queryKey.call('foo', 2, 'bar', 3)).toStrictEqual(['call/test/foo', 2, 'bar', 3])
   })
 })
 
@@ -37,23 +50,33 @@ describe('types', () => {
     expectTypeOf(key).toEqualTypeOf<'GET/test/foo'>()
   })
   test('queryKey', () => {
-    const router = api.router({ name: 'test', routes: [api.procedure('foo', () => 'foo')], adapters: { queryKey } })
+    const router = a.router({ name: 'test', routes: [a.procedure('foo').define(() => 'foo')], adapters: { queryKey } })
     const key = router.queryKey.call('foo')
     expectTypeOf(key).toEqualTypeOf<readonly ['call/test/foo']>()
   })
   test('queryKey with arg', () => {
-    const router = api.router({
+    const router = a.router({
       name: 'test',
-      routes: [api.procedure('foo', (a: number) => a)],
+      routes: [
+        a
+          .procedure('foo')
+          .input((a: number) => a)
+          .define(({ input }) => input),
+      ],
       adapters: { queryKey },
     })
     const key = router.queryKey.call('foo', 2)
     expectTypeOf(key).toEqualTypeOf<readonly ['call/test/foo', 2]>()
   })
   test('resulting queryKey correctly resolves EXACT type even with variadic tuple length', () => {
-    const router = api.router({
+    const router = a.router({
       name: 'test',
-      routes: [api.procedure('foo', (a: number, b: string) => a + b)],
+      routes: [
+        a
+          .procedure('foo')
+          .input((a: number, b: string) => a + b)
+          .define(({ input }) => input),
+      ],
       adapters: { queryKey },
     })
     const key = router.queryKey.call('foo', 2, 'bar')
@@ -62,18 +85,18 @@ describe('types', () => {
     expectTypeOf(key).not.toEqualTypeOf<readonly ['call/test/foo']>()
     expectTypeOf(key2).not.toEqualTypeOf<readonly ['call/test/foo', 2, 'bar']>()
   })
-  test.todo('when no arg is provided, it correctly defaults to [encodeKey]', () => {
-    const router = api.router({
+  test('when no arg is provided, it correctly defaults to [encodeKey]', () => {
+    const router = a.router({
       name: 'test',
-      routes: [api.procedure('foo', (a: number, b: string) => a + b)],
+      routes: [
+        a
+          .procedure('foo')
+          .input((a: number, b: string) => a + b)
+          .define(({ input }) => input),
+      ],
       adapters: { queryKey },
     })
     const key2 = router.queryKey.call('foo')
-    // @ts-expect-error right now the generic just defaults to all variants if it can't narrow
-    // this is sort of ok from user perspective, but it still sucks i can't figure out a way to properly narrow this
-    // because if i try to do A extends infer T | infer U ? [] : A then it eliminates argument varaints
-    // so out of the two options, this seems like the better one for now - have arguments of variadic length work
-    // and if it is provided without any arguments, then just "shut up"
     expectTypeOf(key2).toEqualTypeOf<readonly ['call/test/foo']>()
   })
 })

@@ -1,6 +1,6 @@
 {
-  "name": "@hulla/api-request",
-  "version": "1.0.5",
+  "name": "@hulla/api-fetch",
+  "version": "1.2.4",
   "description": "The next-gen API/RPC manager 🚀",
   "author": {
     "name": "Samuel Hulla",
@@ -31,8 +31,12 @@
       "default": "./dist/index.js"
     }
   },
+  "peerDependencies": {
+    "@hulla/fetch": "^0.0.5"
+  },
   "devDependencies": {
-    "@hulla/api": "*"
+    "@hulla/api": "^1.2.4",
+    "msw": "^2.2.14"
   },
   "scripts": {
     "lint": "eslint --ext .ts --fix .",

@@ -1,269 +1,278 @@
-/* -------------------------------------------------------------------------- */
-/*                         calls, procedures, requests                        */
-
 import type { procedure } from './procedure'
 import type { router } from './router'
 
-/* -------------------------------------------------------------------------- */
-export type Args = readonly unknown[]
-export type Methods = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS' | 'HEAD' | 'CONNECT' | 'TRACE'
-export type Fn<A extends Args, R> = (...args: A) => R
-export type FnShape = <A extends Args, R>(...args: A) => R
-
-export type Context<N extends string, M extends string, A extends Args, RR extends string = string> = {
-  method: M
-  type: M extends 'call' ? 'procedure' : M extends LowercaseMethods ? 'request' : 'custom'
-  route: N
-  routerName: RR
-  args: A
-}
-
-export type ContextWithResult<
-  R,
-  N extends string,
-  CN extends string,
-  A extends Args,
-  RR extends string = string,
-> = Context<N, CN, A, RR> & { result: R }
-
-export type ResolverArgs<CTX, R> = [R, CTX]
-export type Resolver<CTX, R, R2 = R> = Fn<ResolverArgs<CTX, R>, R2>
-
-export type Call<N extends string, CN extends string, CTX, A extends Args, R, R2 = R> = {
-  route: N
-  fn: Fn<A, R>
-  resolver?: Resolver<CTX, R, R2>
-  method: CN
-}
-export type CallConstructor<CTX = Obj> = (...args: any[]) => Call<string, string, CTX, any, any, any>
-
-/* -------------------------------------------------------------------------- */
-/*                                    util                                    */
-/* -------------------------------------------------------------------------- */
-export type ArrayContains<T extends readonly unknown[], U> = U extends T[number] ? true : false
-export type ArrayToTuple<T extends readonly unknown[]> = { [K in keyof T]: T[K] }
+/* ------------------------------ common types ------------------------------ */
 export type Obj = Record<string, unknown>
+export type Args = readonly any[]
+export type Fn<A extends Args, R> = (...args: A) => R
+export type Hybrid<T> = T | Promise<T>
+export type SomePromise<T extends Args> = T extends readonly [infer A, ...infer Rest]
+  ? A extends Promise<any>
+    ? true
+    : A extends (...args: any[]) => Promise<any>
+      ? true
+      : SomePromise<Rest>
+  : false
 
-export type URLType = InstanceType<typeof URL>
+/* -------------------------- Procedures and routes ------------------------- */
+export type Route<N extends string, M extends string, A extends Args, R> = {
+  name: N
+  method: M
+  fn: (...args: A) => R
+}
+export type RouteShape = Route<string, string, any, unknown>
+export type Schema<A extends Args, R, PK extends string> = Record<PK, (...args: A) => R>
+export type ProcedureMeta<N extends string, M extends string, G extends string> = {
+  route: N
+  method: M
+  group: G
+}
+export type Meta<R extends Routes, N extends string, M extends Methods<R>, RN extends string, G extends string> = {
+  router: N
+  route: RN
+  method: M
+  group: G
+}
 
-/* -------------------------------------------------------------------------- */
-/*                                  constants                                 */
-/* -------------------------------------------------------------------------- */
-export type MethodsArray = readonly Methods[]
-export type LowercaseMethods = {
-  [K in Methods]: Lowercase<K>
-}[Methods]
+export type Routes = readonly RouteShape[]
+export type InputArgs<I, PK extends string> =
+  I extends Schema<any, infer R, PK> ? [R] : I extends Fn<infer A, any> ? A : []
+export type InputResult<I, PK extends string> =
+  I extends Schema<any, infer R, PK> ? R : I extends Fn<any, infer R> ? R : never
+export type OutputFn<O> = (out: O) => O
 
-type PossibleFnReturns<Routes extends RouterShape> = ReturnType<Routes[number]['fn']>
-type PossibleResReturns<Routes> = Routes extends RouterShape
-  ? RouterMap<Routes> extends [infer C, ...infer Rest]
-    ? C extends Call<string, string, any, any, infer R, infer R2>
-      ? R extends R2
-        ? PossibleResReturns<Rest>
-        : R2 | PossibleResReturns<Rest>
+/* ------------------------- Router and Interceptors ------------------------ */
+
+export type RouterConfig<
+  N extends string,
+  R extends Routes,
+  CTX extends Obj,
+  PK extends string,
+  AD extends Adapters<CTX, PK, R, N>,
+> = {
+  name: N
+  routes: R
+  adapters?: AD
+}
+export type RouterMap<R extends Routes> = R extends readonly [infer R1, ...infer Rest]
+  ? R1 extends Route<infer N extends string, infer M extends string, infer A, infer R>
+    ? //we need to use {} over never, since never breaks intersection
+      Record<M, Record<N, Route<N, M, A, R>>> & (Rest extends Routes ? RouterMap<Rest> : {})
+    : Rest extends Routes
+      ? RouterMap<Rest>
+      : {}
+  : {}
+export type Methods<R extends Routes> = keyof RouterMap<R>
+export type RouteNamesWithMethod<R extends Routes, M extends Methods<R>> = keyof RouterMap<R>[M]
+// internal utility since we need to annoyingly narrow down each Rest arg in ExactRoute
+type _ExactRest<R, M, RN> = R extends Routes
+  ? M extends keyof RouterMap<R>
+    ? RN extends keyof RouterMap<R>[M]
+      ? ExactRoute<R, M, RN>
       : never
     : never
   : never
-
-/* -------------------------------------------------------------------------- */
-/*                                   router                                   */
-/* -------------------------------------------------------------------------- */
-// params extenders
-export type Route = Call<string, string, any, any, any>
-export type RouterShape = readonly Route[]
-export type RouterConfig<
-  RN extends string,
-  Routes extends RouterShape,
-  CTX extends Obj,
-  AD extends Adapters<Routes, RN, CTX>,
-> = {
-  name: RN
-  routes: Routes extends RouterMap<Routes> ? Routes : never
-  interceptors?: {
-    // we cannot use generics here, because then it enforces strict inferrence and raises type errors
-    // that type could be potentially unrelated to generic. Useful for type-safety but not very practical
-    // for everday users, hence we make it more lenient and just accept a match of any of the possible
-    // instead of requiring type narrowing for every single individual route
-    args?: (
-      context: CTX &
-        Context<
-          RouteNamesWithMethod<Routes, AvailableCalls<Routes>>,
-          AvailableCalls<Routes>,
-          RouteArgs<Routes, AvailableCalls<Routes>, RouteNamesWithMethod<Routes, AvailableCalls<Routes>>>
-        >
-    ) => RouteArgs<Routes, AvailableCalls<Routes>, RouteNamesWithMethod<Routes, AvailableCalls<Routes>>>
-    fn?: (
-      contextWithResult: CTX &
-        ContextWithResult<
-          PossibleFnReturns<Routes>,
-          RouteNamesWithMethod<Routes, AvailableCalls<Routes>>,
-          AvailableCalls<Routes>,
-          RouteArgs<Routes, AvailableCalls<Routes>, RouteNamesWithMethod<Routes, AvailableCalls<Routes>>>
-        >
-    ) => PossibleFnReturns<Routes>
-    resolver?: (
-      contextWithResult: CTX &
-        ContextWithResult<
-          PossibleResReturns<Routes>,
-          RouteNamesWithMethod<Routes, AvailableCalls<Routes>>,
-          AvailableCalls<Routes>,
-          RouteArgs<Routes, AvailableCalls<Routes>, RouteNamesWithMethod<Routes, AvailableCalls<Routes>>>
-        >
-    ) => PossibleResReturns<Routes>
-  }
-  adapters?: AD
-}
-export type FnReturn<
-  Routes extends RouterShape,
-  M extends AvailableCalls<Routes>,
-  N extends RouteNamesWithMethod<Routes, M>,
-> = Find<Routes, M, N> extends Call<string, string, any, any, infer R, any> ? R : never
-
-export type InterceptorKeys = keyof Required<RouterConfig<string, any, any, any>>['interceptors']
-// util for extracting route names and methods
-export type RouteNames<Routes extends RouterShape> = Routes[number]['route']
-export type AvailableCalls<Routes extends RouterShape> = Routes[number]['method']
-// returns a { [method]: { [route]: Call } } nested type map
-export type MappedRouter<Routes extends RouterShape> = {
-  [M in AvailableCalls<Routes>]: {
-    [N in RouteNamesWithMethod<Routes, M>]: Find<Routes, M, N>
-  }
-}
-// array map which validates the router tuple format
-export type RouterMap<Routes extends RouterShape> = Routes extends readonly [
-  Call<infer N, infer M, infer CTX, infer A, infer R, infer R2>,
-  ...infer Rest,
-]
-  ? [Call<N, M, CTX, A, R, R2>, ...(Rest extends RouterShape ? RouterMap<Rest> : [])]
-  : []
-// util for filtering calls by method
-export type FilterMethod<Routes extends RouterShape, M extends AvailableCalls<Routes>> =
-  RouterMap<Routes> extends [Call<infer N, infer Method, infer CTX, infer A, infer R, infer R2>, ...infer Rest]
-    ? Method extends M
-      ? [Call<N, M, CTX, A, R, R2>, ...(Rest extends RouterShape ? FilterMethod<Rest, M> : [])]
-      : Rest extends RouterShape
-        ? FilterMethod<Rest, M>
-        : []
-    : []
-// util for finding a specific call names
-export type RouteNamesWithMethod<Routes extends RouterShape, M extends AvailableCalls<Routes>> = FilterMethod<
-  Routes,
-  M
->[number]['route']
-// util for finding a specific call
-export type Find<
-  Routes extends RouterShape,
-  M extends AvailableCalls<Routes>,
-  N extends RouteNamesWithMethod<Routes, M>,
-> =
-  FilterMethod<Routes, M> extends [infer C, ...infer Rest]
-    ? C extends Call<N, M, any, any, any, any>
-      ? C
-      : Rest extends RouterShape
-        ? Find<Rest, M, N>
-        : never
-    : never
-// extract fn/resolver args and returns
-export type RouteArgs<
-  Routes extends RouterShape,
-  M extends AvailableCalls<Routes>,
-  N extends RouteNamesWithMethod<Routes, M>,
-> = Find<Routes, M, N> extends Call<string, string, any, infer A, any, any> ? A : never
-export type RouteReturn<
-  Routes extends RouterShape,
-  M extends AvailableCalls<Routes>,
-  N extends RouteNamesWithMethod<Routes, M>,
-> = Find<Routes, M, N> extends Call<string, string, any, any, any, infer R2> ? R2 : never
-// maps individual methods to the router
-export type InvokerMap<Routes extends RouterShape> = {
-  [M in AvailableCalls<Routes>]: <N extends RouteNamesWithMethod<Routes, M>>(
-    name: N,
-    ...args: RouteArgs<Routes, M, N>
-  ) => RouteReturn<Routes, M, N>
-}
-// router type exposed to adapters
-export type RouterAdapter<Routes extends RouterShape, RouterName extends string, CTX> = InvokerMap<Routes> & {
-  context: CTX
-  routeNames: RouteNames<Routes>[]
-  routerName: RouterName
-  methods: AvailableCalls<Routes>[]
-  mappedRouter: MappedRouter<Routes>
-  invoke: <CN extends AvailableCalls<Routes>, N extends RouteNamesWithMethod<Routes, CN>>(
-    method: CN,
-    name: N,
-    args: RouteArgs<Routes, CN, N>
-  ) => RouteReturn<Routes, CN, N>
-  find: <CN extends AvailableCalls<Routes>, N extends RouteNamesWithMethod<Routes, CN>>(
-    method: CN,
-    name: N
-  ) => { route: N; call: Find<Routes, CN, N> }
-}
-
-export type AdapterProperties = {
-  [K in keyof RouterAdapter<[], string, any>]: K extends keyof Router<[], string, any> ? never : K
-}[keyof RouterAdapter<[], string, any>]
-
-// publicly facing router type
-export type Router<Routes extends RouterShape, RouterName extends string, CTX> = Omit<
-  RouterAdapter<Routes, RouterName, CTX>,
-  'invoke' | 'find' | 'mappedRouter'
+export type ExactRoute<
+  R extends Routes,
+  M extends Methods<R>,
+  RN extends RouteNamesWithMethod<R, M>,
+> = R extends readonly [infer R1, ...infer Rest]
+  ? R1 extends Route<infer N1, infer M1, any, any>
+    ? M1 extends M
+      ? N1 extends RN
+        ? R1
+        : _ExactRest<Rest, M, RN>
+      : _ExactRest<Rest, M, RN>
+    : _ExactRest<Rest, M, RN>
+  : never
+export type RouteArgs<R extends Routes, M extends Methods<R>, RN extends RouteNamesWithMethod<R, M>> = Parameters<
+  ExactRoute<R, M, RN>['fn']
 >
-
-/* -------------------------------------------------------------------------- */
-/*                               api & adapters                               */
-/* -------------------------------------------------------------------------- */
-export type Adapters<Routes extends RouterShape, RN extends string, CTX extends Obj> = Record<
+export type RouteReturn<R extends Routes, M extends Methods<R>, RN extends RouteNamesWithMethod<R, M>> = ReturnType<
+  ExactRoute<R, M, RN>['fn']
+>
+/* ----------------------------- Integrations 🧩 ---------------------------- */
+export type RouterAdapter<
+  R extends Routes,
+  N extends string,
+  CTX extends Obj,
+  PK extends string,
+  AD extends Adapters<CTX, PK, R, N>,
+> = API<R, N, CTX, PK, AD> & {
+  routerMap: RouterMap<R>
+  getRoute: <M extends keyof RouterMap<R>, RN extends RouteNamesWithMethod<R, M>>(
+    method: M,
+    route: RN
+  ) => ExactRoute<R, M, RN>
+  invoke: <M extends keyof RouterMap<R>, RN extends RouteNamesWithMethod<R, M>>(
+    method: M,
+    route: RN,
+    ...args: RouteArgs<R, M, RN>
+  ) => RouteReturn<R, M, RN>
+}
+export type Extension<CTX extends Obj, PK extends string, Res = unknown> = (int: { context: CTX; parseKey: PK }) => Res
+export type Extensions<CTX extends Obj, PK extends string> = Record<string, Extension<CTX, PK>>
+export type Adapter<CTX extends Obj, PK extends string, R extends Routes, RTN extends string, Res> = (
+  routerAdapter: RouterAdapter<R, RTN, CTX, PK, any>
+) => Res
+export type Adapters<CTX extends Obj, PK extends string, R extends Routes, RTN extends string> = Record<
   string,
-  (router: RouterAdapter<Routes, RN, CTX>) => any
+  Adapter<CTX, PK, R, RTN, any>
 >
 
-export type AdapterMap<
-  Routes extends RouterShape,
-  RN extends string,
+/* ----------------------------------- sdk ---------------------------------- */
+export type MiddlewareOptions<CTX extends Obj, PK extends string, G extends string, DM extends string, I> = {
+  context: CTX
+  meta: ProcedureMeta<string, DM, G>
+  input: I extends Schema<any, infer R, PK> ? R : I extends Fn<any, infer R> ? R : unknown
+}
+
+export type Group<CTX extends Obj, PK extends string, DM extends string, GN extends string> =
+  | {
+      defaults?: {
+        method?: string
+        input?: Schema<any, any, PK> | Fn<any, any>
+        output?: Schema<any, any, PK> | OutputFn<any>
+      }
+      context?:
+        | Obj
+        | ((options: MiddlewareOptions<CTX, PK, GN, DM, unknown>) => Obj)
+        | ((options: MiddlewareOptions<CTX, PK, GN, DM, unknown>) => Promise<Obj>)
+    }
+  | {
+      defaults: {
+        method: string
+        input?: Schema<any, any, PK> | Fn<any, any>
+        output?: Schema<any, any, PK> | OutputFn<any>
+      }
+      context?:
+        | Obj
+        | ((options: MiddlewareOptions<CTX, PK, GN, DM, unknown>) => Obj)
+        | ((options: MiddlewareOptions<CTX, PK, GN, DM, unknown>) => Promise<Obj>)
+      allowedMethods: string[]
+    }
+
+export type IntegrationFn<CTX extends Obj, PK extends string, K extends string, DM extends string> = (options: {
+  context: CTX
+  defaultMethod: DM
+  parseKey: PK
+  integrationName: K
+}) => any
+
+export type SDKConfig<
   CTX extends Obj,
-  AD extends Adapters<Routes, RN, CTX>,
+  PK extends string,
+  DM extends string,
+  G extends {
+    [K in string]: Group<CTX, PK, DM, K>
+  },
+  DI extends Schema<any, any, PK> | Fn<any, any>,
+  DO extends Schema<any, any, PK> | OutputFn<any>,
+  AM extends string[],
+> =
+  | {
+      context?: CTX
+      defaults?: {
+        method?: DM
+        input?: DI
+        output?: DO
+      }
+      parseKey?: PK
+      groups?: G
+    }
+  | {
+      context: CTX
+      defaults: {
+        method: DM
+        input?: DI
+        output?: DO
+      }
+      parseKey?: PK
+      groups?: G
+      allowedMethods: AM
+    }
+
+export type SDK<
+  CTX extends Obj,
+  PK extends string,
+  DM extends AM,
+  G extends Record<string, unknown>,
+  DI extends Schema<any, any, PK> | Fn<any, any>,
+  DO extends Schema<any, any, PK> | OutputFn<any>,
+  AM extends string,
 > = {
-  [K in keyof AD]: AD[K] extends Fn<any, infer R> ? R : never
+  router: ReturnType<typeof router<CTX, PK>>
+  procedure: ReturnType<typeof procedure<CTX, CTX, PK, DM, 'procedure', DI, DO, AM>>
+  groups: G
+} & {
+  [K in keyof G]: K extends string
+    ? G[K] extends { integration: infer I }
+      ? I extends Fn<any, infer R>
+        ? R
+        : never
+      : ReturnType<
+          typeof procedure<CTX, RContext<CTX, G[K]>, PK, RDM<DM, G[K]>, K, RInput<PK, G[K]>, ROutput<PK, G[K]>, string>
+        >
+    : never
+}
+
+export type RContext<CTX extends Obj, G> = G extends { context: infer C }
+  ? C extends Obj
+    ? C
+    : C extends (...args: any) => any
+      ? C
+      : CTX
+  : CTX
+
+export type ResContext<CTX> = CTX extends Obj
+  ? CTX
+  : CTX extends (...args: any[]) => infer R
+    ? R extends Promise<infer U>
+      ? U
+      : R
+    : never
+
+export type RInput<PK extends string, G> = G extends { defaults: { input: infer I } }
+  ? I extends Schema<any, any, PK>
+    ? I
+    : I extends Fn<any, any>
+      ? I
+      : undefined
+  : undefined
+
+export type ROutput<PK extends string, G> = G extends { defaults: { output: infer O } }
+  ? O extends Schema<any, any, PK>
+    ? O
+    : O extends OutputFn<any>
+      ? O
+      : undefined
+  : undefined
+
+export type ResOutput<PK extends string, O> =
+  O extends OutputFn<infer R> ? R : O extends Schema<any, infer R, PK> ? R : O
+
+export type RDM<DM extends string, G> = G extends { defaults: { method: infer M } } ? (M extends string ? M : DM) : DM
+
+/* ------------------------------ api export ✨ ------------------------------ */
+export type InvokerMap<R extends Routes> = {
+  [M in Methods<R>]: <N extends RouteNamesWithMethod<R, M>, A extends RouteArgs<R, M, N>>(
+    name: N,
+    ...args: A
+  ) => RouteReturn<R, M, N>
 }
 
 export type API<
-  Routes extends RouterShape,
+  R extends Routes,
   N extends string,
   CTX extends Obj,
-  AD extends Adapters<Routes, N, CTX>,
-> = Router<Routes, N, CTX> & AdapterMap<Routes, N, CTX, AD>
+  PK extends string,
+  AD extends Adapters<CTX, PK, R, N>,
+> = {
+  name: N
+  context: CTX
+} & InvokerMap<R> & {
+    [K in keyof AD]: ReturnType<AD[K]>
+  }
 
-export type CustomMethodsX = Record<string, (...args: any[]) => Call<string, string, any, any[], any, any>> & {
-  [K in 'procedure' | 'router' | 'create']?: TypeError<
-    `ERROR: Property ${K} is reserved method. Please choose a different name`,
-    `https://hulla.dev/docs/api/custom`
-  >
-}
-
-export type CustomMethods = Record<string, any>
-
-export type APIConfig<CTX extends Obj, CM extends CustomMethods> = {
-  context?: CTX
-  methods?: (ctx: CTX) => CM
-}
-
-export type MappedCM<CM extends CustomMethods> = {
-  [K in keyof CM]: CM[K]
-}
-
-export type TypeError<Msg extends string, Doc extends string> = {
-  reason: Msg
-  info: Doc
-}
-
-export type CustomContext = Record<string, unknown> & {
-  [K in keyof Context<string, string, any[], string>]?: TypeError<
-    `ERROR: Property ${K} is reserved keyword for base context`,
-    'https://hulla.dev/docs/api/context'
-  >
-}
-
-export type APISDK<CTX extends CustomContext, CM extends CustomMethods> = MappedCM<CM> & {
-  procedure: ReturnType<typeof procedure<CTX>>
-  router: ReturnType<typeof router<CTX>>
-}
+// utility since keyof standard is string | number | symbl so we don't have to do extends string on everything
+export type Keyof<T> = T extends Record<infer K, unknown> ? (K extends string ? K : never) : never

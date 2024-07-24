@@ -1,27 +1,22 @@
-import { api as init, type Call } from '@hulla/api'
-import { expectTypeOf } from 'expect-type'
-import { describe, expect, test } from 'vitest'
+import { api } from '@hulla/api'
+import { describe, expect, expectTypeOf, test } from 'vitest'
 import { query } from '../src/query'
 
-const api = init()
+const a = api()
 
 const users = [
   { id: 1, name: 'John' },
   { id: 2, name: 'Jane' },
-]
+] as const
 
-export const usersAPI = api.router({
+export const usersAPI = a.router({
   name: 'users',
   routes: [
-    api.procedure('all', () => users),
-    api.procedure('byId', (id: number) => users.find((u) => u.id === id)!),
-    { method: 'get', route: 'a', fn: () => new Promise((res) => res) } as Call<
-      'a',
-      'get',
-      Record<string, never>,
-      [],
-      Promise<Response>
-    >,
+    a.procedure('all').define(() => users),
+    a
+      .procedure('byId', 'get')
+      .input((id: number) => users.find((u) => u.id === id)!)
+      .define(({ input }): Promise<{ id: number; name: string }> => new Promise((res) => res(input))),
   ],
   adapters: {
     query,
@@ -30,8 +25,8 @@ export const usersAPI = api.router({
 
 describe('main functionality', () => {
   test('query has correct format', () => {
-    expect(usersAPI.query.call('byId', 1)).toStrictEqual({
-      queryKey: ['call/users/byId', 1],
+    expect(usersAPI.query.get('byId', 1)).toStrictEqual({
+      queryKey: ['get/users/byId', 1],
       queryFn: expect.any(Function),
     })
     expect(usersAPI.query.call('all')).toStrictEqual({
@@ -39,27 +34,13 @@ describe('main functionality', () => {
       queryFn: expect.any(Function),
     })
   })
-  test('queryFn executes correctly (does not mutate procedures/requests)', () => {
+  test('queryFn executes correctly (does not mutate result)', () => {
     const all = usersAPI.query.call('all')
-    const byId = usersAPI.query.call('byId', 1)
+    const byId = usersAPI.query.get('byId', 1)
     expect(all.queryFn()).toStrictEqual(users)
-    expect(byId.queryFn()).toStrictEqual(users[0])
+    expect(byId.queryFn()).resolves.toStrictEqual(users[0])
   })
   test('query has access to correct methods', () => {
-    // these break typescript with expectTypeOf (even tho they are correct), and matching functions does not work
-    // test('query has access to correct methods', () => {
-    //   expect(usersAPI.query.call).toStrictEqual(
-    //     <N extends RouteNamesWithMethod<typeof routes, 'call'>, A extends RouteArgs<typeof routes, 'call', N>>(
-    //       route: N,
-    //       ...args: A
-    //     ) => ({ queryKey: [`call/users/${route}`, ...args], queryFn: () => router.invoke('call', route, args) })
-    //   )
-    //   expect(usersAPI.query.get).toStrictEqual(
-    //     <N extends RouteNamesWithMethod<typeof routes, 'get'>, A extends RouteArgs<typeof routes, 'get', N>>(
-    //       route: N,
-    //       ...args: A
-    //     ) => ({ queryKey: [`get/users/${route}`, ...args], queryFn: () => router.invoke('get', route, args) })
-    //   )
     expect(usersAPI.query.call).toBeDefined()
     expect(usersAPI.query.get).toBeDefined()
     // @ts-expect-error accessing non-existent method
@@ -67,23 +48,17 @@ describe('main functionality', () => {
   })
 })
 
-describe('type checks', () => {
-  test('request has correct type', () => {
-    expectTypeOf(usersAPI.query.get('a')).toEqualTypeOf<{
-      queryKey: readonly ['get/users/a']
-      queryFn: () => Promise<Response>
+describe('types are correct', () => {
+  test('query has correct type', () => {
+    expectTypeOf(usersAPI.query.get('byId', 1)).toEqualTypeOf<{
+      queryKey: readonly ['get/users/byId', 1]
+      queryFn: () => Promise<{ id: number; name: string }>
     }>()
   })
-  test('no args has correct type and queryKey', () => {
+  test('query has correct type and queryKey', () => {
     expectTypeOf(usersAPI.query.call('all')).toEqualTypeOf<{
       queryKey: readonly ['call/users/all']
-      queryFn: () => { id: number; name: string }[]
-    }>()
-  })
-  test('with args has correct type and queryKey', () => {
-    expectTypeOf(usersAPI.query.call('byId', 2)).toEqualTypeOf<{
-      queryKey: readonly ['call/users/byId', number]
-      queryFn: () => { id: number; name: string }
+      queryFn: () => typeof users
     }>()
   })
 })

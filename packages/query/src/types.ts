@@ -1,4 +1,4 @@
-import type { AvailableCalls, RouteArgs, RouteNamesWithMethod, RouteReturn, RouterShape } from '@hulla/api'
+import type { Methods, RouteArgs, RouteNamesWithMethod, RouteReturn, Routes } from '@hulla/api'
 
 /* ------------------------------- query keys ------------------------------- */
 type ReverseTuple<T extends readonly unknown[], R extends any[] = []> = T extends readonly [infer Head, ...infer Tail]
@@ -9,36 +9,33 @@ export type QueryKey<T extends readonly unknown[]> =
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   ReverseTuple<T> extends readonly [infer _, ...infer Rest] ? T | QueryKey<ReverseTuple<Rest>> : []
 
-export type KeyMapping<Routes extends RouterShape, RN extends string> = {
-  [M in AvailableCalls<Routes>]: <
-    const N extends RouteNamesWithMethod<Routes, M>,
-    const RA extends QueryKey<RouteArgs<Routes, M, N>>,
-  >(
+export type KeyMapping<R extends Routes, RN extends string> = {
+  [M in Methods<R>]: <const N extends RouteNamesWithMethod<R, M>, const RA extends QueryKey<RouteArgs<R, M, N>>>(
     route: N,
     ...args: RA
-  ) => readonly [`${M}/${RN}/${N}`, ...RA]
+  ) => readonly [`${M extends string ? M : never}/${RN}/${N extends string ? N : never}`, ...RA]
 }
 
 /* -------------------------- queries and mutations ------------------------- */
 export type Options<
-  Routes extends RouterShape,
+  R extends Routes,
   RN extends string,
-  M extends AvailableCalls<Routes>,
-  N extends RouteNamesWithMethod<Routes, M>,
-  A extends RouteArgs<Routes, M, N>,
+  M extends Methods<R>,
+  N extends RouteNamesWithMethod<R, M>,
+  A extends RouteArgs<R, M, N>,
   QK extends string,
   QF extends string,
 > = {
   [K in QK | QF]: K extends QK
-    ? readonly [`${M}/${RN}/${N}`, ...A]
+    ? readonly [`${M extends string ? M : never}/${RN}/${N extends string ? N : never}`, ...A]
     : K extends QF
-      ? () => RouteReturn<Routes, M, N>
+      ? () => RouteReturn<R, M, N>
       : never
 }
 
-export type Mapping<Routes extends RouterShape, RN extends string, QK extends string, QF extends string> = {
-  [M in AvailableCalls<Routes>]: <const N extends RouteNamesWithMethod<Routes, M>, RA extends RouteArgs<Routes, M, N>>(
+export type Mapping<R extends Routes, RN extends string, QK extends string, QF extends string> = {
+  [M in Methods<R>]: <const N extends RouteNamesWithMethod<R, M>, RA extends RouteArgs<R, M, N>>(
     route: N,
     ...args: RA
-  ) => Options<Routes, RN, M, N, RA, QK, QF>
+  ) => Options<R, RN, M, N, RA, QK, QF>
 }
