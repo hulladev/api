@@ -103,11 +103,18 @@ describe('groups', () => {
   test('groups context ', async () => {
     const a = api({
       context: { foo: 'foo' },
+      groups: {
+        obj: { context: { baz: 'baz' } },
+        fn: {
+          context: (options) => ({ ...options.context, bar: 'bar' }) as const,
+        },
+        async: {
+          context: async (options) => ({ ...options.context, asyncBar: 'asyncBar' }) as const,
+        },
+        noCustomContext: {},
+      },
     })
-      .group('obj', { context: { baz: 'baz' } })
-      .group('fn', { context: (options) => ({ ...options.context, bar: 'bar' }) as const })
-      .group('async', { context: async (options) => ({ ...options.context, asyncBar: 'asyncBar' }) as const })
-      .group('noCustomContext')
+
     const r = a.router({
       name: 'test',
       routes: [
@@ -129,28 +136,22 @@ describe('groups', () => {
     expect(r.call('e')).toStrictEqual('foo')
     expectTypeOf(r.call('e')).toEqualTypeOf<'foo'>()
   })
-  test('override change show group works', () => {
-    const a = api().group('override', { _override: (options) => () => options.meta.group })
-    expect(a.override()).toStrictEqual('override')
-    expectTypeOf(a.override()).toEqualTypeOf<'override'>()
-    const r = a.router({
-      name: 'test',
-      routes: [a.procedure('a').define(() => null)],
-    })
-    expect(r.call('a')).toBeNull()
-    expectTypeOf(r.call('a')).toEqualTypeOf<null>()
-  })
   test('default input', () => {
-    const a = api()
-      .group('schema', { defaultInput: z.string() })
-      .group('fn', {
-        defaultInput: (id: string) => {
-          if (typeof id !== 'string') {
-            throw new Error('id must be a string')
-          }
-          return id
+    const a = api({
+      groups: {
+        schema: { defaults: { input: z.string() } },
+        fn: {
+          defaults: {
+            input: (id: string) => {
+              if (typeof id !== 'string') {
+                throw new Error('id must be a string')
+              }
+              return id
+            },
+          },
         },
-      })
+      },
+    })
     const r = a.router({
       name: 'test',
       routes: [
@@ -171,16 +172,21 @@ describe('groups', () => {
     expectTypeOf(r.call('c')).toEqualTypeOf<'noInput'>()
   })
   test('default input override', () => {
-    const a = api()
-      .group('schema', { defaultInput: z.string() })
-      .group('fn', {
-        defaultInput: (id: string) => {
-          if (typeof id !== 'string') {
-            throw new Error('id must be a string')
-          }
-          return id
+    const a = api({
+      groups: {
+        schema: { defaults: { input: z.string() } },
+        fn: {
+          defaults: {
+            input: (id: string) => {
+              if (typeof id !== 'string') {
+                throw new Error('id must be a string')
+              }
+              return id
+            },
+          },
         },
-      })
+      },
+    })
     const r = a.router({
       name: 'test',
       routes: [
@@ -217,16 +223,21 @@ describe('groups', () => {
     expect(() => r.call('c', 'bar')).toThrow()
   })
   test('default output', () => {
-    const a = api()
-      .group('schema', { defaultOutput: z.string() })
-      .group('fn', {
-        defaultOutput: (id: string) => {
-          if (typeof id !== 'string') {
-            throw new Error('id must be a string')
-          }
-          return id
+    const a = api({
+      groups: {
+        schema: { defaults: { output: z.string() } },
+        fn: {
+          defaults: {
+            output: (id: string) => {
+              if (typeof id !== 'string') {
+                throw new Error('id must be a string')
+              }
+              return id
+            },
+          },
         },
-      })
+      },
+    })
     const r = a.router({
       name: 'test',
       routes: [a.schema('a').define(() => 'a'), a.fn('b').define(() => 'bar'), a.procedure('c').define(() => 'bar')],
@@ -246,16 +257,21 @@ describe('groups', () => {
     ).toThrow()
   })
   test('default output override', () => {
-    const a = api()
-      .group('schema', { defaultOutput: z.string() })
-      .group('fn', {
-        defaultOutput: (id: string) => {
-          if (typeof id !== 'string') {
-            throw new Error('id must be a string')
-          }
-          return id
+    const a = api({
+      groups: {
+        schema: { defaults: { output: z.string() } },
+        fn: {
+          defaults: {
+            output: (id: string) => {
+              if (typeof id !== 'string') {
+                throw new Error('id must be a string')
+              }
+              return id
+            },
+          },
         },
-      })
+      },
+    })
     const r = a.router({
       name: 'test',
       routes: [
@@ -293,7 +309,9 @@ describe('groups', () => {
 describe('default method', () => {
   test('global methods', () => {
     const a = api({
-      defaultMethod: 'boo',
+      defaults: {
+        method: 'boo',
+      },
     })
     const r = a.router({
       name: 'test',
@@ -304,7 +322,12 @@ describe('default method', () => {
     expectTypeOf(r.boo('a')).toEqualTypeOf<'boo'>()
   })
   test('group default method', () => {
-    const a = api().group('boo', { defaultMethod: 'boo' }).group('foo', { defaultMethod: 'foo' })
+    const a = api({
+      groups: {
+        boo: { defaults: { method: 'boo' } },
+        foo: { defaults: { method: 'foo' } },
+      },
+    })
     const r = a.router({
       name: 'test',
       routes: [a.boo('a').define(({ meta }) => meta.method), a.foo('b').define(({ meta }) => meta.method)],
@@ -317,7 +340,7 @@ describe('default method', () => {
     expectTypeOf(r.foo('b')).toEqualTypeOf<'foo'>()
   })
   test('group with global default method', () => {
-    const a = api({ defaultMethod: 'boo' }).group('foo', { defaultMethod: 'foo' })
+    const a = api({ defaults: { method: 'boo' }, groups: { foo: { defaults: { method: 'foo' } } } })
     const r = a.router({
       name: 'test',
       routes: [a.procedure('a').define(({ meta }) => meta.method), a.foo('b').define(({ meta }) => meta.method)],
@@ -328,5 +351,117 @@ describe('default method', () => {
     expectTypeOf(r.boo('a')).toEqualTypeOf<'boo'>()
     expect(r.foo('b')).toStrictEqual('foo')
     expectTypeOf(r.foo('b')).toEqualTypeOf<'foo'>()
+  })
+  test('allowed methods', () => {
+    const a = api({
+      allowedMethods: ['foo', 'bar'],
+      defaults: {
+        method: 'foo',
+      },
+    })
+    const r = a.router({
+      name: 'test',
+      routes: [
+        a
+          .procedure('a', 'foo')
+          .input(z.number())
+          .define(({ meta }) => meta.method + meta.route),
+        a
+          .procedure('b', 'bar')
+          .input(z.boolean())
+          .define(({ meta }) => meta.method + meta.route),
+        a.procedure('c').define(({ meta }) => meta.method + meta.route),
+        a
+          .procedure('d')
+          .input(z.array(z.number()))
+          .define(({ meta }) => meta.method + meta.route),
+      ],
+    })
+    expect(r.foo('a', 2)).toStrictEqual('fooa')
+    expectTypeOf(r.foo('a', 2)).toEqualTypeOf<string>()
+    expect(r.bar('b', true)).toStrictEqual('barb')
+    expectTypeOf(r.bar('b', true)).toEqualTypeOf<string>()
+    expect(r.foo('c')).toStrictEqual('fooc')
+    expectTypeOf(r.foo('c')).toEqualTypeOf<string>()
+    expect(r.foo('d', [1, 2])).toStrictEqual('food')
+    expectTypeOf(r.foo('d', [1, 2])).toEqualTypeOf<string>()
+  })
+  test('group with allowed methods', () => {
+    const a = api({
+      groups: {
+        foo: {
+          allowedMethods: ['foo', 'bar'],
+          defaults: {
+            method: 'foo',
+          },
+        },
+      },
+    })
+    const r = a.router({
+      name: 'test',
+      routes: [
+        a
+          .foo('a', 'foo')
+          .input(z.number())
+          .define(({ meta }) => meta.method + meta.route),
+        a
+          .foo('b', 'bar')
+          .input(z.boolean())
+          .define(({ meta }) => meta.method + meta.route),
+        a.foo('c').define(({ meta }) => meta.method + meta.route),
+        a
+          .foo('d')
+          .input(z.array(z.number()))
+          .define(({ meta }) => meta.method + meta.route),
+      ],
+    })
+    expect(r.foo).toBeTypeOf('function')
+    expect(r.bar).toBeTypeOf('function')
+    expect(r.foo('a', 2)).toStrictEqual('fooa')
+    expectTypeOf(r.foo('a', 2)).toEqualTypeOf<string>()
+    expect(r.bar('b', true)).toStrictEqual('barb')
+    expectTypeOf(r.bar('b', true)).toEqualTypeOf<string>()
+    expect(r.foo('c')).toStrictEqual('fooc')
+  })
+})
+
+describe('passing group "integration"', () => {
+  test('simple object', () => {
+    const request = {
+      defaults: {
+        method: 'get',
+      },
+    } as const
+    const a = api({
+      groups: {
+        request,
+      },
+    })
+    const r = a.router({
+      name: 'test',
+      routes: [a.request('test').define(({ meta }) => meta.method)],
+    })
+    expect(r.get).toBeTypeOf('function')
+    expect(r.get('test')).toStrictEqual('get')
+    expectTypeOf(r.get('test')).toEqualTypeOf<'get'>()
+  })
+  test('inferring option type', () => {
+    const a = api({
+      context: {
+        foo: 'foo',
+      },
+      groups: {
+        manual: {
+          context: (options) => ({ ...options.context, bar: 'bar' as const }),
+        },
+      },
+    })
+
+    const r = a.router({
+      name: 'test',
+      routes: [a.manual('manual').define(({ context }) => context)],
+    })
+    expect(r.call('manual')).toStrictEqual({ foo: 'foo', bar: 'bar' })
+    expectTypeOf(r.call('manual')).toEqualTypeOf<{ foo: 'foo'; bar: 'bar' }>()
   })
 })
