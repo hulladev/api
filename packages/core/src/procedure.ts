@@ -134,13 +134,8 @@ export function procedure<
             return fn({ context, meta, input })
           }
           const res = getRes(...args)
-          if (res instanceof Promise) {
-            return res.then((res) => {
-              const output = uniteOutput(outputFn ?? defaultOutput ?? (() => res), parseKey)(res)
-              return output
-            })
-          }
-          const output = uniteOutput(outputFn ?? defaultOutput ?? (() => res), parseKey)(res)
+          // technically it's O | Promise<O> but it's up to user to correctly handle promises in output
+          const output = uniteOutput(outputFn ?? defaultOutput ?? (() => res as O), parseKey)(res as O)
           return output
         },
       }
