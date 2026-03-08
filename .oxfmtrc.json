@@ -5,6 +5,8 @@
   "trailingComma": "es5",
   "printWidth": 120,
   "ignorePatterns": ["dist/**", "node_modules/**", ".cache/**", ".turbo/**"],
-  "sortImports": {},
+  "sortImports": {
+    "newlinesBetween": false
+  },
   "sortPackageJson": null
 }

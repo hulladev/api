@@ -65,17 +65,5 @@
   },
   "devDependencies": {
     "zod": "^3.23.8"
-  },
-  "tsdown": {
-    "clean": true,
-    "dts": true,
-    "entry": "src/index.ts",
-    "fixedExtension": false,
-    "format": [
-      "esm",
-      "cjs"
-    ],
-    "outDir": "dist",
-    "publint": true
   }
 }

@@ -1,10 +1,10 @@
 import { api } from '@hulla/api'
 import { instance, resolve, response } from '@hulla/fetch'
 import { afterAll, beforeAll, beforeEach, describe, expect, expectTypeOf, test } from 'vitest'
-
 import { addInfer, infer } from '../src/infer'
 import { request } from '../src/request'
-import { createServer, User, users } from './mockserver'
+import { createServer, users } from './mockserver'
+import type { User } from './mockserver'
 
 const server = createServer()
 beforeAll(() => server.listen())
@@ -50,7 +50,7 @@ describe('standard usage', () => {
 
 describe('instances', () => {
   const i = addInfer(
-    instance({ baseURL: 'https://api.com', transform: (res) => res.json() as Promise<Record<string, unknown>> })
+    instance({ baseURL: 'https://api.com', transform: (res: Response) => res.json() as Promise<Record<string, unknown>> })
   )
   const r = a.router({
     name: 'test',
@@ -77,7 +77,10 @@ describe('instances', () => {
 })
 
 test('output modifier', async () => {
-  const i = instance({ baseURL: 'https://api.com', transform: (res) => res.json() as Promise<Record<string, unknown>> })
+  const i = instance({
+    baseURL: 'https://api.com',
+    transform: (res: Response) => res.json() as Promise<Record<string, unknown>>,
+  })
   const r = a.router({
     name: 'test',
     routes: [

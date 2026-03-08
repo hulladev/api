@@ -1,6 +1,5 @@
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
-
 import { api } from '../src/api'
 
 describe('adapters', () => {

@@ -1,6 +1,5 @@
 import { api } from '@hulla/api'
 import { describe, expect, expectTypeOf, test } from 'vitest'
-
 import { mutation } from '../src/mutation'
 
 const a = api()

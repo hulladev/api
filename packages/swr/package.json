@@ -65,17 +65,5 @@
   },
   "devDependencies": {
     "@hulla/api": "^1.2.5"
-  },
-  "tsdown": {
-    "clean": true,
-    "dts": true,
-    "entry": "src/index.ts",
-    "fixedExtension": false,
-    "format": [
-      "esm",
-      "cjs"
-    ],
-    "outDir": "dist",
-    "publint": true
   }
 }

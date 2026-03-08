@@ -37,13 +37,13 @@ After cloning the repository and doing `bun install` you're free to do any chang
 
 Here are some useful commands _(these will trigger and cache in all packages automatically, via `turborepo`. Consider these commands as global unless stated otherwise)_
 
-| Command | Description |
-| --- | --- |
-| `bun install` | Installs dependencies |
+| Command         | Description                                              |
+| --------------- | -------------------------------------------------------- |
+| `bun install`   | Installs dependencies                                    |
 | `bun run clean` | Removes workspace install/build artifacts and `bun.lock` |
-| `bun run lint` | Runs oxlint |
-| `bun run fmt` | Runs oxfmt |
-| `bun run test` | Runs vitest |
+| `bun run lint`  | Runs oxlint                                              |
+| `bun run fmt`   | Runs oxfmt                                               |
+| `bun run test`  | Runs vitest                                              |
 
 Here's the project structure _(just the most important parts)_
 

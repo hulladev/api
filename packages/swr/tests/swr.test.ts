@@ -1,7 +1,6 @@
 import { api } from '@hulla/api'
 import { expectTypeOf } from 'expect-type'
 import { describe, expect, test } from 'vitest'
-
 import { mutation } from '../src/mutation'
 import { swr } from '../src/swr'
 

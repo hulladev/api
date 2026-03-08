@@ -1,6 +1,5 @@
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
-
 import { procedure } from '../src/procedure'
 import { router } from '../src/router'
 
