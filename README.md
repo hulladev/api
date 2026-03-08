@@ -19,3 +19,8 @@ What is `@hulla/api`? The next-gen API/RPC manager 🚀
 - [Project page 👀](https://hulla.dev/projects/api)
 - [Documentation 📚](https://hulla.dev/docs/api)
 - [Contribution guide 💪](CONTRIBUTING.md)
+
+## Development
+
+- Install dependencies with `bun install`
+- Run checks with `bun run lint`, `bun run fmt`, `bun run test`, and `bun run build`

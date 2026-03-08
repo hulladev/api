@@ -2,6 +2,33 @@
   "name": "@hulla/api-query",
   "version": "1.2.5",
   "description": "The next-gen API/RPC manager 🚀",
+  "keywords": [
+    "@hulla",
+    "@hulla/api",
+    "@tanstack/react-query",
+    "api",
+    "axios",
+    "firebase",
+    "graphql",
+    "http",
+    "hulla",
+    "hulla api",
+    "hulla dev",
+    "hulla/api",
+    "mutation",
+    "query",
+    "query manager",
+    "react-query",
+    "rest",
+    "rpc",
+    "server actions",
+    "supabase",
+    "swr",
+    "tanstack",
+    "trpc"
+  ],
+  "homepage": "https://hulla.dev/projects/api",
+  "license": "MIT",
   "author": {
     "name": "Samuel Hulla",
     "email": "hulla@hulla.dev",
@@ -10,13 +37,11 @@
   "maintainers": [
     "Samuel Hulla <hulla@hulla.dev>"
   ],
-  "homepage": "https://hulla.dev/projects/api",
   "repository": {
     "type": "git",
     "url": "https://github.com/hulladev/api.git",
     "directory": "packages/api"
   },
-  "license": "MIT",
   "files": [
     "dist"
   ],
@@ -31,39 +56,26 @@
       "default": "./dist/index.js"
     }
   },
-  "devDependencies": {
-    "@hulla/api": "^1.2.5"
-  },
   "scripts": {
-    "lint": "eslint --ext .ts --fix .",
-    "build": "bunchee -m",
-    "format": "prettier --write .",
+    "lint": "oxlint . --fix",
+    "build": "tsdown",
+    "fmt": "oxfmt --write .",
     "test": "vitest run",
     "clean": "rm -rf node_modules dist"
   },
-  "keywords": [
-    "hulla",
-    "api",
-    "@hulla/api",
-    "hulla/api",
-    "query",
-    "query manager",
-    "rest",
-    "graphql",
-    "rpc",
-    "http",
-    "server actions",
-    "hulla api",
-    "@hulla",
-    "hulla dev",
-    "trpc",
-    "axios",
-    "swr",
-    "firebase",
-    "supabase",
-    "mutation",
-    "react-query",
-    "@tanstack/react-query",
-    "tanstack"
-  ]
+  "devDependencies": {
+    "@hulla/api": "^1.2.5"
+  },
+  "tsdown": {
+    "clean": true,
+    "dts": true,
+    "entry": "src/index.ts",
+    "fixedExtension": false,
+    "format": [
+      "esm",
+      "cjs"
+    ],
+    "outDir": "dist",
+    "publint": true
+  }
 }

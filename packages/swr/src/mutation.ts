@@ -1,4 +1,5 @@
 import type { Adapters, Obj, RouterAdapter, Routes } from '@hulla/api'
+
 import { encodeKey as defaultEncodeMutationKey } from './keys'
 import { createMapping } from './swr'
 

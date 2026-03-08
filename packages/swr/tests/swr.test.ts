@@ -1,6 +1,7 @@
 import { api } from '@hulla/api'
 import { expectTypeOf } from 'expect-type'
 import { describe, expect, test } from 'vitest'
+
 import { mutation } from '../src/mutation'
 import { swr } from '../src/swr'
 
@@ -31,11 +32,11 @@ describe('main functionality', () => {
     expect(usersAPI.swr.get('byId', 1)).toStrictEqual([['get/users/byId', 1], expect.any(Function)])
     expect(usersAPI.swr.call('all')).toStrictEqual([['call/users/all'], expect.any(Function)])
   })
-  test('queryFn executes correctly (does not mutate procedures/requests)', () => {
+  test('queryFn executes correctly (does not mutate procedures/requests)', async () => {
     const [allKey, all] = usersAPI.swr.call('all')
     const [byIdKey, byId] = usersAPI.swr.get('byId', 1)
     expect(all()).toStrictEqual(users)
-    expect(byId()).resolves.toStrictEqual(users[0])
+    await expect(byId()).resolves.toStrictEqual(users[0])
     expect(allKey).toStrictEqual(['call/users/all'])
     expect(byIdKey).toStrictEqual(['get/users/byId', 1])
   })

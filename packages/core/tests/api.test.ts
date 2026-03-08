@@ -1,5 +1,6 @@
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
+
 import { api } from '../src/api'
 
 describe('sdk', () => {
@@ -15,7 +16,7 @@ describe('sdk', () => {
     expect(a.router).toBeTypeOf('function')
     expect(a.procedure).toBeTypeOf('function')
   })
-  test('type modifier + transforms', () => {
+  test('type modifier + transforms', async () => {
     const a = api()
     const r = a.router({
       name: 'test',
@@ -65,7 +66,7 @@ describe('sdk', () => {
     expectTypeOf(r.call('e')).toEqualTypeOf<number>()
     expect(r.call('f', '2')).toStrictEqual(2)
     expectTypeOf(r.call('f', '2')).toEqualTypeOf<number>()
-    expect(r.call('async')).resolves.toStrictEqual(2)
+    await expect(r.call('async')).resolves.toStrictEqual(2)
     expectTypeOf(r.call('async')).resolves.toEqualTypeOf<number>()
     expectTypeOf(r.call('async')).toEqualTypeOf<Promise<number>>()
   })

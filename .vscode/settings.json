@@ -1,5 +1,7 @@
 {
-  "eslint.experimental.useFlatConfig": false,
+  "editor.defaultFormatter": "oxc.oxc-vscode",
+  "oxc.format.enable": true,
+  "oxc.lint.enable": true,
   "typescript.tsdk": "node_modules/typescript/lib",
   "typescript.enablePromptUseWorkspaceTsdk": true
 }

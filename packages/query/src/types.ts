@@ -6,7 +6,7 @@ type ReverseTuple<T extends readonly unknown[], R extends any[] = []> = T extend
   : R
 
 export type QueryKey<T extends readonly unknown[]> =
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // oxlint-disable-next-line no-unused-vars
   ReverseTuple<T> extends readonly [infer _, ...infer Rest] ? T | QueryKey<ReverseTuple<Rest>> : []
 
 export type KeyMapping<R extends Routes, RN extends string> = {

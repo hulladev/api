@@ -1,4 +1,5 @@
 import type { Adapters, Obj, RouteArgs, RouteNamesWithMethod, RouterAdapter, Routes } from '@hulla/api'
+
 import type { KeyMapping, QueryKey } from './types'
 import { keys } from './utils'
 

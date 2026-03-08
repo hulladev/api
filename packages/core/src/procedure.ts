@@ -75,7 +75,7 @@ export function procedure<
             // @ts-expect-error ts cannot know in advance wether the input will match
             input,
           })
-        : customContext ?? defaultContext) as ResContext<CTX>
+        : (customContext ?? defaultContext)) as ResContext<CTX>
 
     type Resolve<O, I extends Schema<any, any, PK> | Fn<any, any> | undefined> = {
       name: N

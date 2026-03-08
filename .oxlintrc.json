@@ -1,0 +1,22 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "vitest"],
+  "categories": {
+    "correctness": "error"
+  },
+  "ignorePatterns": ["dist/**", "node_modules/**", ".cache/**", ".turbo/**"],
+  "overrides": [
+    {
+      "files": ["packages/*/tests/**/*.ts"],
+      "globals": {
+        "afterAll": "readonly",
+        "beforeAll": "readonly",
+        "beforeEach": "readonly",
+        "describe": "readonly",
+        "expect": "readonly",
+        "expectTypeOf": "readonly",
+        "test": "readonly"
+      }
+    }
+  ]
+}

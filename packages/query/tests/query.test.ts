@@ -1,5 +1,6 @@
 import { api } from '@hulla/api'
 import { describe, expect, expectTypeOf, test } from 'vitest'
+
 import { query } from '../src/query'
 
 const a = api()
@@ -34,11 +35,11 @@ describe('main functionality', () => {
       queryFn: expect.any(Function),
     })
   })
-  test('queryFn executes correctly (does not mutate result)', () => {
+  test('queryFn executes correctly (does not mutate result)', async () => {
     const all = usersAPI.query.call('all')
     const byId = usersAPI.query.get('byId', 1)
     expect(all.queryFn()).toStrictEqual(users)
-    expect(byId.queryFn()).resolves.toStrictEqual(users[0])
+    await expect(byId.queryFn()).resolves.toStrictEqual(users[0])
   })
   test('query has access to correct methods', () => {
     expect(usersAPI.query.call).toBeDefined()

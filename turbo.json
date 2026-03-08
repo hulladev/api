@@ -10,7 +10,7 @@
       "inputs": ["tests/**/*.ts"]
     },
     "lint": {},
-    "format": {},
+    "fmt": {},
     "clean": {}
   }
 }

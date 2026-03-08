@@ -1,6 +1,7 @@
 import { api } from '@hulla/api'
 import { instance, resolve, response } from '@hulla/fetch'
 import { afterAll, beforeAll, beforeEach, describe, expect, expectTypeOf, test } from 'vitest'
+
 import { addInfer, infer } from '../src/infer'
 import { request } from '../src/request'
 import { createServer, User, users } from './mockserver'
@@ -36,14 +37,14 @@ describe('standard usage', () => {
         .define(infer),
     ],
   })
-  test('standard requests', () => {
-    expect(r.get('full')).resolves.toEqual({ users })
-    expect(r.get('inferredMethod')).resolves.toEqual({ users })
-    expect(r.post('post')).resolves.toEqual({ id: 4, name: 'Bob' })
+  test('standard requests', async () => {
+    await expect(r.get('full')).resolves.toEqual({ users })
+    await expect(r.get('inferredMethod')).resolves.toEqual({ users })
+    await expect(r.post('post')).resolves.toEqual({ id: 4, name: 'Bob' })
   })
-  test('with infer', () => {
-    expect(r.get('https://api.com/users').then((r) => r.json())).resolves.toEqual({ users })
-    expect(r.get('inferWithInput').then((r) => r.json())).resolves.toEqual({ users })
+  test('with infer', async () => {
+    await expect(r.get('https://api.com/users').then((r) => r.json())).resolves.toEqual({ users })
+    await expect(r.get('inferWithInput').then((r) => r.json())).resolves.toEqual({ users })
   })
 })
 
@@ -64,18 +65,18 @@ describe('instances', () => {
         .define(i.infer),
     ],
   })
-  test('standard requests', () => {
-    expect(r.get('full')).resolves.toEqual({ users })
-    expect(r.get('inferredMethod')).resolves.toEqual({ users })
-    expect(r.post('post')).resolves.toEqual({ id: 4, name: 'Bob' })
+  test('standard requests', async () => {
+    await expect(r.get('full')).resolves.toEqual({ users })
+    await expect(r.get('inferredMethod')).resolves.toEqual({ users })
+    await expect(r.post('post')).resolves.toEqual({ id: 4, name: 'Bob' })
   })
-  test('with infer', () => {
-    expect(r.get('/users')).resolves.toEqual({ users })
-    expect(r.get('inferWithInput')).resolves.toEqual({ users })
+  test('with infer', async () => {
+    await expect(r.get('/users')).resolves.toEqual({ users })
+    await expect(r.get('inferWithInput')).resolves.toEqual({ users })
   })
 })
 
-test('output modifier', () => {
+test('output modifier', async () => {
   const i = instance({ baseURL: 'https://api.com', transform: (res) => res.json() as Promise<Record<string, unknown>> })
   const r = a.router({
     name: 'test',
@@ -106,12 +107,12 @@ test('output modifier', () => {
         .define(() => i.resolve({ url: '/users', method: 'get' }) as Promise<{ users: User[] }>),
     ],
   })
-  expect(r.get('https://api.com/users')).resolves.toEqual({ users })
+  await expect(r.get('https://api.com/users')).resolves.toEqual({ users })
   expectTypeOf(r.get('https://api.com/users')).resolves.toEqualTypeOf<{ users: User[] }>()
-  expect(r.get('withOutput')).resolves.toEqual({ users })
+  await expect(r.get('withOutput')).resolves.toEqual({ users })
   expectTypeOf(r.get('withOutput')).resolves.toEqualTypeOf<{ users: User[] }>()
-  expect(r.get('withInstance')).resolves.toEqual({ users })
+  await expect(r.get('withInstance')).resolves.toEqual({ users })
   expectTypeOf(r.get('withInstance')).resolves.toEqualTypeOf<{ users: User[] }>()
-  expect(r.get('withInstanceOutput')).resolves.toEqual({ users })
+  await expect(r.get('withInstanceOutput')).resolves.toEqual({ users })
   expectTypeOf(r.get('withInstanceOutput')).resolves.toEqualTypeOf<{ users: User[] }>()
 })

@@ -1,4 +1,5 @@
 import { describe, expect, expectTypeOf, test } from 'vitest'
+
 import { users, usersAPI } from './swr.test'
 
 // Since mutation is implemented by the same function as query, there's no point writing

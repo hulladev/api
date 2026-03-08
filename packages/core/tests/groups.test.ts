@@ -1,5 +1,6 @@
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
+
 import { api } from '../src/api'
 
 describe('groups', () => {
@@ -32,7 +33,7 @@ describe('groups', () => {
     expectTypeOf(r.call('a')).toEqualTypeOf<'baz'>()
     expect(r.call('b')).toStrictEqual('bar')
     expectTypeOf(r.call('b')).toEqualTypeOf<'bar'>()
-    expect(r.call('c')).resolves.toStrictEqual('asyncBar')
+    await expect(r.call('c')).resolves.toStrictEqual('asyncBar')
     expectTypeOf(r.call('c')).toEqualTypeOf<Promise<'asyncBar'>>()
     expect(r.call('d')).toStrictEqual('foo')
     expectTypeOf(r.call('d')).toEqualTypeOf<'foo'>()

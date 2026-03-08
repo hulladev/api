@@ -1,5 +1,6 @@
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
+
 import { api } from '../src/api'
 
 describe('adapters', () => {
@@ -62,7 +63,7 @@ describe('adapters', () => {
     expect(r2.adp('bar')).toStrictEqual('bar')
     expectTypeOf(r2.adp('bar')).toEqualTypeOf<string>()
   })
-  test('async context', () => {
+  test('async context', async () => {
     const b = api({
       context: {
         asyncFoo: async () => ({ foo: 'foo' }),
@@ -80,6 +81,6 @@ describe('adapters', () => {
           }),
       ],
     })
-    expect(r2.call('log', 'bar')).resolves.toStrictEqual('foobar')
+    await expect(r2.call('log', 'bar')).resolves.toStrictEqual('foobar')
   })
 })

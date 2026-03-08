@@ -1,5 +1,6 @@
 import { api } from '@hulla/api'
 import { describe, expect, expectTypeOf, test } from 'vitest'
+
 import { encodeKey, queryKey } from '../src/keys'
 
 const a = api()
