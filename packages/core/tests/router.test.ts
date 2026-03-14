@@ -1,7 +1,7 @@
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
+import { router } from '../src/group'
 import { procedure } from '../src/procedure'
-import { router } from '../src/router'
 
 const context = { foo: 'foo' }
 describe('main functionality', () => {
@@ -11,20 +11,31 @@ describe('main functionality', () => {
   })({
     name: 'hello',
     routes: [
-      procedure({ context, parseKey: 'parse', group: 'procedure', defaultMethod: 'call', defaultContext: context })(
-        'hi'
-      )
+      procedure({
+        context,
+        parseKey: 'parse',
+        group: 'procedure',
+        defaultMethod: 'call',
+        defaultContext: context,
+      })('hi')
         .input(() => 'foo')
         .define(({ input }) => !!input),
-      procedure({ context, parseKey: 'parse', group: 'procedure', defaultMethod: 'call', defaultContext: context })(
-        'args'
-      )
+      procedure({
+        context,
+        parseKey: 'parse',
+        group: 'procedure',
+        defaultMethod: 'call',
+        defaultContext: context,
+      })('args')
         .input((id: number) => id.toString())
         .define(({ input }) => [input]),
-      procedure({ context, parseKey: 'parse', group: 'procedure', defaultMethod: 'call', defaultContext: context })(
-        'foo',
-        'custom'
-      )
+      procedure({
+        context,
+        parseKey: 'parse',
+        group: 'procedure',
+        defaultMethod: 'call',
+        defaultContext: context,
+      })('foo', 'custom')
         .input(z.string())
         .define(({ input }) => !!input),
     ],

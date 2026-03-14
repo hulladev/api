@@ -1,7 +1,12 @@
 {
   "editor.defaultFormatter": "oxc.oxc-vscode",
-  "oxc.format.enable": true,
-  "oxc.lint.enable": true,
+  "editor.formatOnSave": true,
+  "oxc.enable": true,
+  "oxc.fmt.configPath": ".oxfmtrc.json",
   "typescript.tsdk": "node_modules/typescript/lib",
-  "typescript.enablePromptUseWorkspaceTsdk": true
+  "typescript.enablePromptUseWorkspaceTsdk": true,
+  "[typescript]": {
+    "editor.defaultFormatter": "vscode.typescript-language-features",
+    "editor.formatOnSave": true
+  },
 }

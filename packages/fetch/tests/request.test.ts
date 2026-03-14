@@ -50,7 +50,10 @@ describe('standard usage', () => {
 
 describe('instances', () => {
   const i = addInfer(
-    instance({ baseURL: 'https://api.com', transform: (res: Response) => res.json() as Promise<Record<string, unknown>> })
+    instance({
+      baseURL: 'https://api.com',
+      transform: (res: Response) => res.json() as Promise<Record<string, unknown>>,
+    })
   )
   const r = a.router({
     name: 'test',

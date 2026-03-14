@@ -63,6 +63,14 @@
     "test": "vitest run",
     "clean": "rm -rf node_modules dist"
   },
+  "peerDependencies": {
+    "zod": "^3.23.8"
+  },
+  "peerDependenciesMeta": {
+    "zod": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "zod": "^3.23.8"
   }

@@ -5,7 +5,13 @@ import { procedure } from '../src/procedure'
 
 const context = { foo: 'foo' } as const
 const parseKey = 'parse'
-const p = procedure({ context, parseKey, group: 'procedure', defaultMethod: 'call', defaultContext: context })
+const p = procedure({
+  context,
+  parseKey,
+  group: 'procedure',
+  defaultMethod: 'call',
+  defaultContext: context,
+})
 
 /**
  * these tests focus on the user-DX of having correct chains available

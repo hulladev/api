@@ -233,7 +233,11 @@ export function procedure<
           fn: (
             data: DI extends undefined
               ? { context: ResContext<CTX>; meta: ProcedureMeta<N, M, G> }
-              : { context: ResContext<CTX>; meta: ProcedureMeta<N, M, G>; input: InputResult<DI, PK> }
+              : {
+                  context: ResContext<CTX>
+                  meta: ProcedureMeta<N, M, G>
+                  input: InputResult<DI, PK>
+                }
           ) => O
           // @ts-expect-error dyanmic data args
         ) => resolve<DI, O, typeof fn>({ fn, outputFn: schemaOrFnOut, inputFn: defaultInput }),
