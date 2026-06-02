@@ -215,7 +215,9 @@ users.byId.query.options('user_123') // TanStack Query options
 
 ## Public And Protected Routes
 
-You can make common route categories explicit by exporting prepared builders:
+Use API-level `.use(...)` when a whole group of routes shares middleware.
+`init()` declares the middleware that exists, and `.use(...)` returns a scoped
+API instance where that middleware runs for every procedure and router:
 
 ```ts
 // src/api.ts
@@ -240,36 +242,28 @@ async function getAdminPermissions(): Promise<AdminPermissions> {
   return permissions
 }
 
-export const api = init({
+const api = init({
   middleware: {
     session: getSession,
     admin: getAdminPermissions,
   },
 })
 
-export const procedure = {
-  public: api.procedure,
-  protected: api.procedure.use('session'),
-  admin: api.procedure.use('session', 'admin'),
-}
-
-export const router = {
-  public: api.router,
-  protected: <const Name extends string>(name: Name) =>
-    api.router(name).use('session'),
-  admin: <const Name extends string>(name: Name) =>
-    api.router(name).use('session', 'admin'),
-}
+export const publicApi = api
+export const protectedApi = api.use('session')
+export const adminApi = api.use('session', 'admin')
 ```
 
-Route files can choose the required middleware once:
+Protected routes can now define procedures directly. The `procedure` passed into
+the router keeps the API-level selection, so `getContext()` is typed from the
+selected middleware:
 
 ```ts
 // src/routes/account.ts
 import { z } from 'zod'
-import { router } from '../api'
+import { protectedApi } from '../api'
 
-export const account = router.protected('account').define(({ procedure }) => ({
+export const account = protectedApi.router('account').define(({ procedure }) => ({
   me: procedure.handler(async ({ getContext }) => {
     const { session } = await getContext()
 
@@ -290,9 +284,9 @@ And public routes stay visibly public:
 
 ```ts
 // src/routes/health.ts
-import { router } from '../api'
+import { publicApi } from '../api'
 
-export const health = router.public('health').define(({ procedure }) => ({
+export const health = publicApi.router('health').define(({ procedure }) => ({
   check: procedure.handler(() => ({ ok: true })),
 }))
 ```
@@ -301,14 +295,16 @@ The same pattern works for standalone procedures:
 
 ```ts
 // src/actions/viewer.ts
-import { procedure } from '../api'
+import { protectedApi } from '../api'
 
-export const viewer = procedure.protected.handler(({ getContext }) =>
-  getContext()
-)
+export const viewer = protectedApi.procedure.handler(({ getContext }) => getContext())
 ```
 
-`public` and `protected` are just project-level names. Hulla only cares about the selected middleware keys, so you can use `authed`, `internal`, `admin`, `tenant`, or whatever matches your app.
+Router-level and procedure-level `.use(...)` still work on scoped APIs, so you
+can add more middleware for a specific router or procedure. `publicApi`,
+`protectedApi`, and `adminApi` are just project-level names. `@hulla/api` only cares
+about the selected middleware keys, so you can use `authed`, `internal`,
+`tenant`, or whatever matches your app.
 
 ## Integrations
 
@@ -379,7 +375,7 @@ const [mutationKey, mutate] = users.byId.mutation.options()
 
 ### OpenAPI
 
-`@hulla/api-openapi` generates Hulla client factories from OpenAPI documents.
+`@hulla/api-openapi` generates `@hulla/api` client factories from OpenAPI documents.
 
 ```bash
 bunx @hulla/api-openapi ./openapi.json --output ./src/api.generated.ts
@@ -408,7 +404,32 @@ const user = await client.users.getUsersId.call({
 })
 ```
 
-## Plugin Settings
+## Output Parsing
+
+By default, output schemas parse the resolved handler value, so async handlers work with plain schemas:
+
+```ts
+const user = api.procedure.output(z.string()).handler(async () => 'Samuel')
+
+await user.call() // "Samuel"
+```
+
+If you want output schemas to validate the exact unawaited return value instead, set `output` to `raw`.
+
+```ts
+const api = init({
+  settings: {
+    output: 'raw',
+  },
+})
+```
+
+## Development
+
+- Install dependencies with `bun install`
+- Run checks with `bun run lint`, `bun run fmt`, `bun run test`, and `bun run build`
+
+## Plugin Settings (Advanced)
 
 Plugins are injected automatically by default. You can make a plugin opt-in, select it on a router or procedure, or alias exposed members.
 
@@ -438,28 +459,3 @@ const users = api
 
 users.byId.rq.options(1)
 ```
-
-## Output Parsing
-
-By default, output schemas parse the resolved handler value, so async handlers work with plain schemas:
-
-```ts
-const user = api.procedure.output(z.string()).handler(async () => 'Samuel')
-
-await user.call() // "Samuel"
-```
-
-If you want output schemas to validate the exact unawaited return value instead, set `output` to `raw`.
-
-```ts
-const api = init({
-  settings: {
-    output: 'raw',
-  },
-})
-```
-
-## Development
-
-- Install dependencies with `bun install`
-- Run checks with `bun run lint`, `bun run fmt`, `bun run test`, and `bun run build`
