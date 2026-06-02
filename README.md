@@ -3,9 +3,16 @@
 <a href="https://pkg-size.dev/@hulla/api"><img src="https://pkg-size.dev/badge/bundle/2038" title="Bundle size for @hulla/api"></a>
 <a href="https://github.com/hulladev/api/actions/workflows/check.yml"><img src="https://github.com/hulladev/api/actions/workflows/check.yml/badge.svg" title="Passing tests"></a>
 
-`@hulla/api` is a tiny, framework-agnostic RPC/API builder for TypeScript. Define procedures once, keep their input/output types attached to the handler, and let integrations reuse the same definition for query keys, TanStack Query options, SWR tuples, mutations, or generated OpenAPI clients.
+Stop rewriting the same API contract in five different places. `@hulla/api` lets you define a call once, keep its types attached to the handler, and reuse it everywhere your app needs it.
 
-It is intentionally not a transport framework. A procedure can call `fetch`, a database, a server action, a queue, a local function, or anything else you want. `@hulla/api` gives you a typesafe and scalable way accross your codebase to call everything
+## About
+
+What is `@hulla/api`? A tiny API/RPC manager for TypeScript 🚀
+
+- Organize API, server action, database, queue, or local calls in one typed place ✅
+- Fix backend changes once, at the route definition, instead of chasing every caller 🛠️
+- Works on the client, server, serverless, or anywhere TypeScript runs 💎
+- Framework agnostic, with optional Query, SWR, and OpenAPI integrations 🧩
 
 ## Install
 
@@ -74,6 +81,9 @@ users.byId.call(1)
 users.all.key.root // "users/all"
 users.byId.key.full(1) // ["users/byId", 1]
 ```
+
+> [!NOTE]
+> The route logic stays out of your transport layer, so the same procedure can wrap `fetch`, a database query, a server action, a queue job, or a local or a server function. 
 
 ## Middleware
 
