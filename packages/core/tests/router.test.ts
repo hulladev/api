@@ -1,11 +1,11 @@
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
-import { api } from '../src/api'
+import { init } from '../src/api'
 
 describe('router builder', () => {
   test('hides router use when no middleware exists', () => {
-    const h = api()
-    const users = h.router('users')
+    const api = init()
+    const users = api.router('users')
 
     expect(users).not.toHaveProperty('use')
     expectTypeOf(users.$meta.type).toEqualTypeOf<'router'>()
@@ -19,20 +19,20 @@ describe('router builder', () => {
   })
 
   test('still hides use when plugins exist but middleware does not', () => {
-    const h = api({
+    const api = init({
       plugins: [{ id: 'noop' as const }],
     })
 
-    expect(h.procedure).not.toHaveProperty('use')
-    expect(h.router('users')).not.toHaveProperty('use')
+    expect(api.procedure).not.toHaveProperty('use')
+    expect(api.router('users')).not.toHaveProperty('use')
     // @ts-expect-error use is not available when no middleware is passed
-    expectTypeOf(h.procedure.use).toEqualTypeOf<never>()
+    expectTypeOf(api.procedure.use).toEqualTypeOf<never>()
     // @ts-expect-error use is not available when no middleware is passed
-    expectTypeOf(h.router('users').use).toEqualTypeOf<never>()
+    expectTypeOf(api.router('users').use).toEqualTypeOf<never>()
   })
 
   test('exposes router and route metadata for defined procedures', () => {
-    const h = api({
+    const api = init({
       middleware: {
         auth: () => ({ userId: 'u1' as const }),
         admin: () => ({ canDelete: true as const }),
@@ -42,7 +42,7 @@ describe('router builder', () => {
 
     let builderMeta: unknown
 
-    const routes = h
+    const routes = api
       .router('users')
       .use('auth')
       .define(({ procedure }) => {
@@ -149,14 +149,14 @@ describe('router builder', () => {
   })
 
   test('dedupes router and procedure middleware selections', () => {
-    const h = api({
+    const api = init({
       middleware: {
         auth: () => ({ userId: 'u1' as const }),
         admin: () => ({ canDelete: true as const }),
       },
     })
 
-    const routes = h
+    const routes = api
       .router('users')
       .use('auth')
       .define(({ procedure }) => ({
@@ -180,9 +180,9 @@ describe('router builder', () => {
   })
 
   test('executes router-defined procedures with sync, async, and transformed outputs', async () => {
-    const h = api()
+    const api = init()
 
-    const routes = h.router('users').define(({ procedure }) => ({
+    const routes = api.router('users').define(({ procedure }) => ({
       hello: procedure.handler(() => 'hello' as const),
       byId: procedure.input(z.string()).handler(({ input }) => input.length),
       formattedLength: procedure
@@ -215,15 +215,15 @@ describe('router builder', () => {
   })
 
   test('top-level procedure metadata does not expose router or name', () => {
-    const h = api({
+    const api = init({
       middleware: {
         auth: () => ({ userId: 'u1' as const }),
       },
     })
 
-    expect(h.procedure.$meta).not.toHaveProperty('router')
-    expect(h.procedure.$meta).not.toHaveProperty('name')
+    expect(api.procedure.$meta).not.toHaveProperty('router')
+    expect(api.procedure.$meta).not.toHaveProperty('name')
     // @ts-expect-error top-level procedure metadata has no router
-    expectTypeOf(h.procedure.$meta.router).toEqualTypeOf<never>()
+    expectTypeOf(api.procedure.$meta.router).toEqualTypeOf<never>()
   })
 })

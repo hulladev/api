@@ -1,42 +1,46 @@
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
-import { api } from '../src/api'
+import { init } from '../src/api'
 
 describe('api', () => {
-  test('exposes procedure and inherited output settings in meta', () => {
-    const h = api()
-
-    expect(h).toHaveProperty('procedure')
-    expect(h).toHaveProperty('router')
-    expect(h.$meta.settings.output).toBe('raw')
+  test('exports init as the API factory', () => {
+    expect(init()).toHaveProperty('router')
   })
 
-  test('awaited output allows async handlers for plain output schemas', async () => {
-    const h = api({ settings: { output: 'awaited' as const } })
-    const result = h.procedure.output(z.string()).handler(async () => 'hulla')
+  test('exposes procedure and inherited output settings in meta', () => {
+    const api = init()
+
+    expect(api).toHaveProperty('procedure')
+    expect(api).toHaveProperty('router')
+    expect(api.$meta.settings.output).toBe('awaited')
+  })
+
+  test('default output allows async handlers for plain output schemas', async () => {
+    const api = init()
+    const result = api.procedure.output(z.string()).handler(async () => 'hulla')
 
     expectTypeOf(result.call).returns.toEqualTypeOf<Promise<string>>()
     await expect(result.call()).resolves.toBe('hulla')
   })
 
   test('raw output requires exact unawaited output type', () => {
-    const h = api()
+    const api = init({ settings: { output: 'raw' as const } })
 
     // @ts-expect-error raw output expects an exact string return, not Promise<string>
-    h.procedure.output(z.string()).handler(async () => 'hulla')
+    api.procedure.output(z.string()).handler(async () => 'hulla')
   })
 
   test('raw output accepts promise schemas for async handlers', async () => {
-    const h = api({ settings: { output: 'raw' as const } })
-    const result = h.procedure.output(z.promise(z.string())).handler(async () => 'hulla')
+    const api = init({ settings: { output: 'raw' as const } })
+    const result = api.procedure.output(z.promise(z.string())).handler(async () => 'hulla')
 
     expectTypeOf(result.call).returns.toEqualTypeOf<Promise<string>>()
     await expect(result.call()).resolves.toBe('hulla')
   })
 
   test('raw output throws on promise returns when schema expects a plain value', () => {
-    const h = api({ settings: { output: 'raw' as const } })
-    const result = h.procedure.output(z.string()).handler((async () => 'hulla') as never)
+    const api = init({ settings: { output: 'raw' as const } })
+    const result = api.procedure.output(z.string()).handler((async () => 'hulla') as never)
 
     expect(() => result.call()).toThrow()
   })

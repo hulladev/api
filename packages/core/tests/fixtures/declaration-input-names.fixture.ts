@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { api } from '../../src/api'
+import { init } from '../../src/api'
 import type {
   APIPlugin,
   APIProcedureArgs,
@@ -31,13 +31,13 @@ function createQueryPlugin(): APIPlugin<'query', undefined, undefined, QueryProc
   }
 }
 
-const h = api({
+const api = init({
   plugins: [createQueryPlugin()],
 })
 
-const standaloneProcedure = h.procedure.input(z.string()).handler(({ input }) => input)
+const standaloneProcedure = api.procedure.input(z.string()).handler(({ input }) => input)
 
-const routeProcedure = h.router('users').define(({ procedure }) => ({
+const routeProcedure = api.router('users').define(({ procedure }) => ({
   byId: procedure.input(z.string()).handler(({ input }) => input),
 })).byId
 

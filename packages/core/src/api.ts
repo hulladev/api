@@ -12,7 +12,30 @@ import type {
   Middleware,
 } from './types.public'
 
-export function api<
+/**
+ * Creates a configured Hulla API instance.
+ *
+ * Declare middleware, plugins, and settings once, then export the returned
+ * instance from your app as `api`.
+ *
+ * @example
+ * ```ts
+ * import { init } from '@hulla/api'
+ *
+ * type Session = { userId: string }
+ *
+ * async function getSession(): Promise<Session> {
+ *   return fetch('/api/session').then((res) => res.json())
+ * }
+ *
+ * export const api = init({
+ *   middleware: {
+ *     session: getSession,
+ *   },
+ * })
+ * ```
+ */
+export function init<
   M extends Middleware = {},
   const P extends APIPluginList = [],
   const S extends APISettings<P> = DefaultAPISettings<P>,

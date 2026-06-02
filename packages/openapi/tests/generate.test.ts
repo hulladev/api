@@ -125,8 +125,9 @@ describe('OpenAPI generation', () => {
   test('generates an awaited Hulla client factory', () => {
     const code = generateCode(openAPIFixture, { operationNames: 'path' })
 
-    expect(code).toContain("const h = api({ settings: { output: 'awaited' as const } })")
-    expect(code).toContain('system: h.router("system").define(({ procedure }) => ({')
+    expect(code).toContain('import { init } from "@hulla/api"')
+    expect(code).toContain('const api = init()')
+    expect(code).toContain('system: api.router("system").define(({ procedure }) => ({')
     expect(code).toContain('getHealth: procedure')
     expect(code).toContain('        .handler(() => client({ method: "GET", path: "/health" })),')
     expect(code).toContain('client<z.input<typeof GetUsersIdOutputSchema>>')

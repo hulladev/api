@@ -136,7 +136,7 @@ export function generateCode(document: OpenAPIDocument, config: Omit<GenerateOpe
   const componentSchemas = Object.entries(document.components?.schemas ?? {})
   const operations = collectOperations(document, config)
   const lines: string[] = [
-    `import { api } from ${quote(apiImport)}`,
+    `import { init } from ${quote(apiImport)}`,
     `import { z } from ${quote(zodImport)}`,
     '',
     'export type OpenAPIRequest = {',
@@ -175,12 +175,12 @@ export function generateCode(document: OpenAPIDocument, config: Omit<GenerateOpe
   }
 
   lines.push('export function createOpenAPIClient(client: OpenAPIClient) {')
-  lines.push("  const h = api({ settings: { output: 'awaited' as const } })")
+  lines.push('  const api = init()')
   lines.push('')
   lines.push('  return {')
 
   for (const router of groupByRouter(operations)) {
-    lines.push(`    ${propertyKey(router.name)}: h.router(${quote(router.name)}).define(({ procedure }) => ({`)
+    lines.push(`    ${propertyKey(router.name)}: api.router(${quote(router.name)}).define(({ procedure }) => ({`)
 
     for (const operation of router.operations) {
       lines.push(`      ${propertyKey(operation.procedureName)}: procedure`)
@@ -268,7 +268,7 @@ function generateOutputIndex(
   apiImport: string,
   hasComponentSchemas: boolean
 ): string {
-  const lines = [`import { api } from ${quote(apiImport)}`, "import type { OpenAPIClient } from './types'"]
+  const lines = [`import { init } from ${quote(apiImport)}`, "import type { OpenAPIClient } from './types'"]
 
   for (const group of routeGroups) {
     const imports = group.operations.flatMap((operation) => [
@@ -287,12 +287,12 @@ function generateOutputIndex(
   }
 
   lines.push('', 'export function createOpenAPIClient(client: OpenAPIClient) {')
-  lines.push("  const h = api({ settings: { output: 'awaited' as const } })")
+  lines.push('  const api = init()')
   lines.push('')
   lines.push('  return {')
 
   for (const router of groupByRouter(operations)) {
-    lines.push(`    ${propertyKey(router.name)}: h.router(${quote(router.name)}).define(({ procedure }) => ({`)
+    lines.push(`    ${propertyKey(router.name)}: api.router(${quote(router.name)}).define(({ procedure }) => ({`)
 
     for (const operation of router.operations) {
       lines.push(`      ${propertyKey(operation.procedureName)}: procedure`)

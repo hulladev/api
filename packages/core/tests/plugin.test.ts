@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { z } from 'zod'
-import { api } from '../src/api'
+import { init } from '../src/api'
 import type { UseBuilderArgs } from '../src/types.private'
 import type {
   APIPlugin,
@@ -33,11 +33,38 @@ type QueryProcedureTypeHook = {
       }
     }
   }
+  mutation: {
+    options: {
+      (...args: APIProcedureArgs): {
+        mutationKey: APIProcedureKey
+        mutationFn: () => APIProcedureResult
+      }
+      (): {
+        mutationKey: readonly [APIProcedureKeyRoot]
+        mutationFn: (...args: APIProcedureArgs) => APIProcedureResult
+      }
+    }
+  }
   callProcedure: (...args: APIProcedureArgs) => APIProcedureResult
 }
 
 type SecondaryProcedureTypeHook = {
   secondaryOptions: () => 'secondary'
+}
+
+type SWRProcedureTypeHook = {
+  query: {
+    options: {
+      (...args: APIProcedureArgs): readonly [APIProcedureKey, () => APIProcedureResult]
+      (): readonly [readonly [APIProcedureKeyRoot], (...args: APIProcedureArgs) => APIProcedureResult]
+    }
+  }
+  mutation: {
+    options: {
+      (...args: APIProcedureArgs): readonly [APIProcedureKey, () => APIProcedureResult]
+      (): readonly [readonly [APIProcedureKeyRoot], (...args: APIProcedureArgs) => APIProcedureResult]
+    }
+  }
 }
 
 const queryRouter = <
@@ -92,6 +119,24 @@ const queryProcedure = <
         }
       }) as unknown as QueryProcedureTypeHook['query']['options'],
     },
+    mutation: {
+      options: ((...args: Parameters<typeof ctx.call>) => {
+        if (args.length === 0) {
+          return {
+            mutationKey: [root] as const,
+            mutationFn: (...nextArgs: Parameters<typeof ctx.call>) => invokeProcedure(ctx.call, nextArgs),
+          }
+        }
+
+        return {
+          mutationKey:
+            routerName === undefined
+              ? ([procedureName, ...args] as const)
+              : ([routerName, procedureName, ...args] as const),
+          mutationFn: () => invokeProcedure(ctx.call, args),
+        }
+      }) as unknown as QueryProcedureTypeHook['mutation']['options'],
+    },
     callProcedure: (...args: Parameters<typeof ctx.call>) => invokeProcedure(ctx.call, args),
   }
 }
@@ -120,6 +165,14 @@ function createSecondaryPlugin(): APIPlugin<
   }
 }
 
+function createSWRPlugin(): APIPlugin<'swr', undefined, typeof swrProcedure, SWRProcedureTypeHook> {
+  return {
+    id: 'swr',
+    procedure: swrProcedure,
+    procedureTypes: undefined as unknown as SWRProcedureTypeHook,
+  }
+}
+
 function createConflictingProcedurePlugin(): APIPlugin<
   'conflict',
   undefined,
@@ -135,6 +188,44 @@ function createConflictingProcedurePlugin(): APIPlugin<
   }
 }
 
+const swrProcedure = <
+  M extends Middleware,
+  IA extends UseBuilderArgs<M> | undefined,
+  LA extends UseBuilderArgs<M> | undefined,
+  SI extends Schema | undefined,
+  SO extends Schema | undefined,
+  RN extends string | undefined,
+  S extends APISettings,
+  P extends APIPluginList,
+  N extends string | undefined,
+>(
+  ctx: APIProcedurePluginContext<M, IA, LA, SI, SO, RN, S, P, N>
+) => {
+  if (!('name' in ctx.meta)) {
+    return {}
+  }
+
+  const routerName = 'router' in ctx.meta ? ctx.meta.router : undefined
+  const procedureName = ctx.meta.name
+  const root = routerName === undefined ? procedureName : `${routerName}/${procedureName}`
+  const options = ((...args: Parameters<typeof ctx.call>) => {
+    if (args.length === 0) {
+      return [[root] as const, (...nextArgs: Parameters<typeof ctx.call>) => invokeProcedure(ctx.call, nextArgs)] as const
+    }
+
+    return [[root, ...args] as const, () => invokeProcedure(ctx.call, args)] as const
+  }) as unknown as SWRProcedureTypeHook['query']['options']
+
+  return {
+    query: {
+      options,
+    },
+    mutation: {
+      options,
+    },
+  }
+}
+
 function createReservedRouterPlugin(): APIPlugin<'reserved', () => { procedure: () => string }> {
   return {
     id: 'reserved',
@@ -146,11 +237,11 @@ function createReservedRouterPlugin(): APIPlugin<'reserved', () => { procedure: 
 
 describe('plugins', () => {
   test('injects router helpers and procedure namespaces with finalized route metadata', async () => {
-    const h = api({
+    const api = init({
       plugins: [createQueryPlugin()],
     })
 
-    const routes = h.router('users').define(({ procedure, routerName }) => {
+    const routes = api.router('users').define(({ procedure, routerName }) => {
       expect(routerName()).toBe('users')
 
       return {
@@ -179,7 +270,7 @@ describe('plugins', () => {
   })
 
   test('supports opt-in plugins on routers and procedures using canonical ids', () => {
-    const h = api({
+    const api = init({
       plugins: [createQueryPlugin(), createSecondaryPlugin()],
       settings: {
         plugins: {
@@ -190,7 +281,7 @@ describe('plugins', () => {
       },
     })
 
-    const routerSelected = h
+    const routerSelected = api
       .router('users')
       .plugin('query')
       .define(({ procedure, routerName }) => {
@@ -211,7 +302,7 @@ describe('plugins', () => {
     expect(routerSelectedById.query.options('sam').queryKey).toStrictEqual(['users', 'byId', 'sam'])
     expect(routerSelectedById.secondaryOptions()).toBe('secondary')
 
-    const procedureSelected = h.router('teams').define(({ procedure }) => ({
+    const procedureSelected = api.router('teams').define(({ procedure }) => ({
       byId: procedure
         .plugin('query')
         .input(z.string())
@@ -228,7 +319,7 @@ describe('plugins', () => {
     expect(procedureSelectedById.query.options('core').queryKey).toStrictEqual(['teams', 'byId', 'core'])
     expect(procedureSelectedById.secondaryOptions()).toBe('secondary')
 
-    const unselected = h.router('posts').define(({ procedure }) => ({
+    const unselected = api.router('posts').define(({ procedure }) => ({
       list: procedure.handler(() => ['a'] as const),
     }))
 
@@ -241,7 +332,7 @@ describe('plugins', () => {
   })
 
   test('applies aliases without changing plugin ids used by .plugin()', () => {
-    const h = api({
+    const api = init({
       plugins: [createQueryPlugin()],
       settings: {
         plugins: {
@@ -260,7 +351,7 @@ describe('plugins', () => {
       },
     })
 
-    const routes = h
+    const routes = api
       .router('users')
       .plugin('query')
       .define((builders) => {
@@ -284,12 +375,57 @@ describe('plugins', () => {
     expect(aliasedRoute.callProcedure('sam')).toBe('SAM')
   })
 
+  test('allows two plugins with overlapping procedure methods when one is aliased', async () => {
+    const api = init({
+      plugins: [createQueryPlugin(), createSWRPlugin()],
+      settings: {
+        plugins: {
+          swr: {
+            aliases: {
+              procedure: {
+                query: 'swrQuery',
+                mutation: 'swrMutation',
+              },
+            },
+          },
+        },
+      },
+    })
+
+    const routes = api.router('users').define(({ procedure }) => ({
+      byId: procedure.input(z.string()).handler(({ input }) => input.toUpperCase()),
+    }))
+
+    const byId = routes.byId as typeof routes.byId & {
+      query: {
+        options: (input: string) => { queryKey: readonly string[]; queryFn: () => string }
+      }
+      mutation: {
+        options: (input: string) => { mutationKey: readonly string[]; mutationFn: () => string }
+      }
+      swrQuery: {
+        options: (input: string) => readonly [readonly string[], () => string]
+      }
+      swrMutation: {
+        options: () => readonly [readonly string[], (input: string) => string]
+      }
+    }
+
+    expect(byId.query.options('sam').queryKey).toStrictEqual(['users', 'byId', 'sam'])
+    expect(byId.mutation.options('sam').mutationKey).toStrictEqual(['users', 'byId', 'sam'])
+    expect(byId.swrQuery.options('sam')[0]).toStrictEqual(['users/byId', 'sam'])
+
+    const [mutationKey, mutate] = byId.swrMutation.options()
+    expect(mutationKey).toStrictEqual(['users/byId'])
+    expect(mutate('sam')).toBe('SAM')
+  })
+
   test('does not attach procedure plugins to unnamed top-level handlers', () => {
-    const h = api({
+    const api = init({
       plugins: [createQueryPlugin()],
     })
 
-    const standalone = h.procedure.input(z.string()).handler(({ input }) => input.toUpperCase())
+    const standalone = api.procedure.input(z.string()).handler(({ input }) => input.toUpperCase())
 
     expect(standalone.call('sam')).toBe('SAM')
     expect(standalone).not.toHaveProperty('key')
@@ -299,12 +435,12 @@ describe('plugins', () => {
 
   test('throws on duplicate plugin ids and post-alias collisions', () => {
     expect(() =>
-      api({
+      init({
         plugins: [createQueryPlugin(), createQueryPlugin()],
       })
     ).toThrow('Duplicate plugin id "query"')
 
-    const duplicateMethods = api({
+    const duplicateMethods = init({
       plugins: [createQueryPlugin(), createConflictingProcedurePlugin()],
     })
 
@@ -314,7 +450,7 @@ describe('plugins', () => {
       }))
     ).toThrow('Procedure plugin "conflict" collides on key "query"')
 
-    const reserved = api({
+    const reserved = init({
       plugins: [createReservedRouterPlugin()],
     })
 

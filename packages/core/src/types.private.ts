@@ -214,7 +214,23 @@ type ProcedureKeyNamespace<
   RN extends string | undefined,
   N extends string | undefined,
 > = {
+  /**
+   * Stable root key for this named procedure.
+   *
+   * @example
+   * ```ts
+   * users.byId.key.root // "users/byId"
+   * ```
+   */
   root: ProcedureKeyRoot<RN, N>
+  /**
+   * Full key with the procedure input appended.
+   *
+   * @example
+   * ```ts
+   * users.byId.key.full('user_123') // ["users/byId", "user_123"]
+   * ```
+   */
   full: (...args: RuntimeArgs<SI>) => readonly [ProcedureKeyRoot<RN, N>, ...RuntimeArgs<SI>]
 }
 
@@ -257,7 +273,25 @@ export type BaseProcedureHandler<
   S extends APISettings,
   N extends string | undefined = undefined,
 > = {
+  /**
+   * Executes the finalized procedure.
+   *
+   * If an input schema was provided, the argument is parsed before the handler
+   * runs. If an output schema was provided, the handler result is parsed before
+   * being returned.
+   *
+   * @example
+   * ```ts
+   * const byId = api.procedure.input(z.string()).handler(({ input }) => input)
+   *
+   * byId.call('user_123')
+   * ```
+   */
   call: RuntimeHandler<SI, SO, R, S>
+  /**
+   * Runtime metadata describing selected middleware, schemas, and router/name
+   * information when available.
+   */
   $meta: ProcedureHandlerMeta<M, IA, LA, SI, SO, RN, N>
 } & (N extends string ? { key: ProcedureKeyNamespace<SI, RN, N> } : {})
 
@@ -544,17 +578,82 @@ export type ProcedureBuilder<
   LPA extends PluginBuilderArgs<P> | undefined = undefined,
 > = (LA extends undefined
   ? HasMiddleware<M> extends true
-    ? { use: UseBuilder<M, IA, SI, SO, RN, S, P, IPA, LPA> }
+    ? {
+        /**
+         * Selects middleware for this procedure.
+         *
+         * The selected context is available inside the handler through
+         * `getContext()`.
+         *
+         * @example
+         * ```ts
+         * const me = api.procedure.use('session').handler(({ getContext }) => getContext())
+         * ```
+         */
+        use: UseBuilder<M, IA, SI, SO, RN, S, P, IPA, LPA>
+      }
     : {}
   : {}) &
   (LPA extends undefined
     ? HasPlugins<P> extends true
-      ? { plugin: ProcedurePluginBuilder<M, IA, LA, SI, SO, RN, S, P, IPA> }
+      ? {
+          /**
+           * Selects opt-in plugins for this procedure.
+           *
+           * Plugins configured with `inject: 'opt-in'` are only attached after
+           * selecting them with `.plugin(...)`.
+           */
+          plugin: ProcedurePluginBuilder<M, IA, LA, SI, SO, RN, S, P, IPA>
+        }
       : {}
     : {}) &
-  (SI extends undefined ? { input: InputBulder<M, IA, LA, SO, RN, S, P, IPA, LPA> } : {}) &
-  (SO extends undefined ? { output: OutputBulder<M, IA, LA, SI, RN, S, P, IPA, LPA> } : {}) & {
+  (SI extends undefined
+    ? {
+        /**
+         * Adds an input schema. The runtime argument is parsed before the
+         * handler receives it as `input`.
+         *
+         * @example
+         * ```ts
+         * const byId = api.procedure.input(z.string()).handler(({ input }) => input)
+         * ```
+         */
+        input: InputBulder<M, IA, LA, SO, RN, S, P, IPA, LPA>
+      }
+    : {}) &
+  (SO extends undefined
+    ? {
+        /**
+         * Adds an output schema. By default, promises are awaited before output
+         * parsing.
+         *
+         * @example
+         * ```ts
+         * const name = api.procedure.output(z.string()).handler(async () => 'Samuel')
+         * ```
+         */
+        output: OutputBulder<M, IA, LA, SI, RN, S, P, IPA, LPA>
+      }
+    : {}) & {
+    /**
+     * Finalizes the procedure with the function that performs the work.
+     *
+     * The returned handler exposes `.call(...)` and, when defined inside a
+     * router, stable `.key` helpers.
+     *
+     * @example
+     * ```ts
+     * const byId = api.procedure
+     *   .input(z.string())
+     *   .handler(({ input }) => {
+     *     return users.find((user) => user.id === input)
+     *   })
+     * ```
+     */
     handler: HandlerBuilder<M, IA, LA, SI, SO, RN, S, P, IPA, LPA>
+    /**
+     * Builder metadata for middleware and schemas selected so far.
+     */
     $meta: ProcedureBuilderMeta<M, IA, LA, SI, SO, RN>
   }
 
@@ -626,6 +725,12 @@ export type RouterDefineBuilder<
 > = <R extends Record<string, AnyProcedureHandler>>(
   define: (
     builders: {
+      /**
+       * Procedure builder scoped to this router.
+       *
+       * Router middleware and selected router plugins are inherited by
+       * procedures created from this builder.
+       */
       procedure: ProcedureBuilder<
         M,
         UA,
@@ -649,12 +754,44 @@ export type RouterBuilder<
   S extends APISettings = DefaultAPISettings,
   P extends APIPluginList = [],
   PA extends PluginBuilderArgs<P> | undefined = undefined,
-> = (UA extends undefined ? (HasMiddleware<M> extends true ? { use: RouterUseBuilder<M, N, S, P, PA> } : {}) : {}) &
+> = (UA extends undefined
+  ? HasMiddleware<M> extends true
+    ? {
+        /**
+         * Selects middleware for every procedure defined in this router.
+         *
+         * @example
+         * ```ts
+         * const account = api.router('account').use('session').define(...)
+         * ```
+         */
+        use: RouterUseBuilder<M, N, S, P, PA>
+      }
+    : {}
+  : {}) &
   (PA extends undefined
     ? HasPlugins<P> extends true
-      ? { plugin: RouterPluginSelectorBuilder<M, UA, N, S, P> }
+      ? {
+          /**
+           * Selects opt-in plugins for this router and its procedures.
+           */
+          plugin: RouterPluginSelectorBuilder<M, UA, N, S, P>
+        }
       : {}
     : {}) & {
+    /**
+     * Defines the named procedures that belong to this router.
+     *
+     * @example
+     * ```ts
+     * const users = api.router('users').define(({ procedure }) => ({
+     *   all: procedure.handler(() => usersList),
+     * }))
+     * ```
+     */
     define: RouterDefineBuilder<M, UA, N, S, P, PA>
+    /**
+     * Runtime metadata for this router builder.
+     */
     $meta: RouterBuilderMeta<M, UA, N>
   }
