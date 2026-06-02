@@ -1,7 +1,7 @@
 staged_files="$(git diff --cached --diff-filter=ACM --name-only)"
 
 lint_files="$(printf '%s\n' "$staged_files" | grep -E '\.(ts|tsx|js|jsx|mjs|cjs)$' || true)"
-format_files="$(printf '%s\n' "$staged_files" | grep -E '\.(ts|tsx|js|jsx|mjs|cjs|json|md|yml|yaml)$' || true)"
+format_files="$(printf '%s\n' "$staged_files" | grep -E '\.(ts|tsx|js|jsx|mjs|cjs|json|yml|yaml)$' || true)"
 
 if [ -n "$lint_files" ]; then
   printf '%s\n' "$lint_files" | xargs bunx oxlint --fix
