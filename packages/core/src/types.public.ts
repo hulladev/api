@@ -1,4 +1,11 @@
-import type { BaseProcedureHandler, ProcedureBuilder, ProcedureHandlerMeta, RouterBuilder, RouterBuilderMeta, UseBuilderArgs } from './types.private'
+import type {
+  BaseProcedureHandler,
+  ProcedureBuilder,
+  ProcedureHandlerMeta,
+  RouterBuilder,
+  RouterBuilderMeta,
+  UseBuilderArgs,
+} from './types.private'
 
 export type Middleware = Record<string, () => unknown | Promise<unknown>>
 
@@ -169,19 +176,19 @@ export type APIConfig<
   plugins?: P
 }
 
-export type API<
-  M extends Middleware = {},
-  S extends APISettings = DefaultAPISettings,
-  P extends APIPluginList = [],
-> = {
+export type API<M extends Middleware = {}, S extends APISettings = DefaultAPISettings, P extends APIPluginList = []> = {
   $meta: APIMeta<M, S, P>
   procedure: ProcedureBuilder<M, undefined, undefined, undefined, undefined, undefined, S, P>
   router: <const N extends string>(name: N) => RouterBuilder<M, undefined, N, S, P>
 }
 
-export type RouterMeta<N extends string, M extends Middleware, S extends APISettings = DefaultAPISettings, P extends APIPluginList = []> =
-  APIMeta<M, S, P> & {
-    router: {
-      name: N
-    }
+export type RouterMeta<
+  N extends string,
+  M extends Middleware,
+  S extends APISettings = DefaultAPISettings,
+  P extends APIPluginList = [],
+> = APIMeta<M, S, P> & {
+  router: {
+    name: N
   }
+}

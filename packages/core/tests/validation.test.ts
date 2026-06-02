@@ -1,6 +1,6 @@
-import { z } from "zod"
-import { procedureBuilder } from "../src/procedure"
-import { describe, expect, expectTypeOf, test } from "vitest"
+import { describe, expect, expectTypeOf, test } from 'vitest'
+import { z } from 'zod'
+import { procedureBuilder } from '../src/procedure'
 
 describe('validation with no input/output', () => {
   const noMiddleware = procedureBuilder({ middleware: {}, settings: { output: 'raw' as const } })
@@ -20,10 +20,9 @@ describe('validation with no input/output', () => {
       expect(await result.call()).toBe('handler')
     })
   }
-  sharedTests(noMiddleware) 
+  sharedTests(noMiddleware)
   sharedTests(withMiddleware)
-})  
-
+})
 
 describe('validation with input', () => {
   const noMiddleware = procedureBuilder({ middleware: {}, settings: { output: 'raw' as const } })
@@ -45,7 +44,9 @@ describe('validation with input', () => {
       expect(await result.call('hulla')).toBe('hulla')
     })
     test('input parses before passing the value to the handler', () => {
-      const result = builder.input(z.string().transform((value) => value.length)).handler(({ input }) => input.toFixed(2))
+      const result = builder
+        .input(z.string().transform((value) => value.length))
+        .handler(({ input }) => input.toFixed(2))
       expectTypeOf(result.call).parameter(0).toEqualTypeOf<string>()
       expectTypeOf(result.call).returns.toEqualTypeOf<string>()
       expect(result.call('hulla')).toBe('5.00')
@@ -61,14 +62,14 @@ describe('validation with input', () => {
     })
     test('input with object schema', () => {
       const result = builder.input(z.object({ name: z.string(), age: z.number() })).handler(({ input }) => input)
-      expectTypeOf(result.call).parameter(0).toEqualTypeOf<{ name: string, age: number }>()
-      expectTypeOf(result.call).returns.toEqualTypeOf<{ name: string, age: number }>()
+      expectTypeOf(result.call).parameter(0).toEqualTypeOf<{ name: string; age: number }>()
+      expectTypeOf(result.call).returns.toEqualTypeOf<{ name: string; age: number }>()
       expect(result.call({ name: 'hulla', age: 123 })).toStrictEqual({ name: 'hulla', age: 123 })
     })
     test('input with object schema (async)', async () => {
       const result = builder.input(z.object({ name: z.string(), age: z.number() })).handler(async ({ input }) => input)
-      expectTypeOf(result.call).parameter(0).toEqualTypeOf<{ name: string, age: number }>()
-      expectTypeOf(result.call).returns.toEqualTypeOf<Promise<{ name: string, age: number  }>>()
+      expectTypeOf(result.call).parameter(0).toEqualTypeOf<{ name: string; age: number }>()
+      expectTypeOf(result.call).returns.toEqualTypeOf<Promise<{ name: string; age: number }>>()
       expect(await result.call({ name: 'hulla', age: 123 })).toStrictEqual({ name: 'hulla', age: 123 })
     })
     test('distinguishing between optional, default in input and output', () => {
@@ -82,14 +83,18 @@ describe('validation with input', () => {
       expectTypeOf(result.call).returns.pick('age').toEqualTypeOf<{ age: number }>()
       // ! optional stays | undefined since it is optional
       expectTypeOf(result.call).returns.pick('optional').toEqualTypeOf<{ optional?: string }>()
-      expectTypeOf(result.call).parameter(0).toEqualTypeOf<{ name: string, age?: number, optional?: string }>()
-      expectTypeOf(result.call).returns.toEqualTypeOf<{ name: string, age: number, optional?: string }>()
+      expectTypeOf(result.call).parameter(0).toEqualTypeOf<{ name: string; age?: number; optional?: string }>()
+      expectTypeOf(result.call).returns.toEqualTypeOf<{ name: string; age: number; optional?: string }>()
       expect(result.call({ name: 'hulla' })).toStrictEqual({ name: 'hulla', age: 123 })
       expect(result.call({ name: 'hulla', age: 123 })).toStrictEqual({ name: 'hulla', age: 123 })
-      expect(result.call({ name: 'hulla', age: 123, optional: 'hulla' })).toStrictEqual({ name: 'hulla', age: 123, optional: 'hulla' })
+      expect(result.call({ name: 'hulla', age: 123, optional: 'hulla' })).toStrictEqual({
+        name: 'hulla',
+        age: 123,
+        optional: 'hulla',
+      })
     })
   }
-  sharedTests(noMiddleware) 
+  sharedTests(noMiddleware)
   sharedTests(withMiddleware)
 })
 
@@ -132,7 +137,7 @@ describe('validation with output', () => {
       await expect(result.call()).rejects.toThrow()
     })
   }
-  sharedTests(noMiddleware) 
+  sharedTests(noMiddleware)
   sharedTests(withMiddleware)
 })
 

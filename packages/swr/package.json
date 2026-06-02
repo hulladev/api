@@ -1,6 +1,7 @@
 {
   "name": "@hulla/api-swr",
   "version": "1.2.5",
+  "type": "commonjs",
   "description": "The next-gen API/RPC manager 🚀",
   "keywords": [
     "@hulla",
@@ -59,7 +60,7 @@
   "scripts": {
     "lint": "oxlint . --fix",
     "fmt": "oxfmt --write .",
-    "build": "tsdown",
+    "build": "tsdown --config-loader unrun",
     "test": "tsc -p tsconfig.tests.json --noEmit && vitest run",
     "clean": "rm -rf node_modules dist"
   },

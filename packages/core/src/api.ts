@@ -1,11 +1,16 @@
-import { createPluginMeta } from './plugins'
+import { createPluginMeta } from './helpers/plugins'
+import { defaultSettings } from './helpers/settings'
 import { procedureBuilder } from './procedure'
 import { initRouterBuilder } from './router'
-import type { API, APIConfig, APIMeta, APIPluginList, APISettings, DefaultAPISettings, Middleware } from './types.public'
-
-const defaultSettings: DefaultAPISettings = {
-  output: 'raw',
-}
+import type {
+  API,
+  APIConfig,
+  APIMeta,
+  APIPluginList,
+  APISettings,
+  DefaultAPISettings,
+  Middleware,
+} from './types.public'
 
 export function api<
   M extends Middleware = {},

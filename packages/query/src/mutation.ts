@@ -18,16 +18,18 @@ type MutationProcedureHook = (ctx: MutationPluginContext) => Record<string, unkn
 type MutationProcedureTypeHook = {
   mutation: {
     options: APIProcedureIfInput<
-      APIProcedureOverloads<[
-        (...args: APIProcedureArgs) => {
-          mutationKey: APIProcedureKey
-          mutationFn: () => APIProcedureResult
-        },
-        () => {
-          mutationKey: readonly [APIProcedureKeyRoot]
-          mutationFn: (...args: APIProcedureArgs) => APIProcedureResult
-        },
-      ]>,
+      APIProcedureOverloads<
+        [
+          (...args: APIProcedureArgs) => {
+            mutationKey: APIProcedureKey
+            mutationFn: () => APIProcedureResult
+          },
+          () => {
+            mutationKey: readonly [APIProcedureKeyRoot]
+            mutationFn: (...args: APIProcedureArgs) => APIProcedureResult
+          },
+        ]
+      >,
       () => {
         mutationKey: readonly [APIProcedureKeyRoot]
         mutationFn: () => APIProcedureResult

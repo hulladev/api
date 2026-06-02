@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import { z } from 'zod'
 import { api } from '../src/api'
+import type { UseBuilderArgs } from '../src/types.private'
 import type {
   APIPlugin,
   APIPluginList,
@@ -14,7 +15,6 @@ import type {
   Middleware,
   Schema,
 } from '../src/types.public'
-import type { UseBuilderArgs } from '../src/types.private'
 
 function invokeProcedure<F extends (...args: any[]) => unknown>(fn: F, args: Parameters<F>): ReturnType<F> {
   return fn(...args) as ReturnType<F>
@@ -120,7 +120,11 @@ function createSecondaryPlugin(): APIPlugin<
   }
 }
 
-function createConflictingProcedurePlugin(): APIPlugin<'conflict', undefined, () => { query: { options: () => string } }> {
+function createConflictingProcedurePlugin(): APIPlugin<
+  'conflict',
+  undefined,
+  () => { query: { options: () => string } }
+> {
   return {
     id: 'conflict',
     procedure: () => ({
@@ -186,13 +190,16 @@ describe('plugins', () => {
       },
     })
 
-    const routerSelected = h.router('users').plugin('query').define(({ procedure, routerName }) => {
-      expect(routerName()).toBe('users')
+    const routerSelected = h
+      .router('users')
+      .plugin('query')
+      .define(({ procedure, routerName }) => {
+        expect(routerName()).toBe('users')
 
-      return {
-        byId: procedure.input(z.string()).handler(({ input }) => input.toUpperCase()),
-      }
-    })
+        return {
+          byId: procedure.input(z.string()).handler(({ input }) => input.toUpperCase()),
+        }
+      })
 
     const routerSelectedById = routerSelected.byId as typeof routerSelected.byId & {
       query: {
@@ -205,7 +212,10 @@ describe('plugins', () => {
     expect(routerSelectedById.secondaryOptions()).toBe('secondary')
 
     const procedureSelected = h.router('teams').define(({ procedure }) => ({
-      byId: procedure.plugin('query').input(z.string()).handler(({ input }) => input.length),
+      byId: procedure
+        .plugin('query')
+        .input(z.string())
+        .handler(({ input }) => input.length),
     }))
 
     const procedureSelectedById = procedureSelected.byId as typeof procedureSelected.byId & {
@@ -250,15 +260,18 @@ describe('plugins', () => {
       },
     })
 
-    const routes = h.router('users').plugin('query').define((builders) => {
-      const { procedure } = builders
-      const { routerInfo } = builders as typeof builders & { routerInfo: () => string }
-      expect(routerInfo()).toBe('users')
+    const routes = h
+      .router('users')
+      .plugin('query')
+      .define((builders) => {
+        const { procedure } = builders
+        const { routerInfo } = builders as typeof builders & { routerInfo: () => string }
+        expect(routerInfo()).toBe('users')
 
-      return {
-        byId: procedure.input(z.string()).handler(({ input }) => input.toUpperCase()),
-      }
-    })
+        return {
+          byId: procedure.input(z.string()).handler(({ input }) => input.toUpperCase()),
+        }
+      })
 
     const aliasedRoute = routes.byId as typeof routes.byId & {
       request: {

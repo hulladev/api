@@ -28,11 +28,12 @@ type UnionToIntersection<U> = (U extends any ? (value: U) => void : never) exten
 
 declare const procedureTypeStateKey: unique symbol
 
-type NormalizeAliasMap<T> = T extends Record<string, unknown>
-  ? {
-      [K in keyof T as K extends string ? K : never]: Extract<T[K], string>
-    }
-  : {}
+type NormalizeAliasMap<T> =
+  T extends Record<string, unknown>
+    ? {
+        [K in keyof T as K extends string ? K : never]: Extract<T[K], string>
+      }
+    : {}
 
 type RemapKeys<T, A extends Record<string, string>> = {
   [K in keyof T as K extends string ? (K extends keyof A ? A[K] : K) : never]: T[K]
@@ -44,7 +45,10 @@ type TupleIncludes<T extends readonly unknown[], V> = T extends readonly [infer 
     : TupleIncludes<Tail, V>
   : false
 
-type MergeTuple<T extends readonly unknown[], Acc extends readonly unknown[]> = T extends readonly [infer Head, ...infer Tail]
+type MergeTuple<T extends readonly unknown[], Acc extends readonly unknown[]> = T extends readonly [
+  infer Head,
+  ...infer Tail,
+]
   ? MergeTuple<Tail, TupleIncludes<Acc, Head> extends true ? Acc : [...Acc, Head]>
   : Acc
 
@@ -77,11 +81,7 @@ export type EffectiveUseBuilderArgs<
   M extends Middleware,
   IA extends UseBuilderArgs<M> | undefined,
   LA extends UseBuilderArgs<M> | undefined,
-> = MergeUseBuilderArgs<IA, LA> extends infer R
-  ? R extends UseBuilderArgs<M>
-    ? R
-    : undefined
-  : undefined
+> = MergeUseBuilderArgs<IA, LA> extends infer R ? (R extends UseBuilderArgs<M> ? R : undefined) : undefined
 
 type PluginInjectModeFor<S, I extends string> = S extends { plugins?: infer PS }
   ? PS extends Record<string, unknown>
@@ -95,7 +95,10 @@ type PluginInjectModeFor<S, I extends string> = S extends { plugins?: infer PS }
     : 'always'
   : 'always'
 
-type AutoPluginBuilderArgs<P extends APIPluginList, S extends APISettings> = P extends readonly [infer Head, ...infer Tail]
+type AutoPluginBuilderArgs<P extends APIPluginList, S extends APISettings> = P extends readonly [
+  infer Head,
+  ...infer Tail,
+]
   ? Head extends { id: infer Id extends string }
     ? PluginInjectModeFor<S, Id> extends 'opt-in'
       ? AutoPluginBuilderArgs<CastPluginList<Tail>, S>
@@ -107,22 +110,24 @@ export type EffectiveRouterPluginArgs<
   P extends APIPluginList,
   S extends APISettings,
   PA extends PluginBuilderArgs<P> | undefined,
-> = MergePluginBuilderArgs<AutoPluginBuilderArgs<P, S>, PA> extends infer R
-  ? R extends PluginBuilderArgs<P>
-    ? R
+> =
+  MergePluginBuilderArgs<AutoPluginBuilderArgs<P, S>, PA> extends infer R
+    ? R extends PluginBuilderArgs<P>
+      ? R
+      : undefined
     : undefined
-  : undefined
 
 export type EffectiveProcedurePluginArgs<
   P extends APIPluginList,
   S extends APISettings,
   IA extends PluginBuilderArgs<P> | undefined,
   LA extends PluginBuilderArgs<P> | undefined,
-> = MergePluginBuilderArgs<EffectiveRouterPluginArgs<P, S, IA>, LA> extends infer R
-  ? R extends PluginBuilderArgs<P>
-    ? R
+> =
+  MergePluginBuilderArgs<EffectiveRouterPluginArgs<P, S, IA>, LA> extends infer R
+    ? R extends PluginBuilderArgs<P>
+      ? R
+      : undefined
     : undefined
-  : undefined
 
 type FindPlugin<P extends APIPluginList, I extends string> = Extract<P[number], { id: I }>
 
@@ -162,12 +167,8 @@ type ContextMap<M extends Middleware, UA extends UseBuilderArgs<M> | undefined> 
     }
   : {}
 
-type AnyValueIsPromise<T> = Extract<
-  { [K in keyof T]: T[K] extends Promise<any> ? true : false }[keyof T],
-  true
-> extends never
-  ? false
-  : true
+type AnyValueIsPromise<T> =
+  Extract<{ [K in keyof T]: T[K] extends Promise<any> ? true : false }[keyof T], true> extends never ? false : true
 
 export type GetContext<M extends Middleware, UA extends UseBuilderArgs<M> | undefined> =
   AnyValueIsPromise<RawContextMap<M, UA>> extends true ? () => Promise<ContextMap<M, UA>> : () => ContextMap<M, UA>
@@ -196,18 +197,11 @@ type ApplyOutput<SO extends Schema | undefined, R, S extends APISettings> = SO e
 
 type RuntimeArgs<SI extends Schema | undefined> = SI extends Schema ? [input: SchemaInput<SI>] : []
 
-type RuntimeReturn<
-  SO extends Schema | undefined,
-  R,
-  S extends APISettings,
-> = ApplyOutput<SO, R, S>
+type RuntimeReturn<SO extends Schema | undefined, R, S extends APISettings> = ApplyOutput<SO, R, S>
 
-type RuntimeHandler<
-  SI extends Schema | undefined,
-  SO extends Schema | undefined,
-  R,
-  S extends APISettings,
-> = (...args: RuntimeArgs<SI>) => RuntimeReturn<SO, R, S>
+type RuntimeHandler<SI extends Schema | undefined, SO extends Schema | undefined, R, S extends APISettings> = (
+  ...args: RuntimeArgs<SI>
+) => RuntimeReturn<SO, R, S>
 
 type ProcedureKeyRoot<RN extends string | undefined, N extends string | undefined> = N extends string
   ? RN extends string
@@ -268,7 +262,9 @@ export type BaseProcedureHandler<
 } & (N extends string ? { key: ProcedureKeyNamespace<SI, RN, N> } : {})
 
 type ApplyRouterPluginHook<Plugin, Ctx> = Plugin extends { router?: infer H }
-  ? (Exclude<H, undefined> extends (ctx: Ctx) => infer O ? O : {})
+  ? Exclude<H, undefined> extends (ctx: Ctx) => infer O
+    ? O
+    : {}
   : {}
 
 type ResolveProcedurePluginArgs<
@@ -302,28 +298,28 @@ type ResolveProcedurePluginType<
             }
           : never
         : never
-  : [T] extends [APIProcedureKey]
-    ? readonly [ProcedureKeyRoot<RN, N>, ...Parameters<Handler>]
-    : [T] extends [APIProcedureKeyRoot]
-      ? ProcedureKeyRoot<RN, N>
-    : [T] extends [APIProcedureResult]
-      ? ReturnType<Handler>
-      : T extends (...args: infer A) => infer R
-        ? (...args: ResolveProcedurePluginArgs<A, Handler, RN, N>) => ResolveProcedurePluginType<R, Handler, RN, N>
-        : T extends readonly unknown[]
-          ? { [K in keyof T]: ResolveProcedurePluginType<T[K], Handler, RN, N> }
-          : T extends object
-            ? { [K in keyof T]: ResolveProcedurePluginType<T[K], Handler, RN, N> }
-            : T
+      : [T] extends [APIProcedureKey]
+        ? readonly [ProcedureKeyRoot<RN, N>, ...Parameters<Handler>]
+        : [T] extends [APIProcedureKeyRoot]
+          ? ProcedureKeyRoot<RN, N>
+          : [T] extends [APIProcedureResult]
+            ? ReturnType<Handler>
+            : T extends (...args: infer A) => infer R
+              ? (
+                  ...args: ResolveProcedurePluginArgs<A, Handler, RN, N>
+                ) => ResolveProcedurePluginType<R, Handler, RN, N>
+              : T extends readonly unknown[]
+                ? { [K in keyof T]: ResolveProcedurePluginType<T[K], Handler, RN, N> }
+                : T extends object
+                  ? { [K in keyof T]: ResolveProcedurePluginType<T[K], Handler, RN, N> }
+                  : T
 
 type ApplyProcedurePluginTypeHook<
   Plugin,
   Handler extends (...args: any[]) => any,
   RN extends string | undefined,
   N extends string | undefined,
-> = Plugin extends { procedureTypes?: infer H }
-  ? ResolveProcedurePluginType<Exclude<H, undefined>, Handler, RN, N>
-  : {}
+> = Plugin extends { procedureTypes?: infer H } ? ResolveProcedurePluginType<Exclude<H, undefined>, Handler, RN, N> : {}
 
 type RouterPluginExtensionsFromIds<
   M extends Middleware,
@@ -354,15 +350,15 @@ type ProcedurePluginExtensionsFromIds<
   R,
 > = N extends string
   ? [NormalizeSelection<Ids>[number]] extends [never]
-  ? {}
-  : UnionToIntersection<
-      {
-        [K in NormalizeSelection<Ids>[number] & string]: RemapKeys<
-          ApplyProcedurePluginTypeHook<FindPlugin<P, K>, RuntimeHandler<SI, SO, R, S>, RN, N>,
-          ProcedureAliasMapFor<S, K>
-        >
-      }[NormalizeSelection<Ids>[number] & string]
-    >
+    ? {}
+    : UnionToIntersection<
+        {
+          [K in NormalizeSelection<Ids>[number] & string]: RemapKeys<
+            ApplyProcedurePluginTypeHook<FindPlugin<P, K>, RuntimeHandler<SI, SO, R, S>, RN, N>,
+            ProcedureAliasMapFor<S, K>
+          >
+        }[NormalizeSelection<Ids>[number] & string]
+      >
   : {}
 
 export type ProcedureHandler<
@@ -443,13 +439,49 @@ export type HandlerBuilder<
   ? S['output'] extends 'raw'
     ? <F extends (data: HandlerSetupData<M, IA, LA, SI>) => SchemaInput<SO>>(
         fn: F
-      ) => ProcedureHandler<M, IA, LA, SI, SO, RN, ReturnType<F>, S, undefined, P, EffectiveProcedurePluginArgs<P, S, IPA, LPA>>
+      ) => ProcedureHandler<
+        M,
+        IA,
+        LA,
+        SI,
+        SO,
+        RN,
+        ReturnType<F>,
+        S,
+        undefined,
+        P,
+        EffectiveProcedurePluginArgs<P, S, IPA, LPA>
+      >
     : <F extends (data: HandlerSetupData<M, IA, LA, SI>) => SchemaInput<SO> | Promise<SchemaInput<SO>>>(
         fn: F
-      ) => ProcedureHandler<M, IA, LA, SI, SO, RN, ReturnType<F>, S, undefined, P, EffectiveProcedurePluginArgs<P, S, IPA, LPA>>
+      ) => ProcedureHandler<
+        M,
+        IA,
+        LA,
+        SI,
+        SO,
+        RN,
+        ReturnType<F>,
+        S,
+        undefined,
+        P,
+        EffectiveProcedurePluginArgs<P, S, IPA, LPA>
+      >
   : <F extends (data: HandlerSetupData<M, IA, LA, SI>) => unknown>(
       fn: F
-    ) => ProcedureHandler<M, IA, LA, SI, SO, RN, ReturnType<F>, S, undefined, P, EffectiveProcedurePluginArgs<P, S, IPA, LPA>>
+    ) => ProcedureHandler<
+      M,
+      IA,
+      LA,
+      SI,
+      SO,
+      RN,
+      ReturnType<F>,
+      S,
+      undefined,
+      P,
+      EffectiveProcedurePluginArgs<P, S, IPA, LPA>
+    >
 
 export type UseBuilder<
   M extends Middleware,
@@ -461,9 +493,7 @@ export type UseBuilder<
   P extends APIPluginList = [],
   IPA extends PluginBuilderArgs<P> | undefined = undefined,
   LPA extends PluginBuilderArgs<P> | undefined = undefined,
-> = <UA extends UseBuilderArgs<M>>(
-  ...selected: UA
-) => ProcedureBuilder<M, IA, UA, SI, SO, RN, S, P, IPA, LPA>
+> = <UA extends UseBuilderArgs<M>>(...selected: UA) => ProcedureBuilder<M, IA, UA, SI, SO, RN, S, P, IPA, LPA>
 
 export type ProcedurePluginBuilder<
   M extends Middleware,
@@ -475,9 +505,7 @@ export type ProcedurePluginBuilder<
   S extends APISettings,
   P extends APIPluginList = [],
   IPA extends PluginBuilderArgs<P> | undefined = undefined,
-> = <PA extends PluginBuilderArgs<P>>(
-  ...selected: PA
-) => ProcedureBuilder<M, IA, LA, SI, SO, RN, S, P, IPA, PA>
+> = <PA extends PluginBuilderArgs<P>>(...selected: PA) => ProcedureBuilder<M, IA, LA, SI, SO, RN, S, P, IPA, PA>
 
 export type InputBulder<
   M extends Middleware,
@@ -621,11 +649,7 @@ export type RouterBuilder<
   S extends APISettings = DefaultAPISettings,
   P extends APIPluginList = [],
   PA extends PluginBuilderArgs<P> | undefined = undefined,
-> = (UA extends undefined
-  ? HasMiddleware<M> extends true
-    ? { use: RouterUseBuilder<M, N, S, P, PA> }
-    : {}
-  : {}) &
+> = (UA extends undefined ? (HasMiddleware<M> extends true ? { use: RouterUseBuilder<M, N, S, P, PA> } : {}) : {}) &
   (PA extends undefined
     ? HasPlugins<P> extends true
       ? { plugin: RouterPluginSelectorBuilder<M, UA, N, S, P> }

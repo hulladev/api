@@ -18,16 +18,18 @@ type QueryProcedureHook = (ctx: QueryPluginContext) => Record<string, unknown>
 type QueryProcedureTypeHook = {
   query: {
     options: APIProcedureIfInput<
-      APIProcedureOverloads<[
-        (...args: APIProcedureArgs) => {
-          queryKey: APIProcedureKey
-          queryFn: () => APIProcedureResult
-        },
-        () => {
-          queryKey: readonly [APIProcedureKeyRoot]
-          queryFn: (...args: APIProcedureArgs) => APIProcedureResult
-        },
-      ]>,
+      APIProcedureOverloads<
+        [
+          (...args: APIProcedureArgs) => {
+            queryKey: APIProcedureKey
+            queryFn: () => APIProcedureResult
+          },
+          () => {
+            queryKey: readonly [APIProcedureKeyRoot]
+            queryFn: (...args: APIProcedureArgs) => APIProcedureResult
+          },
+        ]
+      >,
       () => {
         queryKey: readonly [APIProcedureKeyRoot]
         queryFn: () => APIProcedureResult

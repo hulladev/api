@@ -1,5 +1,6 @@
-import { mergeSelections, resolveRouterPluginMembers, attachProcedurePluginMembers } from './plugins'
-import { attachProcedureCoreMembers, procedureBuilder } from './procedure'
+import { attachProcedurePluginMembers, mergeSelections, resolveRouterPluginMembers } from './helpers/plugins'
+import { attachProcedureCoreMembers } from './helpers/procedure'
+import { procedureBuilder } from './procedure'
 import type {
   EffectiveRouterPluginArgs,
   PluginBuilderArgs,
@@ -19,9 +20,10 @@ function routerBuilder<
 >(meta: APIMeta<M, S, P>, state: RouterState<M, UA, N, P, PA>): RouterBuilder<M, UA, N, S, P, PA> {
   const hasMiddleware = Object.keys(meta.middleware).length > 0
   const hasPlugins = meta.plugins.list.length > 0
-  const activePlugins = mergeSelections(meta.plugins.auto as readonly string[], state.plugins as readonly string[] | undefined) as
-    | EffectiveRouterPluginArgs<P, S, PA>
-    | undefined
+  const activePlugins = mergeSelections(
+    meta.plugins.auto as readonly string[],
+    state.plugins as readonly string[] | undefined
+  ) as EffectiveRouterPluginArgs<P, S, PA> | undefined
 
   const use = <const SM extends UseBuilderArgs<M>>(...selected: SM) => {
     return routerBuilder<M, SM, N, S, P, PA>(meta, { ...state, use: selected })
@@ -52,19 +54,24 @@ function routerBuilder<
       inheritedPlugins: activePlugins as EffectiveRouterPluginArgs<P, S, PA>,
       plugins: undefined,
     })
-    const pluginMembers = resolveRouterPluginMembers(meta, activePlugins as readonly string[] | undefined, (pluginDef, pluginSettings) => {
-      return pluginDef.router?.({
-        api: meta,
-        pluginId: pluginDef.id,
-        pluginSettings,
-        router: {
-          type: 'router',
-          name: state.name,
-          middleware: (state.use ?? []) as RouterBuilder<M, UA, N, S, P, PA>['$meta']['middleware'],
-        },
-        procedure,
-      }) as Record<string, unknown> | undefined
-    }, ['procedure'])
+    const pluginMembers = resolveRouterPluginMembers(
+      meta,
+      activePlugins as readonly string[] | undefined,
+      (pluginDef, pluginSettings) => {
+        return pluginDef.router?.({
+          api: meta,
+          pluginId: pluginDef.id,
+          pluginSettings,
+          router: {
+            type: 'router',
+            name: state.name,
+            middleware: (state.use ?? []) as RouterBuilder<M, UA, N, S, P, PA>['$meta']['middleware'],
+          },
+          procedure,
+        }) as Record<string, unknown> | undefined
+      },
+      ['procedure']
+    )
 
     const defined = build({
       procedure,
@@ -78,16 +85,21 @@ function routerBuilder<
       } as typeof route.$meta
       attachProcedureCoreMembers(route as never)
 
-      attachProcedurePluginMembers(meta, route as unknown as Record<string, unknown>, (pluginDef, pluginSettings) => {
-        return pluginDef.procedure?.({
-          api: meta,
-          pluginId: pluginDef.id,
-          pluginSettings,
-          procedure: route as never,
-          call: route.call as never,
-          meta: route.$meta as never,
-        }) as Record<string, unknown> | undefined
-      }, ['$meta', 'call', 'key'])
+      attachProcedurePluginMembers(
+        meta,
+        route as unknown as Record<string, unknown>,
+        (pluginDef, pluginSettings) => {
+          return pluginDef.procedure?.({
+            api: meta,
+            pluginId: pluginDef.id,
+            pluginSettings,
+            procedure: route as never,
+            call: route.call as never,
+            meta: route.$meta as never,
+          }) as Record<string, unknown> | undefined
+        },
+        ['$meta', 'call', 'key']
+      )
     }
 
     return defined as ReturnType<typeof define>

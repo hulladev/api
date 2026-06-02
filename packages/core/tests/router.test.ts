@@ -42,24 +42,30 @@ describe('router builder', () => {
 
     let builderMeta: unknown
 
-    const routes = h.router('users').use('auth').define(({ procedure }) => {
-      expectTypeOf(procedure.$meta.type).toEqualTypeOf<'procedure'>()
-      expectTypeOf(procedure.$meta.router).toEqualTypeOf<'users'>()
-      expectTypeOf(procedure.$meta.middleware.router).toEqualTypeOf<['auth']>()
-      expectTypeOf(procedure.$meta.middleware.procedure).toEqualTypeOf<[]>()
-      expectTypeOf(procedure.$meta.middleware.selected).toEqualTypeOf<['auth']>()
-      expectTypeOf(procedure.$meta.input).toEqualTypeOf<undefined>()
-      expectTypeOf(procedure.$meta.output).toEqualTypeOf<undefined>()
-      builderMeta = procedure.$meta
+    const routes = h
+      .router('users')
+      .use('auth')
+      .define(({ procedure }) => {
+        expectTypeOf(procedure.$meta.type).toEqualTypeOf<'procedure'>()
+        expectTypeOf(procedure.$meta.router).toEqualTypeOf<'users'>()
+        expectTypeOf(procedure.$meta.middleware.router).toEqualTypeOf<['auth']>()
+        expectTypeOf(procedure.$meta.middleware.procedure).toEqualTypeOf<[]>()
+        expectTypeOf(procedure.$meta.middleware.selected).toEqualTypeOf<['auth']>()
+        expectTypeOf(procedure.$meta.input).toEqualTypeOf<undefined>()
+        expectTypeOf(procedure.$meta.output).toEqualTypeOf<undefined>()
+        builderMeta = procedure.$meta
 
-      return {
-        getUser: procedure.handler(({ getContext }) => getContext()),
-        deleteUser: procedure.use('admin').input(deleteInput).handler(({ getContext, input }) => ({
-          context: getContext(),
-          input,
-        })),
-      }
-    })
+        return {
+          getUser: procedure.handler(({ getContext }) => getContext()),
+          deleteUser: procedure
+            .use('admin')
+            .input(deleteInput)
+            .handler(({ getContext, input }) => ({
+              context: getContext(),
+              input,
+            })),
+        }
+      })
     expectTypeOf(routes.getUser.$meta.type).toEqualTypeOf<'procedure'>()
     expectTypeOf(routes.getUser.$meta.name).toEqualTypeOf<'getUser'>()
     expectTypeOf(routes.getUser.$meta.router).toEqualTypeOf<'users'>()
@@ -150,9 +156,12 @@ describe('router builder', () => {
       },
     })
 
-    const routes = h.router('users').use('auth').define(({ procedure }) => ({
-      same: procedure.use('auth', 'admin').handler(({ getContext }) => getContext()),
-    }))
+    const routes = h
+      .router('users')
+      .use('auth')
+      .define(({ procedure }) => ({
+        same: procedure.use('auth', 'admin').handler(({ getContext }) => getContext()),
+      }))
 
     expectTypeOf(routes.same.$meta.name).toEqualTypeOf<'same'>()
     expectTypeOf(routes.same.$meta.router).toEqualTypeOf<'users'>()

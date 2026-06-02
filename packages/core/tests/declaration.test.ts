@@ -2,8 +2,8 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, describe, expect, test } from 'vitest'
 import ts from 'typescript'
+import { afterEach, describe, expect, test } from 'vitest'
 
 const testDir = dirname(fileURLToPath(import.meta.url))
 

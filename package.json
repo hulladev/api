@@ -1,5 +1,6 @@
 {
   "name": "api",
+  "type": "commonjs",
   "description": "The next-gen API/RPC manager 🚀",
   "homepage": "https://hulla.dev/projects/api",
   "author": {

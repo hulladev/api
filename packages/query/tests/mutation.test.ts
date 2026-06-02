@@ -1,6 +1,6 @@
-import { api } from '../../core/src'
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
+import { api } from '../../core/src'
 import { mutation } from '../src/mutation'
 
 const users = [
@@ -14,9 +14,7 @@ const routes = api({
   .router('users')
   .define(({ procedure }) => ({
     all: procedure.handler(() => users),
-    byId: procedure
-      .input(z.number())
-      .handler(async ({ input }) => users.find((user) => user.id === input)!),
+    byId: procedure.input(z.number()).handler(async ({ input }) => users.find((user) => user.id === input)!),
   }))
 
 describe('mutation plugin', () => {

@@ -14,7 +14,9 @@ describe('procedure syntax', () => {
 
   test('noMiddleware has all methods available', () => {
     expectAlwaysAvailable(noMiddleware)
-    expectTypeOf(noMiddleware.input).toEqualTypeOf<InputBulder<{}, undefined, undefined, undefined, undefined, { output: 'raw' }>>()
+    expectTypeOf(noMiddleware.input).toEqualTypeOf<
+      InputBulder<{}, undefined, undefined, undefined, undefined, { output: 'raw' }>
+    >()
     expectTypeOf(noMiddleware.output).toEqualTypeOf<
       OutputBulder<{}, undefined, undefined, undefined, undefined, { output: 'raw' }>
     >()
@@ -37,7 +39,15 @@ describe('procedure syntax', () => {
       OutputBulder<{ readonly foo: () => string }, undefined, undefined, undefined, undefined, { output: 'raw' }>
     >()
     expectTypeOf(withMiddleware.handler).toEqualTypeOf<
-      HandlerBuilder<{ readonly foo: () => string }, undefined, undefined, undefined, undefined, undefined, { output: 'raw' }>
+      HandlerBuilder<
+        { readonly foo: () => string },
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { output: 'raw' }
+      >
     >()
   })
   test('use is available when middleware is passed', () => {

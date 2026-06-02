@@ -2,7 +2,10 @@ import { describe, expect, expectTypeOf, test } from 'vitest'
 import { procedureBuilder } from '../src/procedure'
 
 describe('middleware', () => {
-  const syncM = procedureBuilder({ middleware: { foo: () => 'foo', bar: () => 'bar' }, settings: { output: 'raw' as const } })
+  const syncM = procedureBuilder({
+    middleware: { foo: () => 'foo', bar: () => 'bar' },
+    settings: { output: 'raw' as const },
+  })
 
   test('sync middleware is resolved synchronously', () => {
     const result = syncM.use('foo', 'bar').handler(() => 'handler')

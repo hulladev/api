@@ -18,10 +18,12 @@ type MutationProcedureHook = (ctx: MutationPluginContext) => Record<string, unkn
 type MutationProcedureTypeHook = {
   mutation: {
     options: APIProcedureIfInput<
-      APIProcedureOverloads<[
-        (...args: APIProcedureArgs) => readonly [APIProcedureKey, () => APIProcedureResult],
-        () => readonly [readonly [APIProcedureKeyRoot], (...args: APIProcedureArgs) => APIProcedureResult],
-      ]>,
+      APIProcedureOverloads<
+        [
+          (...args: APIProcedureArgs) => readonly [APIProcedureKey, () => APIProcedureResult],
+          () => readonly [readonly [APIProcedureKeyRoot], (...args: APIProcedureArgs) => APIProcedureResult],
+        ]
+      >,
       () => readonly [readonly [APIProcedureKeyRoot], () => APIProcedureResult]
     >
   }
@@ -49,10 +51,7 @@ export function mutation(_config: MutationPluginConfig = {}) {
         ] as const
       }
 
-      return [
-        procedure.key.full(...(args as [] | [unknown])),
-        () => ctx.call(...(args as [] | [unknown])),
-      ] as const
+      return [procedure.key.full(...(args as [] | [unknown])), () => ctx.call(...(args as [] | [unknown]))] as const
     }) as unknown as MutationProcedureTypeHook['mutation']['options']
 
     return {

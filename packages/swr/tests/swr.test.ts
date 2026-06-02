@@ -1,6 +1,6 @@
-import { api } from '../../core/src'
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
+import { api } from '../../core/src'
 import { mutation } from '../src/mutation'
 import { swr } from '../src/swr'
 
@@ -26,9 +26,7 @@ export const routes = api({
   .router('users')
   .define(({ procedure }) => ({
     all: procedure.handler(() => users),
-    byId: procedure
-      .input(z.number())
-      .handler(async ({ input }) => users.find((user) => user.id === input)!),
+    byId: procedure.input(z.number()).handler(async ({ input }) => users.find((user) => user.id === input)!),
   }))
 
 describe('swr plugin', () => {
@@ -62,9 +60,8 @@ describe('swr plugin', () => {
   test('works alongside a second plugin on the same handlers', async () => {
     const aliasedRoute = routes.byId as typeof routes.byId & {
       swrMutation: {
-        options:
-          & (() => readonly [readonly ['users/byId'], (input: number) => Promise<(typeof users)[number]>])
-          & ((input: number) => readonly [readonly ['users/byId', number], () => Promise<(typeof users)[number]>])
+        options: (() => readonly [readonly ['users/byId'], (input: number) => Promise<(typeof users)[number]>]) &
+          ((input: number) => readonly [readonly ['users/byId', number], () => Promise<(typeof users)[number]>])
       }
     }
 

@@ -18,10 +18,12 @@ type SWRProcedureHook = (ctx: SWRPluginContext) => Record<string, unknown>
 type SWRProcedureTypeHook = {
   query: {
     options: APIProcedureIfInput<
-      APIProcedureOverloads<[
-        (...args: APIProcedureArgs) => readonly [APIProcedureKey, () => APIProcedureResult],
-        () => readonly [readonly [APIProcedureKeyRoot], (...args: APIProcedureArgs) => APIProcedureResult],
-      ]>,
+      APIProcedureOverloads<
+        [
+          (...args: APIProcedureArgs) => readonly [APIProcedureKey, () => APIProcedureResult],
+          () => readonly [readonly [APIProcedureKeyRoot], (...args: APIProcedureArgs) => APIProcedureResult],
+        ]
+      >,
       () => readonly [readonly [APIProcedureKeyRoot], () => APIProcedureResult]
     >
   }
@@ -49,10 +51,7 @@ export function swr(_config: SWRPluginConfig = {}) {
         ] as const
       }
 
-      return [
-        procedure.key.full(...(args as [] | [unknown])),
-        () => ctx.call(...(args as [] | [unknown])),
-      ] as const
+      return [procedure.key.full(...(args as [] | [unknown])), () => ctx.call(...(args as [] | [unknown]))] as const
     }) as unknown as SWRProcedureTypeHook['query']['options']
 
     return {

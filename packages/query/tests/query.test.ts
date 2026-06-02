@@ -1,6 +1,6 @@
-import { api } from '../../core/src'
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
+import { api } from '../../core/src'
 import { query } from '../src/query'
 
 const users = [
@@ -14,9 +14,7 @@ const routes = api({
   .router('users')
   .define(({ procedure }) => ({
     all: procedure.handler(() => users),
-    byId: procedure
-      .input(z.number())
-      .handler(async ({ input }) => users.find((user) => user.id === input)!),
+    byId: procedure.input(z.number()).handler(async ({ input }) => users.find((user) => user.id === input)!),
   }))
 
 describe('query plugin', () => {
@@ -47,8 +45,6 @@ describe('query plugin', () => {
       queryFn: expect.any(Function),
     })
 
-
-
     expect(routes.all.query.options().queryFn()).toStrictEqual(users)
     await expect(routes.byId.query.options().queryFn(1)).resolves.toStrictEqual(users[0])
     await expect(routes.byId.query.options(1).queryFn()).resolves.toStrictEqual(users[0])
@@ -57,7 +53,9 @@ describe('query plugin', () => {
   test('does not expose key helpers on unnamed top-level procedures', async () => {
     const standalone = api({
       plugins: [query()],
-    }).procedure.input(z.number()).handler(async ({ input }) => input * 2)
+    })
+      .procedure.input(z.number())
+      .handler(async ({ input }) => input * 2)
 
     expect(await standalone.call(2)).toBe(4)
     expect(standalone).not.toHaveProperty('key')

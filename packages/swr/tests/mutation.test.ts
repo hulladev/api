@@ -10,9 +10,10 @@ describe('mutation companion plugin', () => {
     }
     const aliasedById = routes.byId as typeof routes.byId & {
       swrMutation: {
-        options:
-          & ((input: number) => readonly [readonly ['users/byId', number], () => Promise<(typeof users)[number]>])
-          & (() => readonly [readonly ['users/byId'], (input: number) => Promise<(typeof users)[number]>])
+        options: ((
+          input: number
+        ) => readonly [readonly ['users/byId', number], () => Promise<(typeof users)[number]>]) &
+          (() => readonly [readonly ['users/byId'], (input: number) => Promise<(typeof users)[number]>])
       }
     }
 
