@@ -2,6 +2,7 @@ import { createPluginMeta } from './helpers/plugins'
 import { defaultSettings } from './helpers/settings'
 import { procedureBuilder } from './procedure'
 import { initRouterBuilder } from './router'
+import type { UseBuilderArgs } from './types.private'
 import type {
   API,
   APIConfig,
@@ -11,7 +12,6 @@ import type {
   DefaultAPISettings,
   Middleware,
 } from './types.public'
-import type { UseBuilderArgs } from './types.private'
 
 /**
  * Creates a configured Hulla API instance.

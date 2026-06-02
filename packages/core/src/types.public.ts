@@ -246,11 +246,11 @@ export type APIConfig<
 
 type HasMiddleware<M extends Middleware> = keyof M extends never ? false : true
 
-export type APIUseBuilder<
-  M extends Middleware,
-  S extends APISettings,
-  P extends APIPluginList,
-> = <UA extends UseBuilderArgs<M>>(...selected: UA) => API<M, S, P, UA>
+export type APIUseBuilder<M extends Middleware, S extends APISettings, P extends APIPluginList> = <
+  UA extends UseBuilderArgs<M>,
+>(
+  ...selected: UA
+) => API<M, S, P, UA>
 
 export type API<
   M extends Middleware = {},
