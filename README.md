@@ -5,7 +5,7 @@
 
 `@hulla/api` is a tiny, framework-agnostic RPC/API builder for TypeScript. Define procedures once, keep their input/output types attached to the handler, and let integrations reuse the same definition for query keys, TanStack Query options, SWR tuples, mutations, or generated OpenAPI clients.
 
-It is intentionally not a transport framework. A procedure can call `fetch`, a database, a server action, a queue, a local function, or anything else you want. Hulla gives that call a typed shape.
+It is intentionally not a transport framework. A procedure can call `fetch`, a database, a server action, a queue, a local function, or anything else you want. `@hulla/api` gives you a typesafe and scalable way accross your codebase to call everything
 
 ## Install
 
@@ -17,9 +17,9 @@ pnpm add @hulla/api
 Optional integrations:
 
 ```bash
-pnpm add @hulla/api-query
-pnpm add @hulla/api-swr
-pnpm add @hulla/api-openapi
+pnpm add @hulla/api-query    # @tanstack/query
+pnpm add @hulla/api-swr      # swr
+pnpm add @hulla/api-openapi  # openapi/swagger -> api (gen)
 ```
 
 ## Basic Usage
@@ -47,7 +47,9 @@ const double = api.procedure
   .handler(({ input }) => input * 2)
 
 double.call(21) // 42
-double.call(null) // TS error expected type 'number' got 'null' + runtime error through zod validation
+double.call(null)
+// TS error: expected type 'number', got 'null'
+// Runtime error through zod validation
 ```
 
 Group named procedures with routers:
@@ -58,7 +60,12 @@ const users = api.router('users').define(({ procedure }) => ({
     { id: 1, name: 'Samuel' },
     { id: 2, name: 'Jane' },
   ]),
-  byId: procedure.input(z.number()).handler(({ input }) => ({ id: input, name: 'Samuel' })),
+  byId: procedure
+    .input(z.number())
+    .handler(({ input }) => ({
+      id: input,
+      name: 'Samuel',
+    })),
 }))
 
 users.all.call()
@@ -81,7 +88,9 @@ async function getSession(): Promise<Session> {
 }
 
 async function getAdminPermissions(): Promise<AdminPermissions> {
-  const permissions = await fetch('/api/admin-permissions').then((res) => res.json() as Promise<AdminPermissions>)
+  const permissions = await fetch('/api/admin-permissions').then(
+    (res) => res.json() as Promise<AdminPermissions>
+  )
 
   if (!permissions.canDeleteUsers) {
     throw new Error('Admin access required')
@@ -161,7 +170,9 @@ export const users = api
     list: procedure.handler(async ({ getContext }) => {
       const { session } = await getContext()
 
-      return fetch(`/api/users?viewer=${session.userId}`).then((res) => res.json())
+      return fetch(`/api/users?viewer=${session.userId}`).then((res) =>
+        res.json()
+      )
     }),
 
     byId: procedure
@@ -183,7 +194,9 @@ export const users = api
 The finalized procedure is the runtime value:
 
 ```ts
-const user = await users.byId.call('2f2f0f0c-0f0f-4f0f-8f0f-0f0f0f0f0f0f')
+const user = await users.byId.call(
+  '2f2f0f0c-0f0f-4f0f-8f0f-0f0f0f0f0f0f'
+)
 
 users.byId.key.root // "users/byId"
 users.byId.key.full('user_123') // ["users/byId", "user_123"]
@@ -206,7 +219,9 @@ async function getSession(): Promise<Session> {
 }
 
 async function getAdminPermissions(): Promise<AdminPermissions> {
-  const permissions = await fetch('/api/admin-permissions').then((res) => res.json() as Promise<AdminPermissions>)
+  const permissions = await fetch('/api/admin-permissions').then(
+    (res) => res.json() as Promise<AdminPermissions>
+  )
 
   if (!permissions.canDeleteUsers) {
     throw new Error('Admin access required')
@@ -230,8 +245,10 @@ export const procedure = {
 
 export const router = {
   public: api.router,
-  protected: <const Name extends string>(name: Name) => api.router(name).use('session'),
-  admin: <const Name extends string>(name: Name) => api.router(name).use('session', 'admin'),
+  protected: <const Name extends string>(name: Name) =>
+    api.router(name).use('session'),
+  admin: <const Name extends string>(name: Name) =>
+    api.router(name).use('session', 'admin'),
 }
 ```
 
@@ -249,11 +266,13 @@ export const account = router.protected('account').define(({ procedure }) => ({
     return { id: session.userId }
   }),
 
-  rename: procedure.input(z.string().min(1)).handler(async ({ input, getContext }) => {
-    const { session } = await getContext()
+  rename: procedure
+    .input(z.string().min(1))
+    .handler(async ({ input, getContext }) => {
+      const { session } = await getContext()
 
-    return { id: session.userId, name: input }
-  }),
+      return { id: session.userId, name: input }
+    }),
 }))
 ```
 
@@ -274,7 +293,9 @@ The same pattern works for standalone procedures:
 // src/actions/viewer.ts
 import { procedure } from '../api'
 
-export const viewer = procedure.protected.handler(({ getContext }) => getContext())
+export const viewer = procedure.protected.handler(({ getContext }) =>
+  getContext()
+)
 ```
 
 `public` and `protected` are just project-level names. Hulla only cares about the selected middleware keys, so you can use `authed`, `internal`, `admin`, `tenant`, or whatever matches your app.
@@ -295,8 +316,14 @@ const api = init({
 })
 
 const users = api.router('users').define(({ procedure }) => ({
-  all: procedure.handler(() => fetch('/api/users').then((res) => res.json())),
-  byId: procedure.input(z.number()).handler(({ input }) => fetch(`/api/users/${input}`).then((res) => res.json())),
+  all: procedure.handler(() =>
+    fetch('/api/users').then((res) => res.json())
+  ),
+  byId: procedure
+    .input(z.number())
+    .handler(({ input }) =>
+      fetch(`/api/users/${input}`).then((res) => res.json())
+    ),
 }))
 
 const listOptions = users.all.query.options()
@@ -326,7 +353,11 @@ const api = init({
 })
 
 const users = api.router('users').define(({ procedure }) => ({
-  byId: procedure.input(z.number()).handler(({ input }) => fetch(`/api/users/${input}`).then((res) => res.json())),
+  byId: procedure
+    .input(z.number())
+    .handler(({ input }) =>
+      fetch(`/api/users/${input}`).then((res) => res.json())
+    ),
 }))
 
 const [key, fetcher] = users.byId.query.options(1)
