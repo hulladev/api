@@ -73,10 +73,27 @@ users.byId.key.full(1) // ["users/byId", 1]
 Middleware is declared once and selected where it applies:
 
 ```ts
+type Session = { userId: string }
+type AdminPermissions = { canDeleteUsers: boolean }
+
+async function getSession(): Promise<Session> {
+  return fetch('/api/session').then((res) => res.json())
+}
+
+async function getAdminPermissions(): Promise<AdminPermissions> {
+  const permissions = await fetch('/api/admin-permissions').then((res) => res.json() as Promise<AdminPermissions>)
+
+  if (!permissions.canDeleteUsers) {
+    throw new Error('Admin access required')
+  }
+
+  return permissions
+}
+
 const api = init({
   middleware: {
-    session: async () => ({ userId: 'user_123' }),
-    admin: async () => ({ canDeleteUsers: true }),
+    session: getSession,
+    admin: getAdminPermissions,
   },
 })
 
@@ -116,9 +133,15 @@ In most apps, create one configured instance and export it as `api`:
 import { init } from '@hulla/api'
 import { query } from '@hulla/api-query'
 
+type Session = { userId: string }
+
+async function getSession(): Promise<Session> {
+  return fetch('/api/session').then((res) => res.json())
+}
+
 export const api = init({
   middleware: {
-    session: async () => ({ userId: 'user_123' }),
+    session: getSession,
   },
   plugins: [query()],
 })
@@ -175,10 +198,27 @@ You can make common route categories explicit by exporting prepared builders:
 // src/api.ts
 import { init } from '@hulla/api'
 
+type Session = { userId: string }
+type AdminPermissions = { canDeleteUsers: boolean }
+
+async function getSession(): Promise<Session> {
+  return fetch('/api/session').then((res) => res.json())
+}
+
+async function getAdminPermissions(): Promise<AdminPermissions> {
+  const permissions = await fetch('/api/admin-permissions').then((res) => res.json() as Promise<AdminPermissions>)
+
+  if (!permissions.canDeleteUsers) {
+    throw new Error('Admin access required')
+  }
+
+  return permissions
+}
+
 export const api = init({
   middleware: {
-    session: async () => ({ userId: 'user_123' }),
-    admin: async () => ({ canDeleteUsers: true }),
+    session: getSession,
+    admin: getAdminPermissions,
   },
 })
 
@@ -247,11 +287,11 @@ export const viewer = procedure.protected.handler(({ getContext }) => getContext
 
 ```ts
 import { init } from '@hulla/api'
-import { mutation, query } from '@hulla/api-query'
+import { query } from '@hulla/api-query'
 import { z } from 'zod'
 
 const api = init({
-  plugins: [query(), mutation()],
+  plugins: [query()],
 })
 
 const users = api.router('users').define(({ procedure }) => ({
@@ -262,17 +302,19 @@ const users = api.router('users').define(({ procedure }) => ({
 const listOptions = users.all.query.options()
 const boundUserOptions = users.byId.query.options(1)
 const lazyUserOptions = users.byId.query.options()
+const mutationOptions = users.byId.mutation.options()
 
 // useQuery(listOptions)
 // useQuery(boundUserOptions)
 // lazyUserOptions.queryFn(1)
+// useMutation(mutationOptions)
 ```
 
 For input procedures, calling `.options(input)` binds the input into the query key and query function. Calling `.options()` returns the root key and a function that accepts the input later.
 
 ### SWR
 
-`@hulla/api-swr` exposes the same `query.options(...)` idea as an SWR tuple.
+`@hulla/api-swr` exposes `query.options(...)` and `mutation.options(...)` helpers as SWR tuples.
 
 ```ts
 import { init } from '@hulla/api'
@@ -288,14 +330,10 @@ const users = api.router('users').define(({ procedure }) => ({
 }))
 
 const [key, fetcher] = users.byId.query.options(1)
+const [mutationKey, mutate] = users.byId.mutation.options()
 
 // useSWR(key, fetcher)
-```
-
-`@hulla/api-swr` also includes a mutation helper:
-
-```ts
-import { mutation } from '@hulla/api-swr'
+// useSWRMutation(mutationKey, mutate)
 ```
 
 ### OpenAPI
