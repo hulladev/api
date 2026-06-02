@@ -7,6 +7,7 @@
       "devDependencies": {
         "@changesets/cli": "^2.30.0",
         "@commitlint/cli": "^20.4.3",
+        "@types/node": "^20.14.12",
         "commitizen": "^4.3.0",
         "cz-conventional-changelog": "^3.3.0",
         "cz-emoji": "^1.3.2-canary.2",
@@ -28,23 +29,19 @@
       "devDependencies": {
         "zod": "^3.23.8",
       },
-    },
-    "packages/fetch": {
-      "name": "@hulla/api-fetch",
-      "version": "1.2.5",
-      "devDependencies": {
-        "@hulla/api": "^1.2.5",
-        "msw": "^2.2.14",
-      },
       "peerDependencies": {
-        "@hulla/fetch": "^0.0.5",
+        "zod": "^3.23.8",
       },
+      "optionalPeers": [
+        "zod",
+      ],
     },
     "packages/query": {
       "name": "@hulla/api-query",
       "version": "1.2.5",
       "devDependencies": {
         "@hulla/api": "^1.2.5",
+        "zod": "^3.23.8",
       },
     },
     "packages/swr": {
@@ -52,6 +49,7 @@
       "version": "1.2.5",
       "devDependencies": {
         "@hulla/api": "^1.2.5",
+        "zod": "^3.23.8",
       },
     },
   },
@@ -204,13 +202,9 @@
 
     "@hulla/api": ["@hulla/api@workspace:packages/core"],
 
-    "@hulla/api-fetch": ["@hulla/api-fetch@workspace:packages/fetch"],
-
     "@hulla/api-query": ["@hulla/api-query@workspace:packages/query"],
 
     "@hulla/api-swr": ["@hulla/api-swr@workspace:packages/swr"],
-
-    "@hulla/fetch": ["@hulla/fetch@0.0.5", "", {}, "sha512-jcD0KFpGyUFUZwB37kLRgE+2mWxU31H1Fca6OaMo1648sF7qYYr1+vU1vDTgLl6WGptReMbX+6+bK+uxMCQLCg=="],
 
     "@inquirer/confirm": ["@inquirer/confirm@3.1.17", "", { "dependencies": { "@inquirer/core": "9.0.5", "@inquirer/type": "1.5.1" } }, "sha512-qCpt/AABzPynz8tr69VDvhcjwmzAryipWXtW8Vi6m651da4H/d0Bdn55LkxXD7Rp2gfgxvxzTdb66AhIA8gzBA=="],
 
@@ -434,7 +428,7 @@
 
     "@types/mute-stream": ["@types/mute-stream@0.0.4", "", { "dependencies": { "@types/node": "20.14.12" } }, "sha512-CPM9nzrCPPJHQNA9keH9CVkVI+WR5kMa+7XEs5jcGQ0VoAGnLv242w8lIVgwAEfmE4oufJRaTc9PNLQl0ioAow=="],
 
-    "@types/node": ["@types/node@12.20.55", "", {}, "sha512-J8xLz7q2OFulZ2cyGTLE1TbbZcjpno7FaN6zdJNrgAdrJ+DZzh/uFR6YrTb4C+nXakvud8Q4+rbhoIWlYQbUFQ=="],
+    "@types/node": ["@types/node@20.14.12", "", { "dependencies": { "undici-types": "5.26.5" } }, "sha512-r7wNXakLeSsGT0H1AU863vS2wa5wBOK4bWMjZz2wj+8nBx+m5PeIn0k8AloSLpRuiwdRQZwarZqHE4FNArPuJQ=="],
 
     "@types/normalize-package-data": ["@types/normalize-package-data@2.4.4", "", {}, "sha512-37i+OaWTh9qeK4LSHPsyRC7NahnGotNuZvjLSgcPzblpHB3rrCJxAOgI5gCdKm7coonsaX1Of0ILiTcnZjbfxA=="],
 
@@ -1080,8 +1074,6 @@
 
     "@commitlint/top-level/escalade": ["escalade@3.2.0", "", {}, "sha512-WUj2qlxaQtO4g6Pq5c29GTcWGDyd8itL8zTlipgECz3JesAiiOKotd8JU6otB3PACgG6xkJUyVhboMS+bje/jA=="],
 
-    "@inquirer/core/@types/node": ["@types/node@20.14.12", "", { "dependencies": { "undici-types": "5.26.5" } }, "sha512-r7wNXakLeSsGT0H1AU863vS2wa5wBOK4bWMjZz2wj+8nBx+m5PeIn0k8AloSLpRuiwdRQZwarZqHE4FNArPuJQ=="],
-
     "@inquirer/core/cli-width": ["cli-width@4.1.0", "", {}, "sha512-ouuZd4/dm2Sw5Gmqy6bGyNNNe1qt9RpmxveLSO7KcgsTnU7RXfsw+/bukWGo1abgBiMAic068rclZsO4IWmmxQ=="],
 
     "@inquirer/core/mute-stream": ["mute-stream@1.0.0", "", {}, "sha512-avsJQhyd+680gKXyG/sQc0nXaC6rBkPOfyHYcFb9+hdkqQkR9bdnkJ0AMZhke0oesPqIO+mFFJ+IdBc7mst4IA=="],
@@ -1089,6 +1081,8 @@
     "@inquirer/core/wrap-ansi": ["wrap-ansi@6.2.0", "", { "dependencies": { "ansi-styles": "4.3.0", "string-width": "4.2.3", "strip-ansi": "6.0.1" } }, "sha512-r6lPcBGxZXlIcymEu7InxDMhdW0KDxpLgoFLcguasxCaJ/SOIZwINatK9KY/tf+ZrlywOKU0UDj3ATXUBfxJXA=="],
 
     "@inquirer/type/mute-stream": ["mute-stream@1.0.0", "", {}, "sha512-avsJQhyd+680gKXyG/sQc0nXaC6rBkPOfyHYcFb9+hdkqQkR9bdnkJ0AMZhke0oesPqIO+mFFJ+IdBc7mst4IA=="],
+
+    "@manypkg/find-root/@types/node": ["@types/node@12.20.55", "", {}, "sha512-J8xLz7q2OFulZ2cyGTLE1TbbZcjpno7FaN6zdJNrgAdrJ+DZzh/uFR6YrTb4C+nXakvud8Q4+rbhoIWlYQbUFQ=="],
 
     "@manypkg/find-root/find-up": ["find-up@4.1.0", "", { "dependencies": { "locate-path": "5.0.0", "path-exists": "4.0.0" } }, "sha512-PpOwAdQ/YlXQ2vj8a3h8IipDuYRi3wceVQQGYWxNINccq40Anw7BlsEXCMbt1Zt+OLA6Fq9suIpIWD0OsnISlw=="],
 
@@ -1099,10 +1093,6 @@
     "@manypkg/get-packages/fs-extra": ["fs-extra@8.1.0", "", { "dependencies": { "graceful-fs": "4.2.11", "jsonfile": "4.0.0", "universalify": "0.1.2" } }, "sha512-yhlQgA6mnOJUKOsRUFsgJdQCvkKhcz8tlZG5HBQfReYZy46OwLcY+Zia0mtdHsOo9y/hP+CxMN0TU9QxoOtG4g=="],
 
     "@quansync/fs/quansync": ["quansync@1.0.0", "", {}, "sha512-5xZacEEufv3HSTPQuchrvV6soaiACMFnq1H8wkVioctoH3TRha9Sz66lOxRwPK/qZj7HPiSveih9yAyh98gvqA=="],
-
-    "@types/conventional-commits-parser/@types/node": ["@types/node@20.14.12", "", { "dependencies": { "undici-types": "5.26.5" } }, "sha512-r7wNXakLeSsGT0H1AU863vS2wa5wBOK4bWMjZz2wj+8nBx+m5PeIn0k8AloSLpRuiwdRQZwarZqHE4FNArPuJQ=="],
-
-    "@types/mute-stream/@types/node": ["@types/node@20.14.12", "", { "dependencies": { "undici-types": "5.26.5" } }, "sha512-r7wNXakLeSsGT0H1AU863vS2wa5wBOK4bWMjZz2wj+8nBx+m5PeIn0k8AloSLpRuiwdRQZwarZqHE4FNArPuJQ=="],
 
     "ansi-escapes/type-fest": ["type-fest@0.21.3", "", {}, "sha512-t0rzBq87m3fVcduHDUFhKmyyX+9eo6WQjZvf51Ea/M0Q7+T374Jp1aUiyUl0GKxp8M/OETVHSDvmkyPgvX+X2w=="],
 
@@ -1271,8 +1261,6 @@
     "cz-conventional-changelog/@commitlint/load/cosmiconfig/js-yaml": ["js-yaml@4.1.0", "", { "dependencies": { "argparse": "2.0.1" }, "bin": { "js-yaml": "bin/js-yaml.js" } }, "sha512-wpxZs9NoxZaJESJGIZTyDEaYpl0FKSA+FB9aJiyemKhMwkxQg63h4T1KJgUGHpTqPDNRcmmYLugrRjJlBtWvRA=="],
 
     "cz-conventional-changelog/@commitlint/load/cosmiconfig/typescript": ["typescript@5.5.4", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-Mtq29sKDAEYP7aljRgtPOpTvOfbwRWlS6dPRzwjdE+C0R4brX/GUyhHSecbHMFLNBLcJIPt9nl9yG5TZ1weH+Q=="],
-
-    "cz-conventional-changelog/@commitlint/load/cosmiconfig-typescript-loader/@types/node": ["@types/node@20.14.12", "", { "dependencies": { "undici-types": "5.26.5" } }, "sha512-r7wNXakLeSsGT0H1AU863vS2wa5wBOK4bWMjZz2wj+8nBx+m5PeIn0k8AloSLpRuiwdRQZwarZqHE4FNArPuJQ=="],
 
     "cz-conventional-changelog/@commitlint/load/cosmiconfig-typescript-loader/jiti": ["jiti@1.21.6", "", { "bin": { "jiti": "bin/jiti.js" } }, "sha512-2yTgeWTWzMWkHu6Jp9NKgePDaYHbntiwvYuuJLbbN9vl7DC9DvXKOB2BC3ZZ92D3cvV/aflH0osDfwpHepQ53w=="],
 

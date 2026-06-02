@@ -17,6 +17,12 @@
         "expectTypeOf": "readonly",
         "test": "readonly"
       }
+    },
+    {
+      "files": ["packages/**/*.test.ts"],
+      "rules": {
+        "eslint-plugin-jest/require-to-throw-message": "off"
+      }
     }
   ]
 }

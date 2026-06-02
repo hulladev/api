@@ -1,6 +1,6 @@
-import { api } from '@hulla/api'
-import { expectTypeOf } from 'expect-type'
-import { describe, expect, test } from 'vitest'
+import { api } from '../../core/src'
+import { describe, expect, expectTypeOf, test } from 'vitest'
+import { z } from 'zod'
 import { mutation } from '../src/mutation'
 import { swr } from '../src/swr'
 
@@ -9,51 +9,78 @@ export const users = [
   { id: 2, name: 'Jane' },
 ] as const
 
-const a = api()
-
-export const usersAPI = a.router({
-  name: 'users',
-  routes: [
-    a.procedure('all').define(() => users),
-    a
-      .procedure('byId', 'get')
-      .input((id: number) => users.find((u) => u.id === id)!)
-      .define(({ input }): Promise<{ id: number; name: string }> => new Promise((res) => res(input))),
-  ],
-  adapters: {
-    swr,
-    mutation,
+export const routes = api({
+  plugins: [swr(), mutation()],
+  settings: {
+    plugins: {
+      mutation: {
+        aliases: {
+          procedure: {
+            mutation: 'swrMutation',
+          },
+        },
+      },
+    },
   },
 })
+  .router('users')
+  .define(({ procedure }) => ({
+    all: procedure.handler(() => users),
+    byId: procedure
+      .input(z.number())
+      .handler(async ({ input }) => users.find((user) => user.id === input)!),
+  }))
 
-describe('main functionality', () => {
-  test('swr has correct format', () => {
-    expect(usersAPI.swr.get('byId', 1)).toStrictEqual([['get/users/byId', 1], expect.any(Function)])
-    expect(usersAPI.swr.call('all')).toStrictEqual([['call/users/all'], expect.any(Function)])
-  })
-  test('queryFn executes correctly (does not mutate procedures/requests)', async () => {
-    const [allKey, all] = usersAPI.swr.call('all')
-    const [byIdKey, byId] = usersAPI.swr.get('byId', 1)
-    expect(all()).toStrictEqual(users)
-    await expect(byId()).resolves.toStrictEqual(users[0])
-    expect(allKey).toStrictEqual(['call/users/all'])
-    expect(byIdKey).toStrictEqual(['get/users/byId', 1])
-  })
-  test('query has access to correct methods', () => {
-    expect(usersAPI.swr.call).toBeDefined()
-    expect(usersAPI.swr.get).toBeDefined()
-    // @ts-expect-error accessing non-existent method
-    expect(usersAPI.swr.post).toBeUndefined()
-  })
-})
+describe('swr plugin', () => {
+  test('uses the shared query namespace with swr semantics', async () => {
+    expectTypeOf(routes.byId.key.root).toEqualTypeOf<'users/byId'>()
+    const [boundByIdKey, boundByIdFetcher] = routes.byId.query.options(1)
+    expectTypeOf(boundByIdKey[0]).toEqualTypeOf<'users/byId'>()
+    expectTypeOf(boundByIdKey[1]).toEqualTypeOf<number>()
+    expectTypeOf(boundByIdFetcher).returns.toEqualTypeOf<Promise<(typeof users)[number]>>()
 
-describe('type checks', () => {
-  test('no args has correct type and queryKey', () => {
-    expectTypeOf(usersAPI.swr.call('all')).toEqualTypeOf<readonly [['call/users/all'], () => typeof users]>()
+    expect(routes.all.key.root).toBe('users/all')
+    expect(routes.all.key.full()).toStrictEqual(['users/all'])
+    expect(routes.byId.key.full(1)).toStrictEqual(['users/byId', 1])
+    expect(routes.byId.query.options(1)).toStrictEqual([['users/byId', 1], expect.any(Function)])
+    expect(routes.byId.query.options()).toStrictEqual([['users/byId'], expect.any(Function)])
+
+    const [allKey, allFetcher] = routes.all.query.options()
+    const [byIdKey, byIdFetcher] = routes.byId.query.options(1)
+    const [byIdRootKey, byIdRootFetcher] = routes.byId.query.options()
+    expectTypeOf(byIdRootKey[0]).toEqualTypeOf<'users/byId'>()
+    expectTypeOf(byIdRootFetcher).parameter(0).toEqualTypeOf<number>()
+
+    expect(allKey).toStrictEqual(['users/all'])
+    expect(byIdKey).toStrictEqual(['users/byId', 1])
+    expect(byIdRootKey).toStrictEqual(['users/byId'])
+    expect(allFetcher()).toStrictEqual(users)
+    await expect(byIdRootFetcher(1)).resolves.toStrictEqual(users[0])
+    await expect(byIdFetcher()).resolves.toStrictEqual(users[0])
   })
-  test('with args has correct type and queryKey', () => {
-    expectTypeOf(usersAPI.swr.get('byId', 2)).toEqualTypeOf<
-      readonly [['get/users/byId', 2], () => Promise<{ id: number; name: string }>]
-    >()
+
+  test('works alongside a second plugin on the same handlers', async () => {
+    const aliasedRoute = routes.byId as typeof routes.byId & {
+      swrMutation: {
+        options:
+          & (() => readonly [readonly ['users/byId'], (input: number) => Promise<(typeof users)[number]>])
+          & ((input: number) => readonly [readonly ['users/byId', number], () => Promise<(typeof users)[number]>])
+      }
+    }
+
+    const [aliasedMutationKey, aliasedMutate] = aliasedRoute.swrMutation.options(2)
+    expectTypeOf(aliasedMutationKey[0]).toEqualTypeOf<'users/byId'>()
+    expectTypeOf(aliasedMutationKey[1]).toEqualTypeOf<number>()
+    expectTypeOf(aliasedMutate).returns.toEqualTypeOf<Promise<(typeof users)[number]>>()
+
+    expect(aliasedRoute.swrMutation.options(2)).toStrictEqual([['users/byId', 2], expect.any(Function)])
+    expect(aliasedRoute.swrMutation.options()).toStrictEqual([['users/byId'], expect.any(Function)])
+
+    const [key, mutate] = aliasedRoute.swrMutation.options(2)
+    const [rootKey, mutateWithInput] = aliasedRoute.swrMutation.options()
+    expect(key).toStrictEqual(['users/byId', 2])
+    expect(rootKey).toStrictEqual(['users/byId'])
+    await expect(mutateWithInput(2)).resolves.toStrictEqual(users[1])
+    await expect(mutate()).resolves.toStrictEqual(users[1])
   })
 })

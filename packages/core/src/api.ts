@@ -1,32 +1,31 @@
-import { createValidator } from './helpers/validator'
-import { routerCreator } from './router'
-import type { API, Middleware, ResolvedMiddleware, ResolvedValidator, Validator } from './types'
+import { createPluginMeta } from './plugins'
+import { procedureBuilder } from './procedure'
+import { initRouterBuilder } from './router'
+import type { API, APIConfig, APIMeta, APIPluginList, APISettings, DefaultAPISettings, Middleware } from './types.public'
 
-type ApiConfigShape = {
-  middleware?: Middleware
-  validator?: Validator
+const defaultSettings: DefaultAPISettings = {
+  output: 'raw',
 }
 
-type InferMiddleware<C> = C extends { middleware?: infer MI extends Middleware } ? MI : never
-type InferValidator<C> = C extends { validator?: infer VI extends Validator } ? VI : never
-
-export function api<const C extends ApiConfigShape | undefined>(
-  config?: C
-): API<InferMiddleware<C>, InferValidator<C>> {
-  const validator = createValidator(config?.validator) as ResolvedValidator<InferValidator<C>>
-  if (!config?.middleware) {
-    const middleware = undefined as ResolvedMiddleware<InferMiddleware<C>>
-
-    return {
-      router: routerCreator<InferMiddleware<C>, typeof validator>({ middleware, validator }),
-      $meta: { middleware, validator },
-    }
+export function api<
+  M extends Middleware = {},
+  const P extends APIPluginList = [],
+  const S extends APISettings<P> = DefaultAPISettings<P>,
+>(config?: APIConfig<M, S, P>): API<M, S, P> {
+  const middleware = config?.middleware ?? ({} as M)
+  const settings = {
+    ...defaultSettings,
+    ...config?.settings,
+  } as S
+  const meta: APIMeta<M, S, P> = {
+    middleware,
+    settings,
+    plugins: createPluginMeta(config?.plugins, settings.plugins),
   }
 
-  const middleware = config.middleware as ResolvedMiddleware<InferMiddleware<C>>
-
   return {
-    router: routerCreator<InferMiddleware<C>, typeof validator>({ middleware, validator }),
-    $meta: { middleware, validator },
+    $meta: meta,
+    procedure: procedureBuilder<M, undefined, undefined, undefined, undefined, undefined, S, P>(meta),
+    router: initRouterBuilder(meta),
   }
 }

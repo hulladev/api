@@ -11,4 +11,7 @@ export default defineConfig({
       '@hulla/api-swr': resolve(__dirname, 'packages/swr/src/index.ts'),
     },
   },
+  test: {
+    exclude: ['**/*.legacy.test.ts', '**/tests.legacy/**'],
+  },
 })

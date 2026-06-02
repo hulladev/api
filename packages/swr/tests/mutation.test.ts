@@ -1,36 +1,33 @@
-import { describe, expect, expectTypeOf, test } from 'vitest'
-import { users, usersAPI } from './swr.test'
+import { describe, expect, test } from 'vitest'
+import { routes, users } from './swr.test'
 
-// Since mutation is implemented by the same function as query, there's no point writing
-// separate functional tests for it. The only thing worth checking is wether the returned
-// object has been correctly changed from query to mutation
+describe('mutation companion plugin', () => {
+  test('uses the aliased mutation helper name on finalized handlers', async () => {
+    const aliasedAll = routes.all as typeof routes.all & {
+      swrMutation: {
+        options: () => readonly [readonly ['users/all'], () => typeof users]
+      }
+    }
+    const aliasedById = routes.byId as typeof routes.byId & {
+      swrMutation: {
+        options:
+          & ((input: number) => readonly [readonly ['users/byId', number], () => Promise<(typeof users)[number]>])
+          & (() => readonly [readonly ['users/byId'], (input: number) => Promise<(typeof users)[number]>])
+      }
+    }
 
-describe('type checks', () => {
-  test('no args has correct type and queryKey', () => {
-    expectTypeOf(usersAPI.mutation.call('all')).toEqualTypeOf<readonly [['call/users/all'], () => typeof users]>()
-  })
-  test('with args has correct type and queryKey', () => {
-    expectTypeOf(usersAPI.mutation.get('byId', 2)).toEqualTypeOf<
-      readonly [['get/users/byId', 2], () => Promise<{ id: number; name: string }>]
-    >()
-  })
-  test('mutation has access to correct methods', () => {
-    // these break typescript with expectTypeOf (even tho they are correct), and matching functions does not work
-    // expect(usersAPI.mutation.call).toStrictEqual(
-    //   <N extends RouteNamesWithMethod<typeof routes, 'call'>, A extends RouteArgs<typeof routes, 'call', N>>(
-    //     route: N,
-    //     ...args: A
-    //   ) => ({ mutationKey: [`call/users/${route}`, ...args], mutationFn: () => router.invoke('call', route, args) })
-    // )
-    // expect(usersAPI.mutation.get).resolves.toStrictEqual(
-    //   <N extends RouteNamesWithMethod<typeof routes, 'get'>, A extends RouteArgs<typeof routes, 'get', N>>(
-    //     route: N,
-    //     ...args: A
-    //   ) => ({ mutationKey: [`get/users/${route}`, ...args], mutationFn: () => router.invoke('get', route, args) })
-    // )
-    expect(usersAPI.mutation.call).toBeDefined()
-    expect(usersAPI.mutation.call).toBeDefined()
-    // @ts-expect-error accessing non-existent method
-    expect(usersAPI.mutation.post).toBeUndefined()
+    expect(aliasedAll).toHaveProperty('swrMutation')
+    expect(aliasedById).toHaveProperty('swrMutation')
+
+    const [allKey, allMutation] = aliasedAll.swrMutation.options()
+    const [byIdKey, byIdMutation] = aliasedById.swrMutation.options(2)
+    const [byIdRootKey, byIdMutationWithInput] = aliasedById.swrMutation.options()
+
+    expect(allKey).toStrictEqual(['users/all'])
+    expect(byIdKey).toStrictEqual(['users/byId', 2])
+    expect(byIdRootKey).toStrictEqual(['users/byId'])
+    expect(allMutation()).toStrictEqual(users)
+    await expect(byIdMutationWithInput(2)).resolves.toStrictEqual(users[1])
+    await expect(byIdMutation()).resolves.toStrictEqual(users[1])
   })
 })

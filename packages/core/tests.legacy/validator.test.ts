@@ -33,14 +33,13 @@ const exampleSchema = {
     createSchema((input: string) => ({
       size: input.length,
     })),
-  fixedNumberString: () =>
-    createSchema((input: number) => input.toFixed(2)),
+  fixedNumberString: () => createSchema((input: number) => input.toFixed(2)),
 }
 
 describe('createValidator', () => {
   test('returns the default validator when no custom validator is provided', () => {
     const validator = createValidator()
-    const schema = z.string().transform(value => value.length)
+    const schema = z.string().transform((value) => value.length)
 
     expect(validator).toBe(defaultValidator)
     expect(validator(schema)('hulla')).toBe(5)
@@ -71,7 +70,7 @@ describe('createValidator', () => {
 describe('api validators', () => {
   test('resolves the default validator on api metadata', () => {
     const instance = api()
-    const schema = z.string().transform(value => value.length)
+    const schema = z.string().transform((value) => value.length)
     const parse: (input: string) => number = instance.$meta.validator(schema)
 
     expect(instance.$meta.validator).toBe(defaultValidator)

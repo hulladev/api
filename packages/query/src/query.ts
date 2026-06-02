@@ -1,49 +1,79 @@
-import type { Adapters, Methods, Obj, RouteArgs, RouteNamesWithMethod, RouterAdapter, Routes } from '@hulla/api'
-import { encodeKey } from './keys'
-import type { Mapping } from './types'
-import { keys } from './utils'
+import type {
+  APIPlugin,
+  APIProcedureArgs,
+  APIProcedureIfInput,
+  APIProcedureKey,
+  APIProcedureKeyRoot,
+  APIProcedureOverloads,
+  APIProcedurePluginContext,
+  APIProcedureResult,
+} from '@hulla/api'
 
-export function createMapping<
-  const R extends Routes,
-  const RN extends string,
-  const CTX extends Obj,
-  const PK extends string,
-  AD extends Adapters<CTX, PK, R, RN>,
-  const QK extends string,
-  const QF extends string,
->(router: RouterAdapter<R, RN, CTX, PK, AD>, encodeQueryKey: typeof encodeKey, qk: QK, qf: QF) {
-  const createQuery =
-    <const M extends Methods<R>>(method: M) =>
-    <const N extends RouteNamesWithMethod<R, M>, const A extends RouteArgs<R, M, N>>(route: N, ...args: A) => {
-      const encodedName = encodeQueryKey<M extends string ? M : never, RN, N extends string ? N : never>(
-        method as M extends string ? M : never,
-        router.name,
-        route as N extends string ? N : never
-      )
-      const queryKey = [encodedName, ...args] as const
-      // we don't care if we potentially pass an extra (options) argument here, as it just gets consumed and gc dropped
-      const queryFn = () => router.invoke(method, route, ...args)
-      return {
-        [qk]: queryKey,
-        [qf]: queryFn,
+export type QueryPluginConfig = {}
+
+type QueryPluginContext = APIProcedurePluginContext<any, any, any, any, any, any, any, any, any>
+
+type QueryProcedureHook = (ctx: QueryPluginContext) => Record<string, unknown>
+
+type QueryProcedureTypeHook = {
+  query: {
+    options: APIProcedureIfInput<
+      APIProcedureOverloads<[
+        (...args: APIProcedureArgs) => {
+          queryKey: APIProcedureKey
+          queryFn: () => APIProcedureResult
+        },
+        () => {
+          queryKey: readonly [APIProcedureKeyRoot]
+          queryFn: (...args: APIProcedureArgs) => APIProcedureResult
+        },
+      ]>,
+      () => {
+        queryKey: readonly [APIProcedureKeyRoot]
+        queryFn: () => APIProcedureResult
       }
-    }
-  return keys(router.routerMap).reduce(
-    (acc, method) => {
-      // @ts-expect-error dynamic mapping - ts cannot know which call will be available
-      acc[method] = createQuery(method)
-      return acc
-    },
-    {} as Mapping<R, RN, QK, QF>
-  )
+    >
+  }
 }
 
-export function query<
-  const R extends Routes,
-  const RN extends string,
-  CTX extends Obj,
-  const PK extends string,
-  AD extends Adapters<CTX, PK, R, RN>,
->(router: RouterAdapter<R, RN, CTX, PK, AD>, encodeQueryKey: typeof encodeKey = encodeKey) {
-  return createMapping(router, encodeQueryKey, 'queryKey', 'queryFn')
+export function query(_config: QueryPluginConfig = {}) {
+  const procedure: QueryProcedureHook = (ctx) => {
+    if (!('key' in ctx.procedure)) {
+      return {}
+    }
+
+    const procedure = ctx.procedure as {
+      key: {
+        root: string
+        full: (...args: [] | [unknown]) => readonly [string, ...([] | [unknown])]
+      }
+    }
+    const hasInput = ctx.meta.input !== undefined
+
+    const options = ((...args: unknown[]) => {
+      if (hasInput && args.length === 0) {
+        return {
+          queryKey: [procedure.key.root] as const,
+          queryFn: (...nextArgs: unknown[]) => ctx.call(...(nextArgs as [] | [unknown])),
+        }
+      }
+
+      return {
+        queryKey: procedure.key.full(...(args as [] | [unknown])),
+        queryFn: () => ctx.call(...(args as [] | [unknown])),
+      }
+    }) as unknown as QueryProcedureTypeHook['query']['options']
+
+    return {
+      query: {
+        options,
+      },
+    }
+  }
+
+  return {
+    id: 'query',
+    procedure,
+    procedureTypes: undefined as unknown as QueryProcedureTypeHook,
+  } satisfies APIPlugin<'query', undefined, QueryProcedureHook, QueryProcedureTypeHook>
 }

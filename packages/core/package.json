@@ -60,8 +60,11 @@
     "lint": "oxlint . --fix",
     "build": "tsdown",
     "fmt": "oxfmt --write .",
-    "test": "vitest run",
+    "test": "tsc -p tsconfig.tests.json --noEmit && vitest run",
     "clean": "rm -rf node_modules dist"
+  },
+  "devDependencies": {
+    "zod": "^3.23.8"
   },
   "peerDependencies": {
     "zod": "^3.23.8"
@@ -70,8 +73,5 @@
     "zod": {
       "optional": true
     }
-  },
-  "devDependencies": {
-    "zod": "^3.23.8"
   }
 }
