@@ -210,7 +210,10 @@ const swrProcedure = <
   const root = routerName === undefined ? procedureName : `${routerName}/${procedureName}`
   const options = ((...args: Parameters<typeof ctx.call>) => {
     if (args.length === 0) {
-      return [[root] as const, (...nextArgs: Parameters<typeof ctx.call>) => invokeProcedure(ctx.call, nextArgs)] as const
+      return [
+        [root] as const,
+        (...nextArgs: Parameters<typeof ctx.call>) => invokeProcedure(ctx.call, nextArgs),
+      ] as const
     }
 
     return [[root, ...args] as const, () => invokeProcedure(ctx.call, args)] as const
