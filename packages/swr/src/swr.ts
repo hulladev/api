@@ -27,6 +27,17 @@ type SWRProcedureTypeHook = {
       () => readonly [readonly [APIProcedureKeyRoot], () => APIProcedureResult]
     >
   }
+  mutation: {
+    options: APIProcedureIfInput<
+      APIProcedureOverloads<
+        [
+          (...args: APIProcedureArgs) => readonly [APIProcedureKey, () => APIProcedureResult],
+          () => readonly [readonly [APIProcedureKeyRoot], (...args: APIProcedureArgs) => APIProcedureResult],
+        ]
+      >,
+      () => readonly [readonly [APIProcedureKeyRoot], () => APIProcedureResult]
+    >
+  }
 }
 
 export function swr(_config: SWRPluginConfig = {}) {
@@ -43,7 +54,7 @@ export function swr(_config: SWRPluginConfig = {}) {
     }
     const hasInput = ctx.meta.input !== undefined
 
-    const options = ((...args: unknown[]) => {
+    const queryOptions = ((...args: unknown[]) => {
       if (hasInput && args.length === 0) {
         return [
           [procedure.key.root] as const,
@@ -54,9 +65,23 @@ export function swr(_config: SWRPluginConfig = {}) {
       return [procedure.key.full(...(args as [] | [unknown])), () => ctx.call(...(args as [] | [unknown]))] as const
     }) as unknown as SWRProcedureTypeHook['query']['options']
 
+    const mutationOptions = ((...args: unknown[]) => {
+      if (hasInput && args.length === 0) {
+        return [
+          [procedure.key.root] as const,
+          (...nextArgs: unknown[]) => ctx.call(...(nextArgs as [] | [unknown])),
+        ] as const
+      }
+
+      return [procedure.key.full(...(args as [] | [unknown])), () => ctx.call(...(args as [] | [unknown]))] as const
+    }) as unknown as SWRProcedureTypeHook['mutation']['options']
+
     return {
       query: {
-        options,
+        options: queryOptions,
+      },
+      mutation: {
+        options: mutationOptions,
       },
     }
   }

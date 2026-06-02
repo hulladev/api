@@ -36,6 +36,26 @@ type QueryProcedureTypeHook = {
       }
     >
   }
+  mutation: {
+    options: APIProcedureIfInput<
+      APIProcedureOverloads<
+        [
+          (...args: APIProcedureArgs) => {
+            mutationKey: APIProcedureKey
+            mutationFn: () => APIProcedureResult
+          },
+          () => {
+            mutationKey: readonly [APIProcedureKeyRoot]
+            mutationFn: (...args: APIProcedureArgs) => APIProcedureResult
+          },
+        ]
+      >,
+      () => {
+        mutationKey: readonly [APIProcedureKeyRoot]
+        mutationFn: () => APIProcedureResult
+      }
+    >
+  }
 }
 
 export function query(_config: QueryPluginConfig = {}) {
@@ -52,7 +72,7 @@ export function query(_config: QueryPluginConfig = {}) {
     }
     const hasInput = ctx.meta.input !== undefined
 
-    const options = ((...args: unknown[]) => {
+    const queryOptions = ((...args: unknown[]) => {
       if (hasInput && args.length === 0) {
         return {
           queryKey: [procedure.key.root] as const,
@@ -66,9 +86,26 @@ export function query(_config: QueryPluginConfig = {}) {
       }
     }) as unknown as QueryProcedureTypeHook['query']['options']
 
+    const mutationOptions = ((...args: unknown[]) => {
+      if (hasInput && args.length === 0) {
+        return {
+          mutationKey: [procedure.key.root] as const,
+          mutationFn: (...nextArgs: unknown[]) => ctx.call(...(nextArgs as [] | [unknown])),
+        }
+      }
+
+      return {
+        mutationKey: procedure.key.full(...(args as [] | [unknown])),
+        mutationFn: () => ctx.call(...(args as [] | [unknown])),
+      }
+    }) as unknown as QueryProcedureTypeHook['mutation']['options']
+
     return {
       query: {
-        options,
+        options: queryOptions,
+      },
+      mutation: {
+        options: mutationOptions,
       },
     }
   }

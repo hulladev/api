@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import { routes, users } from './swr.test'
 
-describe('mutation companion plugin', () => {
+describe('swr plugin mutation helper', () => {
   test('uses the aliased mutation helper name on finalized handlers', async () => {
     const aliasedAll = routes.all as typeof routes.all & {
       swrMutation: {

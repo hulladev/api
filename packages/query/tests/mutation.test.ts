@@ -1,15 +1,15 @@
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
-import { api } from '../../core/src'
-import { mutation } from '../src/mutation'
+import { init } from '../../core/src'
+import { query } from '../src/query'
 
 const users = [
   { id: 1, name: 'John' },
   { id: 2, name: 'Jane' },
 ] as const
 
-const routes = api({
-  plugins: [mutation()],
+const routes = init({
+  plugins: [query()],
 })
   .router('users')
   .define(({ procedure }) => ({
@@ -17,7 +17,7 @@ const routes = api({
     byId: procedure.input(z.number()).handler(async ({ input }) => users.find((user) => user.id === input)!),
   }))
 
-describe('mutation plugin', () => {
+describe('query plugin mutation helper', () => {
   test('exposes shared key helpers and mutation options on finalized handlers', async () => {
     expectTypeOf(routes.byId.key.root).toEqualTypeOf<'users/byId'>()
     const boundByIdOptions = routes.byId.mutation.options(2)
@@ -45,5 +45,35 @@ describe('mutation plugin', () => {
     expect(routes.all.mutation.options().mutationFn()).toStrictEqual(users)
     await expect(routes.byId.mutation.options().mutationFn(2)).resolves.toStrictEqual(users[1])
     await expect(routes.byId.mutation.options(2).mutationFn()).resolves.toStrictEqual(users[1])
+  })
+
+  test('allows aliasing mutation through query plugin settings', () => {
+    const aliasedRoutes = init({
+      plugins: [query()],
+      settings: {
+        plugins: {
+          query: {
+            aliases: {
+              procedure: {
+                mutation: 'mutate',
+              },
+            },
+          },
+        },
+      },
+    })
+      .router('users')
+      .define(({ procedure }) => ({
+        byId: procedure.input(z.number()).handler(({ input }) => input),
+      }))
+
+    const aliased = aliasedRoutes.byId as typeof aliasedRoutes.byId & {
+      mutate: {
+        options: ((input: number) => { mutationKey: readonly [string, number] }) &
+          (() => { mutationKey: readonly [string] })
+      }
+    }
+
+    expect(aliased.mutate.options(2).mutationKey).toStrictEqual(['users/byId', 2])
   })
 })

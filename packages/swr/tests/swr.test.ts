@@ -1,7 +1,6 @@
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
-import { api } from '../../core/src'
-import { mutation } from '../src/mutation'
+import { init } from '../../core/src'
 import { swr } from '../src/swr'
 
 export const users = [
@@ -9,11 +8,11 @@ export const users = [
   { id: 2, name: 'Jane' },
 ] as const
 
-export const routes = api({
-  plugins: [swr(), mutation()],
+export const routes = init({
+  plugins: [swr()],
   settings: {
     plugins: {
-      mutation: {
+      swr: {
         aliases: {
           procedure: {
             mutation: 'swrMutation',

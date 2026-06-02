@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
-import { api } from '../../core/src'
+import { init } from '../../core/src'
 import { query } from '../src/query'
 
 const users = [
@@ -8,7 +8,7 @@ const users = [
   { id: 2, name: 'Jane' },
 ] as const
 
-const routes = api({
+const routes = init({
   plugins: [query()],
 })
   .router('users')
@@ -51,7 +51,7 @@ describe('query plugin', () => {
   })
 
   test('does not expose key helpers on unnamed top-level procedures', async () => {
-    const standalone = api({
+    const standalone = init({
       plugins: [query()],
     })
       .procedure.input(z.number())
@@ -67,7 +67,7 @@ describe('query plugin', () => {
   })
 
   test('allows aliasing through core plugin settings', () => {
-    const aliasedRoutes = api({
+    const aliasedRoutes = init({
       plugins: [query()],
       settings: {
         plugins: {
