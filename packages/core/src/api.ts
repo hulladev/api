@@ -11,6 +11,7 @@ import type {
   DefaultAPISettings,
   Middleware,
 } from './types.public'
+import type { UseBuilderArgs } from './types.private'
 
 /**
  * Creates a configured Hulla API instance.
@@ -51,9 +52,32 @@ export function init<
     plugins: createPluginMeta(config?.plugins, settings.plugins),
   }
 
-  return {
-    $meta: meta,
-    procedure: procedureBuilder<M, undefined, undefined, undefined, undefined, undefined, S, P>(meta),
-    router: initRouterBuilder(meta),
+  return createAPI(meta)
+}
+
+function createAPI<
+  M extends Middleware,
+  S extends APISettings,
+  P extends APIPluginList,
+  UA extends UseBuilderArgs<M> | undefined = undefined,
+>(meta: APIMeta<M, S, P>, inheritedUse?: UA): API<M, S, P, UA> {
+  const hasMiddleware = Object.keys(meta.middleware).length > 0
+  const use = <const NUA extends UseBuilderArgs<M>>(...selected: NUA) => {
+    return createAPI<M, S, P, NUA>(meta, selected)
   }
+
+  return {
+    ...(inheritedUse === undefined && hasMiddleware ? { use } : {}),
+    $meta: meta,
+    procedure: procedureBuilder<M, UA, undefined, undefined, undefined, undefined, S, P>(meta, {
+      inheritedUse: inheritedUse as UA,
+      use: undefined,
+      input: undefined,
+      output: undefined,
+      router: undefined,
+      inheritedPlugins: undefined,
+      plugins: undefined,
+    }),
+    router: initRouterBuilder<M, S, P, UA>(meta, inheritedUse),
+  } as unknown as API<M, S, P, UA>
 }

@@ -179,6 +179,55 @@ describe('router builder', () => {
     })
   })
 
+  test('inherits api-level middleware in routers and procedures', () => {
+    const api = init({
+      middleware: {
+        auth: () => ({ userId: 'u1' as const }),
+        tenant: () => ({ tenantId: 't1' as const }),
+        admin: () => ({ canDelete: true as const }),
+      },
+    })
+
+    const routes = api
+      .use('auth')
+      .router('users')
+      .use('tenant')
+      .define(({ procedure }) => ({
+        viewer: procedure.handler(({ getContext }) => getContext()),
+        deleteUser: procedure.use('admin').handler(({ getContext }) => getContext()),
+      }))
+
+    expectTypeOf(routes.viewer.call).returns.toEqualTypeOf<{
+      auth: { userId: 'u1' }
+      tenant: { tenantId: 't1' }
+    }>()
+    expectTypeOf(routes.deleteUser.call).returns.toEqualTypeOf<{
+      auth: { userId: 'u1' }
+      tenant: { tenantId: 't1' }
+      admin: { canDelete: true }
+    }>()
+
+    expect(routes.viewer.$meta.middleware).toStrictEqual({
+      router: ['auth', 'tenant'],
+      procedure: [],
+      selected: ['auth', 'tenant'],
+    })
+    expect(routes.deleteUser.$meta.middleware).toStrictEqual({
+      router: ['auth', 'tenant'],
+      procedure: ['admin'],
+      selected: ['auth', 'tenant', 'admin'],
+    })
+    expect(routes.viewer.call()).toStrictEqual({
+      auth: { userId: 'u1' },
+      tenant: { tenantId: 't1' },
+    })
+    expect(routes.deleteUser.call()).toStrictEqual({
+      auth: { userId: 'u1' },
+      tenant: { tenantId: 't1' },
+      admin: { canDelete: true },
+    })
+  })
+
   test('executes router-defined procedures with sync, async, and transformed outputs', async () => {
     const api = init()
 

@@ -1,7 +1,8 @@
 import { attachProcedurePluginMembers, mergeSelections, resolveRouterPluginMembers } from './helpers/plugins'
-import { attachProcedureCoreMembers } from './helpers/procedure'
+import { attachProcedureCoreMembers, mergeMiddlewareSelection } from './helpers/procedure'
 import { procedureBuilder } from './procedure'
 import type {
+  EffectiveRouterUseArgs,
   EffectiveRouterPluginArgs,
   PluginBuilderArgs,
   RouterBuilder,
@@ -17,26 +18,28 @@ function routerBuilder<
   S extends APISettings = DefaultAPISettings,
   P extends APIPluginList = [],
   PA extends PluginBuilderArgs<P> | undefined = undefined,
->(meta: APIMeta<M, S, P>, state: RouterState<M, UA, N, P, PA>): RouterBuilder<M, UA, N, S, P, PA> {
+  RA extends UseBuilderArgs<M> | undefined = undefined,
+>(meta: APIMeta<M, S, P>, state: RouterState<M, UA, N, P, PA, RA>): RouterBuilder<M, UA, N, S, P, PA, RA> {
   const hasMiddleware = Object.keys(meta.middleware).length > 0
   const hasPlugins = meta.plugins.list.length > 0
+  const inheritedUse = mergeMiddlewareSelection(state.rootUse, state.use) as EffectiveRouterUseArgs<M, RA, UA>
   const activePlugins = mergeSelections(
     meta.plugins.auto as readonly string[],
     state.plugins as readonly string[] | undefined
   ) as EffectiveRouterPluginArgs<P, S, PA> | undefined
 
   const use = <const SM extends UseBuilderArgs<M>>(...selected: SM) => {
-    return routerBuilder<M, SM, N, S, P, PA>(meta, { ...state, use: selected })
+    return routerBuilder<M, SM, N, S, P, PA, RA>(meta, { ...state, use: selected })
   }
 
   const plugin = <const SP extends PluginBuilderArgs<P>>(...selected: SP) => {
-    return routerBuilder<M, UA, N, S, P, SP>(meta, { ...state, plugins: selected })
+    return routerBuilder<M, UA, N, S, P, SP, RA>(meta, { ...state, plugins: selected })
   }
 
-  const define: RouterBuilder<M, UA, N, S, P, PA>['define'] = ((build) => {
+  const define: RouterBuilder<M, UA, N, S, P, PA, RA>['define'] = ((build) => {
     const procedure = procedureBuilder<
       M,
-      UA,
+      EffectiveRouterUseArgs<M, RA, UA>,
       undefined,
       undefined,
       undefined,
@@ -46,7 +49,7 @@ function routerBuilder<
       EffectiveRouterPluginArgs<P, S, PA>,
       undefined
     >(meta, {
-      inheritedUse: state.use,
+      inheritedUse,
       use: undefined,
       input: undefined,
       output: undefined,
@@ -65,7 +68,7 @@ function routerBuilder<
           router: {
             type: 'router',
             name: state.name,
-            middleware: (state.use ?? []) as RouterBuilder<M, UA, N, S, P, PA>['$meta']['middleware'],
+            middleware: (state.use ?? []) as RouterBuilder<M, UA, N, S, P, PA, RA>['$meta']['middleware'],
           },
           procedure,
         }) as Record<string, unknown> | undefined
@@ -103,7 +106,7 @@ function routerBuilder<
     }
 
     return defined as ReturnType<typeof define>
-  }) as RouterBuilder<M, UA, N, S, P, PA>['define']
+  }) as RouterBuilder<M, UA, N, S, P, PA, RA>['define']
 
   return {
     ...(state.use === undefined && hasMiddleware ? { use } : {}),
@@ -112,19 +115,21 @@ function routerBuilder<
     $meta: {
       type: 'router',
       name: state.name,
-      middleware: (state.use ?? []) as RouterBuilder<M, UA, N, S, P, PA>['$meta']['middleware'],
+      middleware: (state.use ?? []) as RouterBuilder<M, UA, N, S, P, PA, RA>['$meta']['middleware'],
     },
-  } as unknown as RouterBuilder<M, UA, N, S, P, PA>
+  } as unknown as RouterBuilder<M, UA, N, S, P, PA, RA>
 }
 
 export function initRouterBuilder<
   M extends Middleware,
   S extends APISettings = DefaultAPISettings,
   P extends APIPluginList = [],
->(meta: APIMeta<M, S, P>) {
+  RA extends UseBuilderArgs<M> | undefined = undefined,
+>(meta: APIMeta<M, S, P>, rootUse?: RA) {
   return function router<const N extends string>(name: N) {
-    return routerBuilder<M, undefined, N, S, P>(meta, {
+    return routerBuilder<M, undefined, N, S, P, undefined, RA>(meta, {
       name,
+      rootUse: rootUse as RA,
       use: undefined,
       plugins: undefined,
     })

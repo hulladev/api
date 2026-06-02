@@ -1,5 +1,6 @@
 import type {
   BaseProcedureHandler,
+  EffectiveRouterUseArgs,
   ProcedureBuilder,
   ProcedureHandlerMeta,
   RouterBuilder,
@@ -195,12 +196,13 @@ export type APIRouterPluginContext<
   N extends string,
   S extends APISettings,
   P extends APIPluginList = [],
+  RA extends UseBuilderArgs<M> | undefined = undefined,
 > = {
   api: APIMeta<M, S, P>
   pluginId: PluginId<P>
   pluginSettings: ResolvedAPIPluginRuntimeSettings
   router: RouterBuilderMeta<M, UA, N>
-  procedure: ProcedureBuilder<M, UA, undefined, undefined, undefined, N, S, P, any, any>
+  procedure: ProcedureBuilder<M, EffectiveRouterUseArgs<M, RA, UA>, undefined, undefined, undefined, N, S, P, any, any>
 }
 
 export type APIProcedurePluginContext<
@@ -242,7 +244,35 @@ export type APIConfig<
   plugins?: P
 }
 
-export type API<M extends Middleware = {}, S extends APISettings = DefaultAPISettings, P extends APIPluginList = []> = {
+type HasMiddleware<M extends Middleware> = keyof M extends never ? false : true
+
+export type APIUseBuilder<
+  M extends Middleware,
+  S extends APISettings,
+  P extends APIPluginList,
+> = <UA extends UseBuilderArgs<M>>(...selected: UA) => API<M, S, P, UA>
+
+export type API<
+  M extends Middleware = {},
+  S extends APISettings = DefaultAPISettings,
+  P extends APIPluginList = [],
+  UA extends UseBuilderArgs<M> | undefined = undefined,
+> = (UA extends undefined
+  ? HasMiddleware<M> extends true
+    ? {
+        /**
+         * Selects middleware for every procedure and router created from the
+         * returned API instance.
+         *
+         * @example
+         * ```ts
+         * const protectedApi = api.use('session')
+         * ```
+         */
+        use: APIUseBuilder<M, S, P>
+      }
+    : {}
+  : {}) & {
   /**
    * Runtime metadata for this configured API instance.
    */
@@ -256,7 +286,7 @@ export type API<M extends Middleware = {}, S extends APISettings = DefaultAPISet
    * ping.call()
    * ```
    */
-  procedure: ProcedureBuilder<M, undefined, undefined, undefined, undefined, undefined, S, P>
+  procedure: ProcedureBuilder<M, UA, undefined, undefined, undefined, undefined, S, P>
   /**
    * Creates a named router. Procedures defined inside a router receive stable
    * key helpers such as `users.byId.key.root`.
@@ -268,7 +298,7 @@ export type API<M extends Middleware = {}, S extends APISettings = DefaultAPISet
    * }))
    * ```
    */
-  router: <const N extends string>(name: N) => RouterBuilder<M, undefined, N, S, P>
+  router: <const N extends string>(name: N) => RouterBuilder<M, undefined, N, S, P, undefined, UA>
 }
 
 export type RouterMeta<

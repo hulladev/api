@@ -12,7 +12,35 @@ describe('api', () => {
 
     expect(api).toHaveProperty('procedure')
     expect(api).toHaveProperty('router')
+    expect(api).not.toHaveProperty('use')
     expect(api.$meta.settings.output).toBe('awaited')
+    // @ts-expect-error use is not available when no middleware is passed
+    expectTypeOf(api.use).toEqualTypeOf<never>()
+  })
+
+  test('scopes middleware from the api level without mutating the original api', () => {
+    const api = init({
+      middleware: {
+        auth: () => ({ userId: 'u1' as const }),
+      },
+    })
+    const protectedApi = api.use('auth')
+    const viewer = protectedApi.procedure.handler(({ getContext }) => getContext())
+
+    expect(api).toHaveProperty('use')
+    expect(protectedApi).not.toHaveProperty('use')
+    // @ts-expect-error use is only selectable once at the api level
+    expectTypeOf(protectedApi.use).toEqualTypeOf<never>()
+    // @ts-expect-error the original api has not selected middleware yet
+    api.procedure.handler(({ getContext }) => getContext())
+
+    expectTypeOf(viewer.call).returns.toEqualTypeOf<{ auth: { userId: 'u1' } }>()
+    expect(viewer.$meta.middleware).toStrictEqual({
+      router: ['auth'],
+      procedure: [],
+      selected: ['auth'],
+    })
+    expect(viewer.call()).toStrictEqual({ auth: { userId: 'u1' } })
   })
 
   test('default output allows async handlers for plain output schemas', async () => {

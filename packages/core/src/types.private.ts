@@ -83,6 +83,12 @@ export type EffectiveUseBuilderArgs<
   LA extends UseBuilderArgs<M> | undefined,
 > = MergeUseBuilderArgs<IA, LA> extends infer R ? (R extends UseBuilderArgs<M> ? R : undefined) : undefined
 
+export type EffectiveRouterUseArgs<
+  M extends Middleware,
+  IA extends UseBuilderArgs<M> | undefined,
+  LA extends UseBuilderArgs<M> | undefined,
+> = MergeUseBuilderArgs<IA, LA> extends infer R ? (R extends UseBuilderArgs<M> ? R : undefined) : undefined
+
 type PluginInjectModeFor<S, I extends string> = S extends { plugins?: infer PS }
   ? PS extends Record<string, unknown>
     ? I extends keyof PS
@@ -362,12 +368,13 @@ type RouterPluginExtensionsFromIds<
   UA extends UseBuilderArgs<M> | undefined,
   N extends string,
   S extends APISettings,
+  RA extends UseBuilderArgs<M> | undefined = undefined,
 > = [NormalizeSelection<Ids>[number]] extends [never]
   ? {}
   : UnionToIntersection<
       {
         [K in NormalizeSelection<Ids>[number] & string]: RemapKeys<
-          ApplyRouterPluginHook<FindPlugin<P, K>, APIRouterPluginContext<M, UA, N, S, P>>,
+          ApplyRouterPluginHook<FindPlugin<P, K>, APIRouterPluginContext<M, UA, N, S, P, RA>>,
           RouterAliasMapFor<S, K>
         >
       }[NormalizeSelection<Ids>[number] & string]
@@ -693,19 +700,22 @@ export type RouterState<
   N extends string,
   P extends APIPluginList = [],
   PA extends PluginBuilderArgs<P> | undefined = undefined,
+  RA extends UseBuilderArgs<M> | undefined = undefined,
 > = {
   name: N
+  rootUse: RA
   use: UA
   plugins: PA
 }
 
 export type RouterUseBuilder<
   M extends Middleware,
+  RA extends UseBuilderArgs<M> | undefined,
   N extends string,
   S extends APISettings,
   P extends APIPluginList = [],
   PA extends PluginBuilderArgs<P> | undefined = undefined,
-> = <UA extends UseBuilderArgs<M>>(...selected: UA) => RouterBuilder<M, UA, N, S, P, PA>
+> = <UA extends UseBuilderArgs<M>>(...selected: UA) => RouterBuilder<M, UA, N, S, P, PA, RA>
 
 export type RouterPluginSelectorBuilder<
   M extends Middleware,
@@ -713,7 +723,8 @@ export type RouterPluginSelectorBuilder<
   N extends string,
   S extends APISettings,
   P extends APIPluginList = [],
-> = <PA extends PluginBuilderArgs<P>>(...selected: PA) => RouterBuilder<M, UA, N, S, P, PA>
+  RA extends UseBuilderArgs<M> | undefined = undefined,
+> = <PA extends PluginBuilderArgs<P>>(...selected: PA) => RouterBuilder<M, UA, N, S, P, PA, RA>
 
 export type RouterDefineBuilder<
   M extends Middleware,
@@ -722,6 +733,7 @@ export type RouterDefineBuilder<
   S extends APISettings,
   P extends APIPluginList = [],
   PA extends PluginBuilderArgs<P> | undefined = undefined,
+  RA extends UseBuilderArgs<M> | undefined = undefined,
 > = <R extends Record<string, AnyProcedureHandler>>(
   define: (
     builders: {
@@ -733,7 +745,7 @@ export type RouterDefineBuilder<
        */
       procedure: ProcedureBuilder<
         M,
-        UA,
+        EffectiveRouterUseArgs<M, RA, UA>,
         undefined,
         undefined,
         undefined,
@@ -743,7 +755,7 @@ export type RouterDefineBuilder<
         EffectiveRouterPluginArgs<P, S, PA>,
         undefined
       >
-    } & RouterPluginExtensionsFromIds<M, P, EffectiveRouterPluginArgs<P, S, PA>, UA, N, S>
+    } & RouterPluginExtensionsFromIds<M, P, EffectiveRouterPluginArgs<P, S, PA>, UA, N, S, RA>
   ) => R
 ) => RouterDefinition<R, N>
 
@@ -754,6 +766,7 @@ export type RouterBuilder<
   S extends APISettings = DefaultAPISettings,
   P extends APIPluginList = [],
   PA extends PluginBuilderArgs<P> | undefined = undefined,
+  RA extends UseBuilderArgs<M> | undefined = undefined,
 > = (UA extends undefined
   ? HasMiddleware<M> extends true
     ? {
@@ -765,7 +778,7 @@ export type RouterBuilder<
          * const account = api.router('account').use('session').define(...)
          * ```
          */
-        use: RouterUseBuilder<M, N, S, P, PA>
+        use: RouterUseBuilder<M, RA, N, S, P, PA>
       }
     : {}
   : {}) &
@@ -775,7 +788,7 @@ export type RouterBuilder<
           /**
            * Selects opt-in plugins for this router and its procedures.
            */
-          plugin: RouterPluginSelectorBuilder<M, UA, N, S, P>
+          plugin: RouterPluginSelectorBuilder<M, UA, N, S, P, RA>
         }
       : {}
     : {}) & {
@@ -789,7 +802,7 @@ export type RouterBuilder<
      * }))
      * ```
      */
-    define: RouterDefineBuilder<M, UA, N, S, P, PA>
+    define: RouterDefineBuilder<M, UA, N, S, P, PA, RA>
     /**
      * Runtime metadata for this router builder.
      */
