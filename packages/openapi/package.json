@@ -1,0 +1,63 @@
+{
+  "name": "@hulla/api-openapi",
+  "version": "0.0.0",
+  "description": "OpenAPI generator for @hulla/api",
+  "keywords": [
+    "@hulla",
+    "@hulla/api",
+    "api",
+    "openapi",
+    "swagger",
+    "zod"
+  ],
+  "homepage": "https://hulla.dev/projects/api",
+  "license": "MIT",
+  "author": {
+    "name": "Samuel Hulla",
+    "email": "hulla@hulla.dev",
+    "url": "https://hulla.dev"
+  },
+  "maintainers": [
+    "Samuel Hulla <hulla@hulla.dev>"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hulladev/api.git",
+    "directory": "packages/api"
+  },
+  "bin": {
+    "hulla-api-openapi": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "commonjs",
+  "main": "./dist/index.js",
+  "exports": {
+    "import": {
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    },
+    "require": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "lint": "oxlint . --fix",
+    "fmt": "oxfmt --write .",
+    "build": "tsdown --config-loader unrun",
+    "test": "tsc -p tsconfig.tests.json --noEmit && vitest run --config vitest.config.ts",
+    "clean": "rm -rf node_modules dist"
+  },
+  "devDependencies": {
+    "@hulla/api": "^1.2.5",
+    "@hulla/args": "^0.0.4",
+    "zod": "^3.23.8"
+  },
+  "peerDependencies": {
+    "@hulla/api": "^1.2.5",
+    "@hulla/args": "^0.0.4",
+    "zod": "^3.23.8"
+  }
+}

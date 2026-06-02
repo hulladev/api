@@ -36,6 +36,23 @@
         "zod",
       ],
     },
+    "packages/openapi": {
+      "name": "@hulla/api-openapi",
+      "version": "0.0.0",
+      "bin": {
+        "hulla-api-openapi": "./dist/cli.js",
+      },
+      "devDependencies": {
+        "@hulla/api": "^1.2.5",
+        "@hulla/args": "^0.0.4",
+        "zod": "^3.23.8",
+      },
+      "peerDependencies": {
+        "@hulla/api": "^1.2.5",
+        "@hulla/args": "^0.0.4",
+        "zod": "^3.23.8",
+      },
+    },
     "packages/query": {
       "name": "@hulla/api-query",
       "version": "1.2.5",
@@ -202,9 +219,13 @@
 
     "@hulla/api": ["@hulla/api@workspace:packages/core"],
 
+    "@hulla/api-openapi": ["@hulla/api-openapi@workspace:packages/openapi"],
+
     "@hulla/api-query": ["@hulla/api-query@workspace:packages/query"],
 
     "@hulla/api-swr": ["@hulla/api-swr@workspace:packages/swr"],
+
+    "@hulla/args": ["@hulla/args@0.0.4", "", { "peerDependencies": { "zod": ">=3.0.0" } }, "sha512-/2lUznL992NIMAmKezj2e6ndJyguSlzJrkdCzI0S1ZowAlBdXeJ/mJXkjGL4ZWZ5TDVhnZpmn7xwSJc8Cw5Fvw=="],
 
     "@inquirer/confirm": ["@inquirer/confirm@3.1.17", "", { "dependencies": { "@inquirer/core": "9.0.5", "@inquirer/type": "1.5.1" } }, "sha512-qCpt/AABzPynz8tr69VDvhcjwmzAryipWXtW8Vi6m651da4H/d0Bdn55LkxXD7Rp2gfgxvxzTdb66AhIA8gzBA=="],
 
