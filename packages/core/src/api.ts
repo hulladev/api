@@ -21,7 +21,7 @@ import type {
  *
  * @example
  * ```ts
- * import { init } from '@hulla/api'
+ * import { createApi } from '@hulla/api'
  *
  * type Session = { userId: string }
  *
@@ -29,14 +29,14 @@ import type {
  *   return fetch('/api/session').then((res) => res.json())
  * }
  *
- * export const api = init({
+ * export const api = createApi({
  *   middleware: {
  *     session: getSession,
  *   },
  * })
  * ```
  */
-export function init<
+export function createApi<
   M extends Middleware = {},
   const P extends APIPluginList = [],
   const S extends APISettings<P> = DefaultAPISettings<P>,
@@ -75,6 +75,7 @@ function createAPI<
       input: undefined,
       output: undefined,
       router: undefined,
+      route: undefined,
       inheritedPlugins: undefined,
       plugins: undefined,
     }),

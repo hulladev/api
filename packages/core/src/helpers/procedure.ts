@@ -7,7 +7,14 @@ import type {
   ResolvedContext,
   UseBuilderArgs,
 } from '../types.private'
-import type { APIPluginList, APISettings, Middleware, Schema } from '../types.public'
+import type {
+  APIPluginList,
+  APISettings,
+  HTTPRoute,
+  Middleware,
+  ProcedureExecutionContext,
+  Schema,
+} from '../types.public'
 import { isPromiseLike } from '../utils/async'
 
 type KeyedMiddlewareList<M extends Middleware> = Keyof<M>[]
@@ -38,17 +45,25 @@ export function mergeMiddlewareSelection<M extends Middleware>(
 
 export function resolveContext<M extends Middleware, UA extends UseBuilderArgs<M>>(
   middleware: M,
-  selected: UA
+  selected: UA,
+  executionContext: ProcedureExecutionContext = {}
 ): ResolvedContext<M, UA> | Promise<ResolvedContext<M, UA>> {
   const entries: [UA[number], ReturnType<M[UA[number]]>][] = []
   let hasAsync = false
 
   for (const key of selected) {
-    const value = middleware[key]() as ReturnType<M[UA[number]]>
-    if (!hasAsync && isPromiseLike(value)) {
-      hasAsync = true
+    try {
+      const value = middleware[key](executionContext) as ReturnType<M[UA[number]]>
+      if (!hasAsync && isPromiseLike(value)) {
+        hasAsync = true
+      }
+      entries.push([key, value])
+    } catch (error) {
+      if (hasAsync) {
+        void Promise.allSettled(entries.map(([, value]) => Promise.resolve(value)))
+      }
+      throw error
     }
-    entries.push([key, value])
   }
 
   if (hasAsync) {
@@ -70,16 +85,17 @@ export function attachProcedureCoreMembers<
   R,
   S extends APISettings,
   N extends string | undefined = undefined,
->(handler: BaseProcedureHandler<M, IA, LA, SI, SO, RN, R, S, N>) {
+  HR extends HTTPRoute | undefined = undefined,
+>(handler: BaseProcedureHandler<M, IA, LA, SI, SO, RN, R, S, N, HR>) {
   if (!('name' in handler.$meta)) {
     return
   }
 
-  const namedHandler = handler as BaseProcedureHandler<M, IA, LA, SI, SO, RN, R, S, Extract<N, string>>
+  const namedHandler = handler as BaseProcedureHandler<M, IA, LA, SI, SO, RN, R, S, Extract<N, string>, HR>
   const name = handler.$meta.name
   const root = ('router' in handler.$meta ? `${handler.$meta.router}/${name}` : name) as string
 
-  namedHandler.key = {
+  namedHandler.$key = {
     root: root as never,
     full: ((...args: unknown[]) => [root, ...args] as const) as never,
   }
@@ -95,19 +111,21 @@ export function createProcedureMeta<
   P extends APIPluginList = [],
   IPA extends PluginBuilderArgs<P> | undefined = undefined,
   LPA extends PluginBuilderArgs<P> | undefined = undefined,
+  HR extends HTTPRoute | undefined = undefined,
 >(
-  state: ProcedureState<M, IA, LA, SI, SO, RN, P, IPA, LPA>,
+  state: ProcedureState<M, IA, LA, SI, SO, RN, P, IPA, LPA, HR>,
   selected: EffectiveUseBuilderArgs<M, IA, LA>
-): ProcedureBuilderMeta<M, IA, LA, SI, SO, RN> {
+): ProcedureBuilderMeta<M, IA, LA, SI, SO, RN, HR> {
   return {
     type: 'procedure',
     ...(state.router === undefined ? {} : { router: state.router }),
     middleware: {
-      router: (state.inheritedUse ?? []) as ProcedureBuilderMeta<M, IA, LA, SI, SO, RN>['middleware']['router'],
-      procedure: (state.use ?? []) as ProcedureBuilderMeta<M, IA, LA, SI, SO, RN>['middleware']['procedure'],
-      selected: (selected ?? []) as ProcedureBuilderMeta<M, IA, LA, SI, SO, RN>['middleware']['selected'],
+      router: (state.inheritedUse ?? []) as ProcedureBuilderMeta<M, IA, LA, SI, SO, RN, HR>['middleware']['router'],
+      procedure: (state.use ?? []) as ProcedureBuilderMeta<M, IA, LA, SI, SO, RN, HR>['middleware']['procedure'],
+      selected: (selected ?? []) as ProcedureBuilderMeta<M, IA, LA, SI, SO, RN, HR>['middleware']['selected'],
     },
     input: state.input,
     output: state.output,
-  } as unknown as ProcedureBuilderMeta<M, IA, LA, SI, SO, RN>
+    ...(state.route === undefined ? {} : { route: state.route }),
+  } as unknown as ProcedureBuilderMeta<M, IA, LA, SI, SO, RN, HR>
 }

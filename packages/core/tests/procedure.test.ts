@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { procedureBuilder } from '../src/procedure'
-import type { HandlerBuilder, InputBulder, OutputBulder, UseBuilder } from '../src/types.private'
+import type { HandlerBuilder, InputBuilder, OutputBuilder, UseBuilder } from '../src/types.private'
 
 describe('procedure syntax', () => {
   const noMiddleware = procedureBuilder({ middleware: {}, settings: { output: 'raw' as const } })
@@ -15,10 +15,10 @@ describe('procedure syntax', () => {
   test('noMiddleware has all methods available', () => {
     expectAlwaysAvailable(noMiddleware)
     expectTypeOf(noMiddleware.input).toEqualTypeOf<
-      InputBulder<{}, undefined, undefined, undefined, undefined, { output: 'raw' }>
+      InputBuilder<{}, undefined, undefined, undefined, undefined, { output: 'raw' }>
     >()
     expectTypeOf(noMiddleware.output).toEqualTypeOf<
-      OutputBulder<{}, undefined, undefined, undefined, undefined, { output: 'raw' }>
+      OutputBuilder<{}, undefined, undefined, undefined, undefined, { output: 'raw' }>
     >()
     expectTypeOf(noMiddleware.handler).toEqualTypeOf<
       HandlerBuilder<{}, undefined, undefined, undefined, undefined, undefined, { output: 'raw' }>
@@ -33,10 +33,10 @@ describe('procedure syntax', () => {
   test('shared methods are available also with middleware', () => {
     expectAlwaysAvailable(withMiddleware)
     expectTypeOf(withMiddleware.input).toEqualTypeOf<
-      InputBulder<{ readonly foo: () => string }, undefined, undefined, undefined, undefined, { output: 'raw' }>
+      InputBuilder<{ readonly foo: () => string }, undefined, undefined, undefined, undefined, { output: 'raw' }>
     >()
     expectTypeOf(withMiddleware.output).toEqualTypeOf<
-      OutputBulder<{ readonly foo: () => string }, undefined, undefined, undefined, undefined, { output: 'raw' }>
+      OutputBuilder<{ readonly foo: () => string }, undefined, undefined, undefined, undefined, { output: 'raw' }>
     >()
     expectTypeOf(withMiddleware.handler).toEqualTypeOf<
       HandlerBuilder<

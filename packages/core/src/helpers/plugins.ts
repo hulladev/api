@@ -11,6 +11,8 @@ import type {
 
 export const procedurePluginIdsKey = Symbol('hulla.procedurePluginIds')
 
+const reservedExtensionNames = ['$meta', '$key'] as const
+
 type ProcedurePluginCarrier = {
   [procedurePluginIdsKey]?: readonly string[]
 }
@@ -23,15 +25,45 @@ const defaultPluginSettings: ResolvedAPIPluginRuntimeSettings = {
   },
 }
 
+const unsafeExtensionNames = new Set(['__proto__', 'prototype', 'constructor'])
+
+function assertSafeExtensionName(value: string, description: string): void {
+  if (unsafeExtensionNames.has(value)) {
+    throw new Error(`${description} cannot use unsafe key "${value}"`)
+  }
+}
+
+function validateAliases(aliases: Record<string, string> | undefined, owner: string): void {
+  for (const [source, target] of Object.entries(aliases ?? {})) {
+    assertSafeExtensionName(source, `${owner} alias`)
+    assertSafeExtensionName(target, `${owner} alias`)
+  }
+}
+
 function createRegistry<P extends APIPluginList>(plugins: P): APIPluginRegistry<P> {
-  const registry = {} as APIPluginRegistry<P>
+  const registry = Object.create(null) as APIPluginRegistry<P>
 
   for (const plugin of plugins) {
-    if (plugin.id in registry) {
+    assertSafeExtensionName(plugin.id, 'Plugin id')
+    if (plugin.namespace !== undefined) assertSafeExtensionName(plugin.namespace, `Plugin "${plugin.id}" namespace`)
+    const namespaceName = plugin.namespace ?? plugin.id
+    if (namespaceName.startsWith('$')) {
+      throw new Error(`Plugin "${plugin.id}" namespace must omit the framework-owned "$" prefix`)
+    }
+    const namespace = `$${namespaceName}`
+    if ((reservedExtensionNames as readonly string[]).includes(namespace)) {
+      throw new Error(`Plugin "${plugin.id}" namespace "${namespace}" is reserved by @hulla/api`)
+    }
+    if (Object.prototype.hasOwnProperty.call(registry, plugin.id)) {
       throw new Error(`Duplicate plugin id "${plugin.id}"`)
     }
 
-    registry[plugin.id as keyof typeof registry] = plugin as (typeof registry)[keyof typeof registry]
+    Object.defineProperty(registry, plugin.id, {
+      configurable: true,
+      enumerable: true,
+      value: plugin,
+      writable: true,
+    })
   }
 
   return registry
@@ -41,17 +73,33 @@ function normalizePluginSettings<P extends APIPluginList, S extends APISettings>
   plugins: P,
   settings: S['plugins']
 ): ResolvedAPIPluginSettingsById<P> {
-  const normalized = {} as ResolvedAPIPluginSettingsById<P>
+  const normalized = Object.create(null) as ResolvedAPIPluginSettingsById<P>
 
   for (const plugin of plugins) {
-    const configured = settings?.[plugin.id as keyof NonNullable<S['plugins']>] as APIPluginRuntimeSettings | undefined
-    normalized[plugin.id as keyof typeof normalized] = {
-      inject: configured?.inject ?? defaultPluginSettings.inject,
-      aliases: {
-        router: configured?.aliases?.router ?? defaultPluginSettings.aliases.router,
-        procedure: configured?.aliases?.procedure ?? defaultPluginSettings.aliases.procedure,
+    const configured =
+      settings !== undefined && Object.prototype.hasOwnProperty.call(settings, plugin.id)
+        ? (settings[plugin.id as keyof NonNullable<S['plugins']>] as APIPluginRuntimeSettings | undefined)
+        : undefined
+    validateAliases(configured?.aliases?.router, `Plugin "${plugin.id}" router`)
+    validateAliases(configured?.aliases?.procedure, `Plugin "${plugin.id}" procedure`)
+    validateAliases(plugin.defaults?.aliases?.router, `Plugin "${plugin.id}" default router`)
+    validateAliases(plugin.defaults?.aliases?.procedure, `Plugin "${plugin.id}" default procedure`)
+    Object.defineProperty(normalized, plugin.id, {
+      configurable: true,
+      enumerable: true,
+      value: {
+        inject: configured?.inject ?? plugin.defaults?.inject ?? defaultPluginSettings.inject,
+        aliases: {
+          router:
+            configured?.aliases?.router ?? plugin.defaults?.aliases?.router ?? defaultPluginSettings.aliases.router,
+          procedure:
+            configured?.aliases?.procedure ??
+            plugin.defaults?.aliases?.procedure ??
+            defaultPluginSettings.aliases.procedure,
+        },
       },
-    } as (typeof normalized)[keyof typeof normalized]
+      writable: true,
+    })
   }
 
   return normalized
@@ -112,7 +160,10 @@ function injectMembers(
   owner: string
 ) {
   for (const [key, value] of Object.entries(members)) {
-    const aliasedKey = aliases[key] ?? key
+    const aliasedKey = Object.prototype.hasOwnProperty.call(aliases, key) ? aliases[key]! : key
+
+    assertSafeExtensionName(key, `${owner} member`)
+    assertSafeExtensionName(aliasedKey, `${owner} member`)
 
     if (reserved.includes(aliasedKey)) {
       throw new Error(`${owner} cannot expose reserved key "${aliasedKey}"`)
@@ -122,8 +173,33 @@ function injectMembers(
       throw new Error(`${owner} collides on key "${aliasedKey}"`)
     }
 
-    target[aliasedKey] = value
+    Object.defineProperty(target, aliasedKey, {
+      configurable: true,
+      enumerable: true,
+      value,
+      writable: true,
+    })
   }
+}
+
+function namespaceTarget(target: Record<string, unknown>, namespace: string, owner: string): Record<string, unknown> {
+  assertSafeExtensionName(namespace, `${owner} namespace`)
+  if (Object.prototype.hasOwnProperty.call(target, namespace)) {
+    const existing = target[namespace]
+    if (typeof existing !== 'object' || existing === null || Array.isArray(existing)) {
+      throw new Error(`${owner} collides on namespace "${namespace}"`)
+    }
+    return existing as Record<string, unknown>
+  }
+
+  const namespaceMembers = Object.create(null) as Record<string, unknown>
+  Object.defineProperty(target, namespace, {
+    configurable: true,
+    enumerable: true,
+    value: namespaceMembers,
+    writable: true,
+  })
+  return namespaceMembers
 }
 
 export function resolveRouterPluginMembers<
@@ -135,9 +211,9 @@ export function resolveRouterPluginMembers<
   meta: APIMeta<M & {}, S, P>,
   activePluginIds: readonly string[] | undefined,
   buildMembers: (plugin: P[number], pluginSettings: ResolvedAPIPluginRuntimeSettings) => Extensions | undefined,
-  reserved: readonly string[]
+  _reserved: readonly string[]
 ): Extensions {
-  const extensions = {} as Extensions
+  const extensions = Object.create(null) as Extensions
 
   for (const pluginId of activePluginIds ?? []) {
     const plugin = meta.plugins.registry[pluginId as keyof typeof meta.plugins.registry]
@@ -151,7 +227,12 @@ export function resolveRouterPluginMembers<
       continue
     }
 
-    injectMembers(extensions, members, pluginSettings.aliases.router, reserved, `Router plugin "${pluginId}"`)
+    const namespace = `$${plugin.namespace ?? plugin.id}`
+    if ((reservedExtensionNames as readonly string[]).includes(namespace)) {
+      throw new Error(`Router plugin "${pluginId}" cannot use reserved namespace "${namespace}"`)
+    }
+    const target = namespaceTarget(extensions as Record<string, unknown>, namespace, `Router plugin "${pluginId}"`)
+    injectMembers(target, members, pluginSettings.aliases.router, [], `Router plugin "${pluginId}"`)
   }
 
   return extensions
@@ -161,7 +242,7 @@ export function attachProcedurePluginMembers<
   M,
   S extends APISettings,
   P extends APIPluginList,
-  Handler extends Record<string, unknown>,
+  Handler extends object,
   Extensions extends Record<string, unknown>,
 >(
   meta: APIMeta<M & {}, S, P>,
@@ -183,6 +264,15 @@ export function attachProcedurePluginMembers<
       continue
     }
 
-    injectMembers(handler, members, pluginSettings.aliases.procedure, reserved, `Procedure plugin "${pluginId}"`)
+    const namespace = `$${plugin.namespace ?? plugin.id}`
+    if (reserved.includes(namespace)) {
+      throw new Error(`Procedure plugin "${pluginId}" cannot use reserved namespace "${namespace}"`)
+    }
+    const target = namespaceTarget(
+      handler as unknown as Record<string, unknown>,
+      namespace,
+      `Procedure plugin "${pluginId}"`
+    )
+    injectMembers(target, members, pluginSettings.aliases.procedure, [], `Procedure plugin "${pluginId}"`)
   }
 }

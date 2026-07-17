@@ -1,6 +1,7 @@
 import type {
   BaseProcedureHandler,
   EffectiveRouterUseArgs,
+  PluginBuilderArgs,
   ProcedureBuilder,
   ProcedureHandlerMeta,
   RouterBuilder,
@@ -33,7 +34,7 @@ import type {
  *   return permissions
  * }
  *
- * const api = init({
+ * const api = createApi({
  *   middleware: {
  *     session: getSession,
  *     admin: getAdminPermissions,
@@ -41,7 +42,12 @@ import type {
  * })
  * ```
  */
-export type Middleware = Record<string, () => unknown | Promise<unknown>>
+export type ProcedureExecutionContext = {
+  readonly request?: Request
+  readonly signal?: AbortSignal
+}
+
+export type Middleware = Record<string, (context: ProcedureExecutionContext) => unknown | PromiseLike<unknown>>
 
 /**
  * Minimal schema shape used by `.input(...)` and `.output(...)`.
@@ -49,10 +55,58 @@ export type Middleware = Record<string, () => unknown | Promise<unknown>>
  * Zod schemas satisfy this shape, and custom validators can implement it too.
  */
 export type Schema<Input = unknown, Output = Input> = {
-  parse: (input: Input) => Output
+  parse: (input: unknown) => Output
+  parseAsync?: (input: unknown) => Promise<Output>
   _input: Input
   _output: Output
 }
+
+/** The value observed by an HTTP client after standard JSON serialization. */
+export type HTTPSerialized<T> = T extends Date | bigint | Uint8Array
+  ? string
+  : T extends readonly unknown[]
+    ? { [K in keyof T]: HTTPSerialized<T[K]> }
+    : T extends object
+      ? { [K in keyof T]: HTTPSerialized<T[K]> }
+      : T
+
+export type ProcedureInputTupleSchema<Schemas extends readonly Schema[] = readonly Schema[]> = Schema<
+  { [K in keyof Schemas]: Schemas[K] extends Schema<infer Input, unknown> ? Input : never },
+  { [K in keyof Schemas]: Schemas[K] extends Schema<unknown, infer Output> ? Output : never }
+> & {
+  readonly 'hulla.api.inputSchemas': Schemas
+}
+
+type NamedInputSchemas = readonly [Schema, ...(Schema | undefined)[]]
+
+type NamedSchemaInputValue<S> = Exclude<S, undefined> extends Schema<infer Input, unknown> ? Input : never
+type NamedSchemaOutputValue<S> = Exclude<S, undefined> extends Schema<unknown, infer Output> ? Output : never
+
+export type NamedProcedureInputTupleSchema<Schemas extends NamedInputSchemas> = Schema<
+  { [K in keyof Schemas]: NamedSchemaInputValue<Schemas[K]> },
+  { [K in keyof Required<Schemas>]: NamedSchemaOutputValue<Required<Schemas>[K]> }
+> & {
+  readonly 'hulla.api.inputSchemas': readonly Schema[]
+  readonly 'hulla.api.namedInputSchemas': Schemas
+}
+
+type SchemaInputValue<S extends Schema> = S extends Schema<infer Input, unknown> ? Input : never
+
+type OptionalTrailingArgs<Values extends readonly unknown[]> = Values extends readonly [...infer Head, infer Tail]
+  ? undefined extends Tail
+    ? [...OptionalTrailingArgs<Head>, Tail?]
+    : Values
+  : []
+
+/** The positional arguments accepted by a procedure input definition. */
+export type ProcedureInputArgs<SI extends Schema | undefined> =
+  SI extends NamedProcedureInputTupleSchema<infer Schemas>
+    ? { [K in keyof Schemas]: NamedSchemaInputValue<Schemas[K]> }
+    : SI extends ProcedureInputTupleSchema<infer Schemas>
+      ? OptionalTrailingArgs<{ [K in keyof Schemas]: SchemaInputValue<Schemas[K]> }>
+      : SI extends Schema<infer Input, unknown>
+        ? [input: Input]
+        : []
 
 /**
  * Controls when output schemas parse handler results.
@@ -97,61 +151,178 @@ export type ResolvedAPIPluginRuntimeSettings = {
 
 export type APIPluginSettingsById<P extends APIPluginList> = Partial<Record<PluginId<P>, APIPluginRuntimeSettings>>
 
-export type AnyAPIRouterPluginHook = (ctx: any) => Record<string, unknown>
+type APIRouterPluginHookConstraint = (...args: never[]) => Record<string, unknown>
 
-export type AnyAPIProcedurePluginHook = (ctx: any) => Record<string, unknown>
-
-declare const apiProcedureArgsSymbol: unique symbol
-declare const apiProcedureKeySymbol: unique symbol
-declare const apiProcedureKeyRootSymbol: unique symbol
-declare const apiProcedureResultSymbol: unique symbol
-declare const apiProcedureIfInputSymbol: unique symbol
-declare const apiProcedureOverloadsSymbol: unique symbol
+type APIProcedurePluginHookConstraint = (...args: never[]) => Record<string, unknown>
 
 export type APIProcedureArgs = readonly [
   {
-    readonly [apiProcedureArgsSymbol]: 'args'
+    readonly 'hulla.api.procedureArgs': 'args'
   },
 ]
 
 export type APIProcedureKey = readonly [string] & {
-  readonly [apiProcedureKeySymbol]: 'key'
+  readonly 'hulla.api.procedureKey': 'key'
 }
 
 export type APIProcedureKeyRoot = string & {
-  readonly [apiProcedureKeyRootSymbol]: 'key-root'
+  readonly 'hulla.api.procedureKeyRoot': 'key-root'
 }
 
 export type APIProcedureResult = {
-  readonly [apiProcedureResultSymbol]: 'result'
+  readonly 'hulla.api.procedureResult': 'result'
+}
+
+/**
+ * Type-hook token resolved to an item in the awaited array returned by a procedure.
+ * Resolves to `never` when the procedure does not return an array.
+ */
+export type APIProcedureResultItem = {
+  readonly 'hulla.api.procedureResultItem': 'result-item'
+}
+
+/** Type mapper used by plugin return types that need the procedure's array item. */
+export type APIProcedureResultItemMapper = {
+  readonly input: unknown
+  readonly output: unknown
+}
+
+/** Resolves a plugin type mapper with the item returned by an array procedure. */
+export type APIProcedureMappedResultItem<Mapper extends APIProcedureResultItemMapper> = {
+  readonly 'hulla.api.procedureMappedResultItem': Mapper
+}
+
+/** Keeps a third-party type opaque while resolving a procedure plugin type hook. */
+export type APIProcedureTypeOpaque<T> = {
+  readonly 'hulla.api.procedureTypeOpaque': T
 }
 
 export type APIProcedureIfInput<WhenInput, WhenNoInput> = {
-  readonly [apiProcedureIfInputSymbol]: {
+  readonly 'hulla.api.procedureIfInput': {
     input: WhenInput
     noInput: WhenNoInput
   }
 }
 
 export type APIProcedureOverloads<T extends readonly unknown[]> = {
-  readonly [apiProcedureOverloadsSymbol]: T
+  readonly 'hulla.api.procedureOverloads': T
 }
 
 export type AnyAPIProcedurePluginTypeHook = Record<string, unknown>
 
+export type APIPluginGeneration = {
+  readonly from: string
+  readonly name: string
+  readonly options?: unknown
+}
+
 export type APIPlugin<
   I extends string = string,
-  RH extends AnyAPIRouterPluginHook | undefined = AnyAPIRouterPluginHook | undefined,
-  PH extends AnyAPIProcedurePluginHook | undefined = AnyAPIProcedurePluginHook | undefined,
+  RH extends APIRouterPluginHookConstraint | undefined = AnyAPIRouterPluginHook | undefined,
+  PH extends APIProcedurePluginHookConstraint | undefined = AnyAPIProcedurePluginHook | undefined,
   PTH extends AnyAPIProcedurePluginTypeHook | undefined = AnyAPIProcedurePluginTypeHook | undefined,
+  N extends string = I,
 > = {
   id: I
+  /** Namespace used for router and procedure extensions. It is exposed with a `$` prefix and defaults to `id`. */
+  namespace?: N
+  /** Server-only plugins participate in declarations but are never reconstructed in browser clients. */
+  target?: 'universal' | 'server'
   router?: RH
   procedure?: PH
   procedureTypes?: PTH
+  defaults?: APIPluginRuntimeSettings
+  generation?: APIPluginGeneration
 }
 
-export type APIPluginList = readonly APIPlugin<any, any, any, any>[]
+export type APIPluginList = readonly APIPlugin<
+  string,
+  APIRouterPluginHookConstraint | undefined,
+  APIProcedurePluginHookConstraint | undefined,
+  AnyAPIProcedurePluginTypeHook | undefined,
+  string
+>[]
+
+export function definePlugin<const P extends APIPlugin>(plugin: P): P {
+  return plugin
+}
+
+export type HTTPMethod =
+  | 'CONNECT'
+  | 'DELETE'
+  | 'GET'
+  | 'HEAD'
+  | 'OPTIONS'
+  | 'PATCH'
+  | 'POST'
+  | 'PUT'
+  | 'QUERY'
+  | 'TRACE'
+
+export type HTTPRoute<Method extends HTTPMethod = HTTPMethod, Path extends string = string> = {
+  readonly method: Method
+  readonly path: Path
+}
+
+export type {
+  HTTPContract,
+  HTTPInputContract,
+  HTTPRouteContract,
+  HTTPWireInput,
+  HTTPWireOutput,
+  HTTPWireSchemaConverter,
+  HTTPWireType,
+} from './wire'
+
+export type RouterPresetRoutes = Record<string, (...args: never[]) => unknown>
+
+export type RouterPresetBuilderContext<RequiredPlugin extends string | undefined = undefined> = {
+  readonly $api: {
+    readonly plugins: {
+      readonly registry: Record<Exclude<RequiredPlugin, undefined>, APIPlugin>
+    }
+  }
+  readonly procedure: ProcedureBuilder<
+    Middleware,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    string,
+    APISettings,
+    APIPluginList
+  >
+  route<const Method extends HTTPMethod, const Path extends string>(
+    method: Method,
+    path: Path
+  ): ProcedureBuilder<Middleware, undefined, undefined, undefined, undefined, string, APISettings, APIPluginList>
+}
+
+export type RouterPreset<
+  Generated extends RouterPresetRoutes = RouterPresetRoutes,
+  RequiredPlugin extends string | undefined = undefined,
+> = {
+  readonly $hulla: { readonly kind: 'hulla.api.router-preset'; readonly generation?: unknown }
+  readonly requiredPlugin: RequiredPlugin
+  create(builders: RouterPresetBuilderContext<RequiredPlugin>): Generated
+}
+
+export function defineRouterPreset<
+  const Generated extends RouterPresetRoutes,
+  const RequiredPlugin extends string | undefined = undefined,
+>(
+  create: (builders: RouterPresetBuilderContext<RequiredPlugin>) => Generated,
+  options?: { readonly requires?: RequiredPlugin; readonly generation?: unknown }
+): RouterPreset<Generated, RequiredPlugin> {
+  return {
+    $hulla: {
+      kind: 'hulla.api.router-preset',
+      ...(options?.generation === undefined ? {} : { generation: options.generation }),
+    },
+    requiredPlugin: options?.requires as RequiredPlugin,
+    create,
+  }
+}
 
 export type APIPluginRegistry<P extends APIPluginList> = {
   [K in PluginId<P>]: Extract<P[number], { id: K }>
@@ -160,8 +331,6 @@ export type APIPluginRegistry<P extends APIPluginList> = {
 export type ResolvedAPIPluginSettingsById<P extends APIPluginList> = {
   [K in PluginId<P>]: ResolvedAPIPluginRuntimeSettings
 }
-
-export type PluginProcedureArgs<SI extends Schema | undefined> = SI extends Schema<infer I, any> ? [input: I] : []
 
 export type APISettings<P extends APIPluginList = []> = {
   /**
@@ -191,39 +360,54 @@ export type APIMeta<M extends Middleware, S extends APISettings = DefaultAPISett
 }
 
 export type APIRouterPluginContext<
-  M extends Middleware,
-  UA extends UseBuilderArgs<M> | undefined,
-  N extends string,
-  S extends APISettings,
-  P extends APIPluginList = [],
+  M extends Middleware = Middleware,
+  UA extends UseBuilderArgs<M> | undefined = undefined,
+  N extends string = string,
+  S extends APISettings = APISettings,
+  P extends APIPluginList = APIPluginList,
   RA extends UseBuilderArgs<M> | undefined = undefined,
 > = {
   api: APIMeta<M, S, P>
   pluginId: PluginId<P>
   pluginSettings: ResolvedAPIPluginRuntimeSettings
   router: RouterBuilderMeta<M, UA, N>
-  procedure: ProcedureBuilder<M, EffectiveRouterUseArgs<M, RA, UA>, undefined, undefined, undefined, N, S, P, any, any>
+  procedure: ProcedureBuilder<
+    M,
+    EffectiveRouterUseArgs<M, RA, UA>,
+    undefined,
+    undefined,
+    undefined,
+    N,
+    S,
+    P,
+    PluginBuilderArgs<P>,
+    undefined
+  >
 }
 
 export type APIProcedurePluginContext<
-  M extends Middleware,
-  IA extends UseBuilderArgs<M> | undefined,
-  LA extends UseBuilderArgs<M> | undefined,
-  SI extends Schema | undefined,
-  SO extends Schema | undefined,
-  RN extends string | undefined,
-  S extends APISettings,
-  P extends APIPluginList = [],
+  M extends Middleware = Middleware,
+  IA extends UseBuilderArgs<M> | undefined = undefined,
+  LA extends UseBuilderArgs<M> | undefined = undefined,
+  SI extends Schema | undefined = Schema | undefined,
+  SO extends Schema | undefined = Schema | undefined,
+  RN extends string | undefined = string | undefined,
+  S extends APISettings = APISettings,
+  P extends APIPluginList = APIPluginList,
   N extends string | undefined = undefined,
   R = unknown,
+  HR extends HTTPRoute | undefined = HTTPRoute | undefined,
 > = {
   api: APIMeta<M, S, P>
   pluginId: PluginId<P>
   pluginSettings: ResolvedAPIPluginRuntimeSettings
-  procedure: BaseProcedureHandler<M, IA, LA, SI, SO, RN, R, S, N>
-  call: (...args: PluginProcedureArgs<SI>) => ReturnType<BaseProcedureHandler<M, IA, LA, SI, SO, RN, R, S, N>['call']>
-  meta: ProcedureHandlerMeta<M, IA, LA, SI, SO, RN, N>
+  procedure: BaseProcedureHandler<M, IA, LA, SI, SO, RN, R, S, N, HR>
+  meta: ProcedureHandlerMeta<M, IA, LA, SI, SO, RN, N, HR>
 }
+
+export type AnyAPIRouterPluginHook = (ctx: APIRouterPluginContext) => Record<string, unknown>
+
+export type AnyAPIProcedurePluginHook = (ctx: APIProcedurePluginContext) => Record<string, unknown>
 
 export type APIConfig<
   M extends Middleware = {},
@@ -283,13 +467,13 @@ export type API<
    * @example
    * ```ts
    * const ping = api.procedure.handler(() => 'pong')
-   * ping.call()
+   * ping()
    * ```
    */
   procedure: ProcedureBuilder<M, UA, undefined, undefined, undefined, undefined, S, P>
   /**
    * Creates a named router. Procedures defined inside a router receive stable
-   * key helpers such as `users.byId.key.root`.
+   * key helpers such as `users.byId.$key.root`.
    *
    * @example
    * ```ts
@@ -299,15 +483,4 @@ export type API<
    * ```
    */
   router: <const N extends string>(name: N) => RouterBuilder<M, undefined, N, S, P, undefined, UA>
-}
-
-export type RouterMeta<
-  N extends string,
-  M extends Middleware,
-  S extends APISettings = DefaultAPISettings,
-  P extends APIPluginList = [],
-> = APIMeta<M, S, P> & {
-  router: {
-    name: N
-  }
 }

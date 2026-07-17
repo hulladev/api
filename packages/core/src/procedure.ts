@@ -1,15 +1,12 @@
-import {
-  attachProcedurePluginMembers,
-  createPluginMeta,
-  mergeSelections,
-  procedurePluginIdsKey,
-} from './helpers/plugins'
+import { ProcedureInputError, procedureExecuteKey } from './execution'
+import { createPluginMeta, mergeSelections, procedurePluginIdsKey } from './helpers/plugins'
 import {
   attachProcedureCoreMembers,
   createProcedureMeta,
   mergeMiddlewareSelection,
   resolveContext,
 } from './helpers/procedure'
+import { inputTupleSchema, isInputTupleSchema, namedInputTupleSchema } from './input'
 import type {
   EffectiveUseBuilderArgs,
   EffectiveProcedurePluginArgs,
@@ -20,7 +17,16 @@ import type {
   ProcedureState,
   UseBuilderArgs,
 } from './types.private'
-import type { APIPluginList, APISettings, APIMeta, DefaultAPISettings, Middleware, Schema } from './types.public'
+import type {
+  APIPluginList,
+  APISettings,
+  APIMeta,
+  DefaultAPISettings,
+  HTTPRoute,
+  Middleware,
+  Schema,
+} from './types.public'
+import type { ProcedureExecutionContext } from './types.public'
 import { isPromiseLike } from './utils/async'
 
 export function procedureBuilder<
@@ -34,18 +40,20 @@ export function procedureBuilder<
   P extends APIPluginList = [],
   IPA extends PluginBuilderArgs<P> | undefined = undefined,
   LPA extends PluginBuilderArgs<P> | undefined = undefined,
+  HR extends HTTPRoute | undefined = undefined,
 >(
   meta: Pick<APIMeta<M, S, P>, 'middleware' | 'settings'> & Partial<Pick<APIMeta<M, S, P>, 'plugins'>>,
-  state: ProcedureState<M, IA, LA, SI, SO, RN, P, IPA, LPA> = {
+  state: ProcedureState<M, IA, LA, SI, SO, RN, P, IPA, LPA, HR> = {
     inheritedUse: undefined,
     use: undefined,
     input: undefined,
     output: undefined,
     router: undefined,
+    route: undefined,
     inheritedPlugins: undefined,
     plugins: undefined,
-  } as ProcedureState<M, IA, LA, SI, SO, RN, P, IPA, LPA>
-): ProcedureBuilder<M, IA, LA, SI, SO, RN, S, P, IPA, LPA> {
+  } as ProcedureState<M, IA, LA, SI, SO, RN, P, IPA, LPA, HR>
+): ProcedureBuilder<M, IA, LA, SI, SO, RN, S, P, IPA, LPA, HR> {
   const resolvedMeta = (
     meta.plugins === undefined
       ? {
@@ -66,26 +74,57 @@ export function procedureBuilder<
   ) as EffectiveProcedurePluginArgs<P, S, IPA, LPA>
 
   const use = <const UA extends UseBuilderArgs<M>>(...nextUse: UA) => {
-    return procedureBuilder<M, IA, UA, SI, SO, RN, S, P, IPA, LPA>(resolvedMeta, { ...state, use: nextUse })
+    return procedureBuilder<M, IA, UA, SI, SO, RN, S, P, IPA, LPA, HR>(resolvedMeta, { ...state, use: nextUse })
   }
 
   const plugin = <const PA extends PluginBuilderArgs<P>>(...selectedPlugins: PA) => {
-    return procedureBuilder<M, IA, LA, SI, SO, RN, S, P, IPA, PA>(resolvedMeta, { ...state, plugins: selectedPlugins })
+    return procedureBuilder<M, IA, LA, SI, SO, RN, S, P, IPA, PA, HR>(resolvedMeta, {
+      ...state,
+      plugins: selectedPlugins,
+    })
   }
 
-  const input = <const NSI extends Schema>(nextInput: NSI) => {
-    return procedureBuilder<M, IA, LA, NSI, SO, RN, S, P, IPA, LPA>(resolvedMeta, { ...state, input: nextInput })
+  const input = (...nextInputs: readonly Schema[]) => {
+    const nextInput =
+      nextInputs.length === 1 ? nextInputs[0]! : inputTupleSchema(nextInputs as readonly [Schema, Schema, ...Schema[]])
+    return procedureBuilder(resolvedMeta, { ...state, input: nextInput })
+  }
+  input.$named = (...nextInputs: readonly [Schema, Schema, ...Schema[]]) => {
+    return procedureBuilder(resolvedMeta, { ...state, input: namedInputTupleSchema(nextInputs) })
   }
 
   const output = <const NSO extends Schema>(nextOutput: NSO) => {
-    return procedureBuilder<M, IA, LA, SI, NSO, RN, S, P, IPA, LPA>(resolvedMeta, { ...state, output: nextOutput })
+    return procedureBuilder<M, IA, LA, SI, NSO, RN, S, P, IPA, LPA, HR>(resolvedMeta, {
+      ...state,
+      output: nextOutput,
+    })
   }
 
-  const handler: ProcedureBuilder<M, IA, LA, SI, SO, RN, S, P, IPA, LPA>['handler'] = ((fn) => {
-    const call = ((...args: unknown[]) => {
-      const parsedInput = state.input === undefined ? undefined : state.input.parse(args[0] as never)
+  const handler: ProcedureBuilder<M, IA, LA, SI, SO, RN, S, P, IPA, LPA, HR>['handler'] = ((fn) => {
+    const execute = (
+      args: readonly unknown[],
+      executionContext: ProcedureExecutionContext,
+      options?: { readonly inputParsed?: boolean; readonly parsedInput?: unknown }
+    ) => {
+      let parsedInput: unknown
+
+      if (options?.inputParsed) {
+        parsedInput = options.parsedInput
+      } else {
+        try {
+          parsedInput =
+            state.input === undefined
+              ? undefined
+              : state.input.parse((isInputTupleSchema(state.input) ? args : args[0]) as never)
+        } catch (error) {
+          throw new ProcedureInputError(error)
+        }
+      }
+
       const contextCache =
-        selected === undefined ? undefined : resolveContext(resolvedMeta.middleware, selected as never)
+        selected === undefined
+          ? undefined
+          : resolveContext(resolvedMeta.middleware, selected as never, executionContext)
       const result = fn({
         ...(selected === undefined ? {} : { getContext: () => contextCache }),
         ...(state.input === undefined ? {} : { input: parsedInput }),
@@ -96,44 +135,40 @@ export function procedureBuilder<
       }
 
       if (resolvedMeta.settings.output === 'raw') {
+        if (isPromiseLike(result) && state.output.parseAsync) return state.output.parseAsync(result)
         return state.output.parse(result)
       }
 
-      return isPromiseLike(result) ? result.then((value) => state.output!.parse(value)) : state.output.parse(result)
-    }) as BaseProcedureHandler<M, IA, LA, SI, SO, RN, ReturnType<typeof fn>, S>['call']
+      return isPromiseLike(result)
+        ? Promise.resolve(result).then((value) => state.output!.parse(value))
+        : state.output.parse(result)
+    }
+    const runtimeHandler = ((...args: unknown[]) => execute(args, {})) as unknown as ProcedureHandler<
+      M,
+      IA,
+      LA,
+      SI,
+      SO,
+      RN,
+      ReturnType<typeof fn>,
+      S,
+      undefined,
+      P,
+      typeof activePlugins,
+      HR
+    >
 
-    const runtimeHandler = {
-      call,
-    } as ProcedureHandler<M, IA, LA, SI, SO, RN, ReturnType<typeof fn>, S, undefined, P, typeof activePlugins>
-
+    ;(runtimeHandler as unknown as Record<PropertyKey, unknown>)[procedureExecuteKey] = execute
     runtimeHandler.$meta = createProcedureMeta(state, selected) as typeof runtimeHandler.$meta
     attachProcedureCoreMembers(
-      runtimeHandler as unknown as BaseProcedureHandler<M, IA, LA, SI, SO, RN, ReturnType<typeof fn>, S>
+      runtimeHandler as unknown as BaseProcedureHandler<M, IA, LA, SI, SO, RN, ReturnType<typeof fn>, S, undefined, HR>
     )
     ;(runtimeHandler as unknown as Record<PropertyKey, unknown>)[procedurePluginIdsKey] = activePlugins as
       | readonly string[]
       | undefined
 
-    if (state.router === undefined) {
-      attachProcedurePluginMembers(
-        resolvedMeta,
-        runtimeHandler as unknown as Record<string, unknown>,
-        (pluginDef, pluginSettings) => {
-          return pluginDef.procedure?.({
-            api: resolvedMeta,
-            pluginId: pluginDef.id,
-            pluginSettings,
-            procedure: runtimeHandler as never,
-            call: runtimeHandler.call as never,
-            meta: runtimeHandler.$meta,
-          }) as Record<string, unknown> | undefined
-        },
-        ['$meta', 'call', 'key']
-      )
-    }
-
     return runtimeHandler
-  }) as ProcedureBuilder<M, IA, LA, SI, SO, RN, S, P, IPA, LPA>['handler']
+  }) as ProcedureBuilder<M, IA, LA, SI, SO, RN, S, P, IPA, LPA, HR>['handler']
 
   return {
     ...(state.use === undefined && hasMiddleware ? { use } : {}),
@@ -142,5 +177,5 @@ export function procedureBuilder<
     ...(state.output === undefined ? { output } : {}),
     handler,
     $meta: createProcedureMeta(state, selected),
-  } as unknown as ProcedureBuilder<M, IA, LA, SI, SO, RN, S, P, IPA, LPA>
+  } as unknown as ProcedureBuilder<M, IA, LA, SI, SO, RN, S, P, IPA, LPA, HR>
 }

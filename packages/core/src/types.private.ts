@@ -4,17 +4,26 @@ import type {
   APIProcedureKey,
   APIProcedureKeyRoot,
   APIProcedureOverloads,
+  APIProcedureMappedResultItem,
   APIProcedureResult,
-  APIRouterPluginContext,
+  APIProcedureResultItem,
+  APIProcedureResultItemMapper,
+  APIProcedureTypeOpaque,
   APIPluginList,
   APISettings,
   DefaultAPISettings,
+  HTTPMethod,
+  HTTPRoute,
   Middleware,
+  NamedProcedureInputTupleSchema,
   PluginId,
+  ProcedureInputArgs,
+  ProcedureInputTupleSchema,
+  RouterPreset,
   Schema,
 } from './types.public'
 
-export type KeyofToString<K> = K extends string ? K : never
+type KeyofToString<K> = K extends string ? K : never
 
 type HasMiddleware<M extends Middleware> = keyof M extends never ? false : true
 
@@ -23,8 +32,6 @@ type HasPlugins<P extends APIPluginList> = PluginId<P> extends never ? false : t
 type NormalizeSelection<T> = T extends readonly unknown[] ? T : readonly []
 
 type CastPluginList<T> = T extends APIPluginList ? T : readonly []
-
-type UnionToIntersection<U> = (U extends any ? (value: U) => void : never) extends (value: infer I) => void ? I : never
 
 declare const procedureTypeStateKey: unique symbol
 
@@ -52,7 +59,7 @@ type MergeTuple<T extends readonly unknown[], Acc extends readonly unknown[]> = 
   ? MergeTuple<Tail, TupleIncludes<Acc, Head> extends true ? Acc : [...Acc, Head]>
   : Acc
 
-export type MergeSelectionArgs<
+type MergeSelectionArgs<
   IA extends readonly unknown[] | undefined,
   LA extends readonly unknown[] | undefined,
 > = IA extends readonly unknown[]
@@ -67,12 +74,12 @@ export type UseBuilderArgs<M extends Middleware> = readonly KeyofToString<keyof 
 
 export type PluginBuilderArgs<P extends APIPluginList> = readonly PluginId<P>[]
 
-export type MergeUseBuilderArgs<
+type MergeUseBuilderArgs<
   IA extends readonly unknown[] | undefined,
   LA extends readonly unknown[] | undefined,
 > = MergeSelectionArgs<IA, LA>
 
-export type MergePluginBuilderArgs<
+type MergePluginBuilderArgs<
   IA extends readonly unknown[] | undefined,
   LA extends readonly unknown[] | undefined,
 > = MergeSelectionArgs<IA, LA>
@@ -137,6 +144,16 @@ export type EffectiveProcedurePluginArgs<
 
 type FindPlugin<P extends APIPluginList, I extends string> = Extract<P[number], { id: I }>
 
+type PluginNamespace<Plugin> = Plugin extends { namespace?: infer N extends string }
+  ? `$${N}`
+  : Plugin extends { id: infer I extends string }
+    ? `$${I}`
+    : never
+
+type UnionToIntersection<U> = (U extends unknown ? (value: U) => void : never) extends (value: infer I) => void
+  ? I
+  : never
+
 type RouterAliasMapFor<S, I extends string> = S extends { plugins?: infer PS }
   ? PS extends Record<string, unknown>
     ? I extends keyof PS
@@ -173,15 +190,66 @@ type ContextMap<M extends Middleware, UA extends UseBuilderArgs<M> | undefined> 
     }
   : {}
 
-type AnyValueIsPromise<T> =
-  Extract<{ [K in keyof T]: T[K] extends Promise<any> ? true : false }[keyof T], true> extends never ? false : true
+type ValueCanBePromise<T> = Extract<T, PromiseLike<unknown>> extends never ? false : true
 
-export type GetContext<M extends Middleware, UA extends UseBuilderArgs<M> | undefined> =
+type AnyValueIsPromise<T> =
+  Extract<{ [K in keyof T]: ValueCanBePromise<T[K]> }[keyof T], true> extends never ? false : true
+
+type GetContext<M extends Middleware, UA extends UseBuilderArgs<M> | undefined> =
   AnyValueIsPromise<RawContextMap<M, UA>> extends true ? () => Promise<ContextMap<M, UA>> : () => ContextMap<M, UA>
 
-type SchemaInput<S extends Schema | undefined> = S extends Schema<infer I, any> ? I : never
+type SchemaInput<S extends Schema | undefined> = S extends Schema<infer I, unknown> ? I : never
 
-type SchemaOutput<S extends Schema | undefined> = S extends Schema<any, infer O> ? O : unknown
+type SchemaOutput<S extends Schema | undefined> = S extends Schema<unknown, infer O> ? O : unknown
+
+type RoutePathParameters<Path extends string> = Path extends `${string}/:${infer Parameter}/${infer Rest}`
+  ? readonly [Parameter, ...RoutePathParameters<`/${Rest}`>]
+  : Path extends `${string}/:${infer Parameter}`
+    ? readonly [Parameter]
+    : readonly []
+
+type RouteParameters<HR extends HTTPRoute | undefined> =
+  HR extends HTTPRoute<HTTPMethod, infer Path> ? RoutePathParameters<Path> : readonly []
+
+type TupleCovers<Values extends readonly unknown[], Required extends readonly unknown[]> = Required extends readonly [
+  unknown,
+  ...infer RequiredRest,
+]
+  ? Values extends readonly [unknown, ...infer ValueRest]
+    ? TupleCovers<ValueRest, RequiredRest>
+    : false
+  : true
+
+type RouteInputSchemas<SI extends Schema | undefined> = SI extends {
+  readonly 'hulla.api.namedInputSchemas': infer Schemas extends readonly Schema[]
+}
+  ? Schemas
+  : SI extends { readonly 'hulla.api.inputSchemas': infer Schemas extends readonly Schema[] }
+    ? Schemas
+    : never
+
+type HTTPPathScalar = string | number | boolean | bigint | Date | Uint8Array | null
+
+type RouteObjectCovers<Input, Parameters extends readonly string[]> = unknown extends Input
+  ? true
+  : [Exclude<Input, undefined>] extends [HTTPPathScalar]
+    ? Parameters extends readonly [string]
+      ? true
+      : false
+    : [Exclude<Input, null | undefined>] extends [Record<Parameters[number], unknown>]
+      ? true
+      : false
+
+type RouteInputIsValid<HR extends HTTPRoute | undefined, SI extends Schema | undefined> =
+  RouteParameters<HR> extends infer Parameters extends readonly string[]
+    ? Parameters extends readonly []
+      ? true
+      : SI extends Schema
+        ? [RouteInputSchemas<SI>] extends [never]
+          ? RouteObjectCovers<SchemaInput<SI>, Parameters>
+          : TupleCovers<RouteInputSchemas<SI>, Parameters>
+        : false
+    : false
 
 type HandlerSetupData<
   M extends Middleware,
@@ -196,12 +264,12 @@ type HandlerSetupData<
 type ApplyOutput<SO extends Schema | undefined, R, S extends APISettings> = SO extends Schema
   ? S['output'] extends 'raw'
     ? SchemaOutput<SO>
-    : R extends Promise<any>
+    : R extends PromiseLike<unknown>
       ? Promise<SchemaOutput<SO>>
       : SchemaOutput<SO>
   : R
 
-type RuntimeArgs<SI extends Schema | undefined> = SI extends Schema ? [input: SchemaInput<SI>] : []
+type RuntimeArgs<SI extends Schema | undefined> = ProcedureInputArgs<SI>
 
 type RuntimeReturn<SO extends Schema | undefined, R, S extends APISettings> = ApplyOutput<SO, R, S>
 
@@ -225,7 +293,7 @@ type ProcedureKeyNamespace<
    *
    * @example
    * ```ts
-   * users.byId.key.root // "users/byId"
+   * users.byId.$key.root // "users/byId"
    * ```
    */
   root: ProcedureKeyRoot<RN, N>
@@ -234,7 +302,7 @@ type ProcedureKeyNamespace<
    *
    * @example
    * ```ts
-   * users.byId.key.full('user_123') // ["users/byId", "user_123"]
+   * users.byId.$key.full('user_123') // ["users/byId", "user_123"]
    * ```
    */
   full: (...args: RuntimeArgs<SI>) => readonly [ProcedureKeyRoot<RN, N>, ...RuntimeArgs<SI>]
@@ -247,6 +315,7 @@ export type ProcedureBuilderMeta<
   SI extends Schema | undefined,
   SO extends Schema | undefined,
   RN extends string | undefined,
+  HR extends HTTPRoute | undefined = undefined,
 > = {
   type: 'procedure'
   middleware: {
@@ -256,7 +325,8 @@ export type ProcedureBuilderMeta<
   }
   input: SI
   output: SO
-} & (RN extends string ? { router: RN } : {})
+} & (RN extends string ? { router: RN } : {}) &
+  (HR extends HTTPRoute ? { route: HR } : { route?: undefined })
 
 export type ProcedureHandlerMeta<
   M extends Middleware,
@@ -266,7 +336,8 @@ export type ProcedureHandlerMeta<
   SO extends Schema | undefined,
   RN extends string | undefined,
   N extends string | undefined = undefined,
-> = ProcedureBuilderMeta<M, IA, LA, SI, SO, RN> & (N extends string ? { name: N } : {})
+  HR extends HTTPRoute | undefined = undefined,
+> = ProcedureBuilderMeta<M, IA, LA, SI, SO, RN, HR> & (N extends string ? { name: N } : {})
 
 export type BaseProcedureHandler<
   M extends Middleware,
@@ -278,7 +349,8 @@ export type BaseProcedureHandler<
   R,
   S extends APISettings,
   N extends string | undefined = undefined,
-> = {
+  HR extends HTTPRoute | undefined = undefined,
+> = RuntimeHandler<SI, SO, R, S> & {
   /**
    * Executes the finalized procedure.
    *
@@ -290,26 +362,21 @@ export type BaseProcedureHandler<
    * ```ts
    * const byId = api.procedure.input(z.string()).handler(({ input }) => input)
    *
-   * byId.call('user_123')
+   * byId('user_123')
    * ```
    */
-  call: RuntimeHandler<SI, SO, R, S>
-  /**
-   * Runtime metadata describing selected middleware, schemas, and router/name
-   * information when available.
-   */
-  $meta: ProcedureHandlerMeta<M, IA, LA, SI, SO, RN, N>
-} & (N extends string ? { key: ProcedureKeyNamespace<SI, RN, N> } : {})
+  $meta: ProcedureHandlerMeta<M, IA, LA, SI, SO, RN, N, HR>
+} & (N extends string ? { $key: ProcedureKeyNamespace<SI, RN, N> } : {})
 
-type ApplyRouterPluginHook<Plugin, Ctx> = Plugin extends { router?: infer H }
-  ? Exclude<H, undefined> extends (ctx: Ctx) => infer O
+type ApplyRouterPluginHook<Plugin> = Plugin extends { router?: infer H }
+  ? Exclude<H, undefined> extends (...args: never[]) => infer O
     ? O
     : {}
   : {}
 
 type ResolveProcedurePluginArgs<
   A,
-  Handler extends (...args: any[]) => any,
+  Handler extends (...args: never[]) => unknown,
   RN extends string | undefined,
   N extends string | undefined,
 > = [A] extends [APIProcedureArgs]
@@ -320,7 +387,7 @@ type ResolveProcedurePluginArgs<
 
 type ResolveProcedurePluginType<
   T,
-  Handler extends (...args: any[]) => any,
+  Handler extends (...args: never[]) => unknown,
   RN extends string | undefined,
   N extends string | undefined,
 > = [T] extends [APIProcedureArgs]
@@ -344,41 +411,67 @@ type ResolveProcedurePluginType<
           ? ProcedureKeyRoot<RN, N>
           : [T] extends [APIProcedureResult]
             ? ReturnType<Handler>
-            : T extends (...args: infer A) => infer R
-              ? (
-                  ...args: ResolveProcedurePluginArgs<A, Handler, RN, N>
-                ) => ResolveProcedurePluginType<R, Handler, RN, N>
-              : T extends readonly unknown[]
-                ? { [K in keyof T]: ResolveProcedurePluginType<T[K], Handler, RN, N> }
-                : T extends object
-                  ? { [K in keyof T]: ResolveProcedurePluginType<T[K], Handler, RN, N> }
-                  : T
+            : [T] extends [APIProcedureResultItem]
+              ? Awaited<ReturnType<Handler>> extends readonly (infer Item extends object)[]
+                ? Item
+                : never
+              : [T] extends [APIProcedureMappedResultItem<infer Mapper extends APIProcedureResultItemMapper>]
+                ? Awaited<ReturnType<Handler>> extends readonly (infer Item extends object)[]
+                  ? (Mapper & { readonly input: Item })['output']
+                  : never
+                : [T] extends [APIProcedureTypeOpaque<infer Opaque>]
+                  ? Opaque
+                  : T extends (...args: infer A) => infer R
+                    ? (
+                        ...args: ResolveProcedurePluginArgs<A, Handler, RN, N>
+                      ) => ResolveProcedurePluginType<R, Handler, RN, N>
+                    : T extends readonly unknown[]
+                      ? { [K in keyof T]: ResolveProcedurePluginType<T[K], Handler, RN, N> }
+                      : T extends object
+                        ? { [K in keyof T]: ResolveProcedurePluginType<T[K], Handler, RN, N> }
+                        : T
 
 type ApplyProcedurePluginTypeHook<
   Plugin,
-  Handler extends (...args: any[]) => any,
+  Handler extends (...args: never[]) => unknown,
   RN extends string | undefined,
   N extends string | undefined,
 > = Plugin extends { procedureTypes?: infer H } ? ResolveProcedurePluginType<Exclude<H, undefined>, Handler, RN, N> : {}
 
+type RouterPluginExtensionForId<K, P extends APIPluginList, S extends APISettings> = K extends string
+  ? {
+      [Namespace in PluginNamespace<FindPlugin<P, K>>]: RemapKeys<
+        ApplyRouterPluginHook<FindPlugin<P, K>>,
+        RouterAliasMapFor<S, K>
+      >
+    }
+  : never
+
 type RouterPluginExtensionsFromIds<
-  M extends Middleware,
   P extends APIPluginList,
   Ids extends PluginBuilderArgs<P> | undefined,
-  UA extends UseBuilderArgs<M> | undefined,
-  N extends string,
   S extends APISettings,
-  RA extends UseBuilderArgs<M> | undefined = undefined,
 > = [NormalizeSelection<Ids>[number]] extends [never]
   ? {}
-  : UnionToIntersection<
-      {
-        [K in NormalizeSelection<Ids>[number] & string]: RemapKeys<
-          ApplyRouterPluginHook<FindPlugin<P, K>, APIRouterPluginContext<M, UA, N, S, P, RA>>,
-          RouterAliasMapFor<S, K>
-        >
-      }[NormalizeSelection<Ids>[number] & string]
-    >
+  : UnionToIntersection<RouterPluginExtensionForId<NormalizeSelection<Ids>[number], P, S>>
+
+type ProcedurePluginExtensionForId<
+  K,
+  P extends APIPluginList,
+  SI extends Schema | undefined,
+  SO extends Schema | undefined,
+  RN extends string | undefined,
+  S extends APISettings,
+  N extends string,
+  R,
+> = K extends string
+  ? {
+      [Namespace in PluginNamespace<FindPlugin<P, K>>]: RemapKeys<
+        ApplyProcedurePluginTypeHook<FindPlugin<P, K>, RuntimeHandler<SI, SO, R, S>, RN, N>,
+        ProcedureAliasMapFor<S, K>
+      >
+    }
+  : never
 
 type ProcedurePluginExtensionsFromIds<
   P extends APIPluginList,
@@ -392,14 +485,7 @@ type ProcedurePluginExtensionsFromIds<
 > = N extends string
   ? [NormalizeSelection<Ids>[number]] extends [never]
     ? {}
-    : UnionToIntersection<
-        {
-          [K in NormalizeSelection<Ids>[number] & string]: RemapKeys<
-            ApplyProcedurePluginTypeHook<FindPlugin<P, K>, RuntimeHandler<SI, SO, R, S>, RN, N>,
-            ProcedureAliasMapFor<S, K>
-          >
-        }[NormalizeSelection<Ids>[number] & string]
-      >
+    : UnionToIntersection<ProcedurePluginExtensionForId<NormalizeSelection<Ids>[number], P, SI, SO, RN, S, N, R>>
   : {}
 
 export type ProcedureHandler<
@@ -414,7 +500,8 @@ export type ProcedureHandler<
   N extends string | undefined = undefined,
   P extends APIPluginList = [],
   PA extends PluginBuilderArgs<P> | undefined = undefined,
-> = BaseProcedureHandler<M, IA, LA, SI, SO, RN, R, S, N> &
+  HR extends HTTPRoute | undefined = undefined,
+> = BaseProcedureHandler<M, IA, LA, SI, SO, RN, R, S, N, HR> &
   ProcedurePluginExtensionsFromIds<P, PA, SI, SO, RN, S, N, R> & {
     readonly [procedureTypeStateKey]?: {
       plugins: P
@@ -422,11 +509,10 @@ export type ProcedureHandler<
     }
   }
 
-export type AnyProcedureHandler = {
-  call: (...args: any[]) => unknown
-  key?: {
+type AnyProcedureHandler = ((...args: never[]) => unknown) & {
+  $key?: {
     root: string
-    full: (...args: any[]) => readonly [string, ...any[]]
+    full: (...args: never[]) => readonly [string, ...unknown[]]
   }
   $meta: Record<string, unknown> & {
     type: string
@@ -442,26 +528,27 @@ type OverrideRouteMeta<H extends AnyProcedureHandler, N extends string, RN exten
     infer LA,
     infer SI,
     infer SO,
-    any,
+    infer _RN,
     infer R,
     infer S,
-    any,
+    infer _N,
     infer P,
-    infer PA
+    infer PA,
+    infer HR
   >
-    ? ProcedureHandler<M, IA, LA, SI, SO, RN, R, S, N, P, PA>
-    : Omit<H, '$meta' | 'key'> & {
+    ? ProcedureHandler<M, IA, LA, SI, SO, RN, R, S, N, P, PA, HR> & Omit<H, '$meta' | '$key'>
+    : H & {
         $meta: H['$meta'] & {
           name: N
           router: RN
         }
-        key: {
+        $key: {
           root: ProcedureKeyRoot<RN, N>
-          full: (...args: Parameters<H['call']>) => readonly [ProcedureKeyRoot<RN, N>, ...Parameters<H['call']>]
+          full: (...args: Parameters<H>) => readonly [ProcedureKeyRoot<RN, N>, ...Parameters<H>]
         }
       }
 
-export type RouterDefinition<R extends Record<string, AnyProcedureHandler>, N extends string> = {
+type RouterDefinition<R extends Record<string, AnyProcedureHandler>, N extends string> = {
   [K in keyof R]: K extends string ? OverrideRouteMeta<R[K], K, N> : never
 }
 
@@ -476,53 +563,60 @@ export type HandlerBuilder<
   P extends APIPluginList = [],
   IPA extends PluginBuilderArgs<P> | undefined = undefined,
   LPA extends PluginBuilderArgs<P> | undefined = undefined,
-> = SO extends Schema
-  ? S['output'] extends 'raw'
-    ? <F extends (data: HandlerSetupData<M, IA, LA, SI>) => SchemaInput<SO>>(
-        fn: F
-      ) => ProcedureHandler<
-        M,
-        IA,
-        LA,
-        SI,
-        SO,
-        RN,
-        ReturnType<F>,
-        S,
-        undefined,
-        P,
-        EffectiveProcedurePluginArgs<P, S, IPA, LPA>
-      >
-    : <F extends (data: HandlerSetupData<M, IA, LA, SI>) => SchemaInput<SO> | Promise<SchemaInput<SO>>>(
-        fn: F
-      ) => ProcedureHandler<
-        M,
-        IA,
-        LA,
-        SI,
-        SO,
-        RN,
-        ReturnType<F>,
-        S,
-        undefined,
-        P,
-        EffectiveProcedurePluginArgs<P, S, IPA, LPA>
-      >
-  : <F extends (data: HandlerSetupData<M, IA, LA, SI>) => unknown>(
-      fn: F
-    ) => ProcedureHandler<
-      M,
-      IA,
-      LA,
-      SI,
-      SO,
-      RN,
-      ReturnType<F>,
-      S,
-      undefined,
-      P,
-      EffectiveProcedurePluginArgs<P, S, IPA, LPA>
-    >
+  HR extends HTTPRoute | undefined = undefined,
+> =
+  RouteInputIsValid<HR, SI> extends true
+    ? SO extends Schema
+      ? S['output'] extends 'raw'
+        ? <F extends (data: HandlerSetupData<M, IA, LA, SI>) => SchemaInput<SO>>(
+            fn: F
+          ) => ProcedureHandler<
+            M,
+            IA,
+            LA,
+            SI,
+            SO,
+            RN,
+            ReturnType<F>,
+            S,
+            undefined,
+            P,
+            EffectiveProcedurePluginArgs<P, S, IPA, LPA>,
+            HR
+          >
+        : <F extends (data: HandlerSetupData<M, IA, LA, SI>) => SchemaInput<SO> | Promise<SchemaInput<SO>>>(
+            fn: F
+          ) => ProcedureHandler<
+            M,
+            IA,
+            LA,
+            SI,
+            SO,
+            RN,
+            ReturnType<F>,
+            S,
+            undefined,
+            P,
+            EffectiveProcedurePluginArgs<P, S, IPA, LPA>,
+            HR
+          >
+      : <F extends (data: HandlerSetupData<M, IA, LA, SI>) => unknown>(
+          fn: F
+        ) => ProcedureHandler<
+          M,
+          IA,
+          LA,
+          SI,
+          SO,
+          RN,
+          ReturnType<F>,
+          S,
+          undefined,
+          P,
+          EffectiveProcedurePluginArgs<P, S, IPA, LPA>,
+          HR
+        >
+    : never
 
 export type UseBuilder<
   M extends Middleware,
@@ -534,9 +628,10 @@ export type UseBuilder<
   P extends APIPluginList = [],
   IPA extends PluginBuilderArgs<P> | undefined = undefined,
   LPA extends PluginBuilderArgs<P> | undefined = undefined,
-> = <UA extends UseBuilderArgs<M>>(...selected: UA) => ProcedureBuilder<M, IA, UA, SI, SO, RN, S, P, IPA, LPA>
+  HR extends HTTPRoute | undefined = undefined,
+> = <UA extends UseBuilderArgs<M>>(...selected: UA) => ProcedureBuilder<M, IA, UA, SI, SO, RN, S, P, IPA, LPA, HR>
 
-export type ProcedurePluginBuilder<
+type ProcedurePluginBuilder<
   M extends Middleware,
   IA extends UseBuilderArgs<M> | undefined,
   LA extends UseBuilderArgs<M> | undefined,
@@ -546,9 +641,10 @@ export type ProcedurePluginBuilder<
   S extends APISettings,
   P extends APIPluginList = [],
   IPA extends PluginBuilderArgs<P> | undefined = undefined,
-> = <PA extends PluginBuilderArgs<P>>(...selected: PA) => ProcedureBuilder<M, IA, LA, SI, SO, RN, S, P, IPA, PA>
+  HR extends HTTPRoute | undefined = undefined,
+> = <PA extends PluginBuilderArgs<P>>(...selected: PA) => ProcedureBuilder<M, IA, LA, SI, SO, RN, S, P, IPA, PA, HR>
 
-export type InputBulder<
+export type InputBuilder<
   M extends Middleware,
   IA extends UseBuilderArgs<M> | undefined,
   LA extends UseBuilderArgs<M> | undefined,
@@ -558,9 +654,30 @@ export type InputBulder<
   P extends APIPluginList = [],
   IPA extends PluginBuilderArgs<P> | undefined = undefined,
   LPA extends PluginBuilderArgs<P> | undefined = undefined,
-> = <SI extends Schema>(input: SI) => ProcedureBuilder<M, IA, LA, SI, SO, RN, S, P, IPA, LPA>
+  HR extends HTTPRoute | undefined = undefined,
+> = (<SI extends Schema, S2 extends Schema | undefined = undefined, const Rest extends readonly Schema[] = []>(
+  input: SI,
+  second?: S2,
+  ...rest: Rest
+) => ProcedureBuilder<
+  M,
+  IA,
+  LA,
+  S2 extends Schema ? ProcedureInputTupleSchema<readonly [SI, S2, ...Rest]> : SI,
+  SO,
+  RN,
+  S,
+  P,
+  IPA,
+  LPA,
+  HR
+>) & {
+  $named: <const Schemas extends readonly [Schema, ...(Schema | undefined)[]]>(
+    ...inputs: { [K in keyof Schemas]-?: Exclude<Schemas[K], undefined> }
+  ) => ProcedureBuilder<M, IA, LA, NamedProcedureInputTupleSchema<Schemas>, SO, RN, S, P, IPA, LPA, HR>
+}
 
-export type OutputBulder<
+export type OutputBuilder<
   M extends Middleware,
   IA extends UseBuilderArgs<M> | undefined,
   LA extends UseBuilderArgs<M> | undefined,
@@ -570,7 +687,8 @@ export type OutputBulder<
   P extends APIPluginList = [],
   IPA extends PluginBuilderArgs<P> | undefined = undefined,
   LPA extends PluginBuilderArgs<P> | undefined = undefined,
-> = <SO extends Schema>(output: SO) => ProcedureBuilder<M, IA, LA, SI, SO, RN, S, P, IPA, LPA>
+  HR extends HTTPRoute | undefined = undefined,
+> = <SO extends Schema>(output: SO) => ProcedureBuilder<M, IA, LA, SI, SO, RN, S, P, IPA, LPA, HR>
 
 export type ProcedureBuilder<
   M extends Middleware,
@@ -583,6 +701,7 @@ export type ProcedureBuilder<
   P extends APIPluginList = [],
   IPA extends PluginBuilderArgs<P> | undefined = undefined,
   LPA extends PluginBuilderArgs<P> | undefined = undefined,
+  HR extends HTTPRoute | undefined = undefined,
 > = (LA extends undefined
   ? HasMiddleware<M> extends true
     ? {
@@ -597,7 +716,7 @@ export type ProcedureBuilder<
          * const me = api.procedure.use('session').handler(({ getContext }) => getContext())
          * ```
          */
-        use: UseBuilder<M, IA, SI, SO, RN, S, P, IPA, LPA>
+        use: UseBuilder<M, IA, SI, SO, RN, S, P, IPA, LPA, HR>
       }
     : {}
   : {}) &
@@ -610,7 +729,7 @@ export type ProcedureBuilder<
            * Plugins configured with `inject: 'opt-in'` are only attached after
            * selecting them with `.plugin(...)`.
            */
-          plugin: ProcedurePluginBuilder<M, IA, LA, SI, SO, RN, S, P, IPA>
+          plugin: ProcedurePluginBuilder<M, IA, LA, SI, SO, RN, S, P, IPA, HR>
         }
       : {}
     : {}) &
@@ -618,14 +737,15 @@ export type ProcedureBuilder<
     ? {
         /**
          * Adds an input schema. The runtime argument is parsed before the
-         * handler receives it as `input`.
+         * handler receives it as `input`. Use `.input.$named<[...]>(...)` when
+         * emitted declarations should preserve explicit positional labels.
          *
          * @example
          * ```ts
          * const byId = api.procedure.input(z.string()).handler(({ input }) => input)
          * ```
          */
-        input: InputBulder<M, IA, LA, SO, RN, S, P, IPA, LPA>
+        input: InputBuilder<M, IA, LA, SO, RN, S, P, IPA, LPA, HR>
       }
     : {}) &
   (SO extends undefined
@@ -639,14 +759,14 @@ export type ProcedureBuilder<
          * const name = api.procedure.output(z.string()).handler(async () => 'Samuel')
          * ```
          */
-        output: OutputBulder<M, IA, LA, SI, RN, S, P, IPA, LPA>
+        output: OutputBuilder<M, IA, LA, SI, RN, S, P, IPA, LPA, HR>
       }
     : {}) & {
     /**
      * Finalizes the procedure with the function that performs the work.
      *
-     * The returned handler exposes `.call(...)` and, when defined inside a
-     * router, stable `.key` helpers.
+     * The returned handler is callable and, when defined inside a router,
+     * exposes stable `.$key` helpers.
      *
      * @example
      * ```ts
@@ -657,11 +777,11 @@ export type ProcedureBuilder<
      *   })
      * ```
      */
-    handler: HandlerBuilder<M, IA, LA, SI, SO, RN, S, P, IPA, LPA>
+    handler: HandlerBuilder<M, IA, LA, SI, SO, RN, S, P, IPA, LPA, HR>
     /**
      * Builder metadata for middleware and schemas selected so far.
      */
-    $meta: ProcedureBuilderMeta<M, IA, LA, SI, SO, RN>
+    $meta: ProcedureBuilderMeta<M, IA, LA, SI, SO, RN, HR>
   }
 
 export type ProcedureState<
@@ -674,12 +794,14 @@ export type ProcedureState<
   P extends APIPluginList = [],
   IPA extends PluginBuilderArgs<P> | undefined = undefined,
   LPA extends PluginBuilderArgs<P> | undefined = undefined,
+  HR extends HTTPRoute | undefined = undefined,
 > = {
   inheritedUse: IA
   use: LA
   input: SI
   output: SO
   router: RN
+  route: HR
   inheritedPlugins: IPA
   plugins: LPA
 }
@@ -708,7 +830,7 @@ export type RouterState<
   plugins: PA
 }
 
-export type RouterUseBuilder<
+type RouterUseBuilder<
   M extends Middleware,
   RA extends UseBuilderArgs<M> | undefined,
   N extends string,
@@ -717,7 +839,7 @@ export type RouterUseBuilder<
   PA extends PluginBuilderArgs<P> | undefined = undefined,
 > = <UA extends UseBuilderArgs<M>>(...selected: UA) => RouterBuilder<M, UA, N, S, P, PA, RA>
 
-export type RouterPluginSelectorBuilder<
+type RouterPluginSelectorBuilder<
   M extends Middleware,
   UA extends UseBuilderArgs<M> | undefined,
   N extends string,
@@ -726,7 +848,7 @@ export type RouterPluginSelectorBuilder<
   RA extends UseBuilderArgs<M> | undefined = undefined,
 > = <PA extends PluginBuilderArgs<P>>(...selected: PA) => RouterBuilder<M, UA, N, S, P, PA, RA>
 
-export type RouterDefineBuilder<
+type RouterDefinitionBuilders<
   M extends Middleware,
   UA extends UseBuilderArgs<M> | undefined,
   N extends string,
@@ -734,30 +856,57 @@ export type RouterDefineBuilder<
   P extends APIPluginList = [],
   PA extends PluginBuilderArgs<P> | undefined = undefined,
   RA extends UseBuilderArgs<M> | undefined = undefined,
-> = <R extends Record<string, AnyProcedureHandler>>(
-  define: (
-    builders: {
-      /**
-       * Procedure builder scoped to this router.
-       *
-       * Router middleware and selected router plugins are inherited by
-       * procedures created from this builder.
-       */
-      procedure: ProcedureBuilder<
-        M,
-        EffectiveRouterUseArgs<M, RA, UA>,
-        undefined,
-        undefined,
-        undefined,
-        N,
-        S,
-        P,
-        EffectiveRouterPluginArgs<P, S, PA>,
-        undefined
-      >
-    } & RouterPluginExtensionsFromIds<M, P, EffectiveRouterPluginArgs<P, S, PA>, UA, N, S, RA>
-  ) => R
-) => RouterDefinition<R, N>
+> = {
+  procedure: ProcedureBuilder<
+    M,
+    EffectiveRouterUseArgs<M, RA, UA>,
+    undefined,
+    undefined,
+    undefined,
+    N,
+    S,
+    P,
+    EffectiveRouterPluginArgs<P, S, PA>,
+    undefined
+  >
+  route: <const Method extends HTTPMethod, const Path extends string>(
+    method: Method,
+    path: Path
+  ) => ProcedureBuilder<
+    M,
+    EffectiveRouterUseArgs<M, RA, UA>,
+    undefined,
+    undefined,
+    undefined,
+    N,
+    S,
+    P,
+    EffectiveRouterPluginArgs<P, S, PA>,
+    undefined,
+    HTTPRoute<Method, Path>
+  >
+} & RouterPluginExtensionsFromIds<P, EffectiveRouterPluginArgs<P, S, PA>, S>
+
+type RouterDefineBuilder<
+  M extends Middleware,
+  UA extends UseBuilderArgs<M> | undefined,
+  N extends string,
+  S extends APISettings,
+  P extends APIPluginList = [],
+  PA extends PluginBuilderArgs<P> | undefined = undefined,
+  RA extends UseBuilderArgs<M> | undefined = undefined,
+> = {
+  <R extends Record<string, AnyProcedureHandler>>(
+    define: (builders: RouterDefinitionBuilders<M, UA, N, S, P, PA, RA>) => R
+  ): RouterDefinition<R, N>
+  <G extends Record<string, AnyProcedureHandler>>(
+    preset: RouterPreset<G, PluginId<P> | undefined>
+  ): RouterDefinition<G, N>
+  <G extends Record<string, AnyProcedureHandler>, R extends Record<string, AnyProcedureHandler>>(
+    preset: RouterPreset<G, PluginId<P> | undefined>,
+    customize: (builders: RouterDefinitionBuilders<M, UA, N, S, P, PA, RA> & { generated: G }) => R
+  ): RouterDefinition<R, N>
+}
 
 export type RouterBuilder<
   M extends Middleware,
