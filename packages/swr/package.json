@@ -1,7 +1,7 @@
 {
   "name": "@hulla/api-swr",
   "version": "1.2.5",
-  "description": "The next-gen API/RPC manager 🚀",
+  "description": "SWR helpers for typed @hulla/api procedures",
   "keywords": [
     "@hulla",
     "@hulla/api",
@@ -39,13 +39,14 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/hulladev/api.git",
-    "directory": "packages/api"
+    "url": "git+https://github.com/hulladev/api.git",
+    "directory": "packages/swr"
   },
   "files": [
     "dist"
   ],
   "type": "commonjs",
+  "sideEffects": false,
   "main": "./dist/index.js",
   "exports": {
     "import": {
@@ -58,14 +59,19 @@
     }
   },
   "scripts": {
-    "lint": "oxlint . --fix",
-    "fmt": "oxfmt --write .",
+    "lint": "oxlint .",
+    "lint:fix": "oxlint . --fix",
+    "fmt": "oxfmt --check .",
+    "fmt:fix": "oxfmt --write .",
     "build": "tsdown --config-loader unrun",
-    "test": "tsc -p tsconfig.tests.json --noEmit && vitest run",
+    "test": "tsc -p tsconfig.tests.json --noEmit && vitest run --config vitest.config.ts",
     "clean": "rm -rf node_modules dist"
   },
   "devDependencies": {
     "@hulla/api": "^1.2.5",
-    "zod": "^3.23.8"
+    "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "@hulla/api": "^1.2.5"
   }
 }

@@ -1,3 +1,2 @@
-export { encodeKey, queryKey } from './keys'
-export { swr } from './swr'
-export * from './types'
+export { swrPlugin } from './swr'
+export type { SWRPluginConfig } from './swr'

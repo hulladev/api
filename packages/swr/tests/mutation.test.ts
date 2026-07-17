@@ -4,25 +4,25 @@ import { routes, users } from './swr.test'
 describe('swr plugin mutation helper', () => {
   test('uses the aliased mutation helper name on finalized handlers', async () => {
     const aliasedAll = routes.all as typeof routes.all & {
-      swrMutation: {
-        options: () => readonly [readonly ['users/all'], () => typeof users]
+      $swr: {
+        swrMutation: () => readonly [readonly ['users/all'], () => typeof users]
       }
     }
     const aliasedById = routes.byId as typeof routes.byId & {
-      swrMutation: {
-        options: ((
+      $swr: {
+        swrMutation: ((
           input: number
         ) => readonly [readonly ['users/byId', number], () => Promise<(typeof users)[number]>]) &
           (() => readonly [readonly ['users/byId'], (input: number) => Promise<(typeof users)[number]>])
       }
     }
 
-    expect(aliasedAll).toHaveProperty('swrMutation')
-    expect(aliasedById).toHaveProperty('swrMutation')
+    expect(aliasedAll.$swr).toHaveProperty('swrMutation')
+    expect(aliasedById.$swr).toHaveProperty('swrMutation')
 
-    const [allKey, allMutation] = aliasedAll.swrMutation.options()
-    const [byIdKey, byIdMutation] = aliasedById.swrMutation.options(2)
-    const [byIdRootKey, byIdMutationWithInput] = aliasedById.swrMutation.options()
+    const [allKey, allMutation] = aliasedAll.$swr.swrMutation()
+    const [byIdKey, byIdMutation] = aliasedById.$swr.swrMutation(2)
+    const [byIdRootKey, byIdMutationWithInput] = aliasedById.$swr.swrMutation()
 
     expect(allKey).toStrictEqual(['users/all'])
     expect(byIdKey).toStrictEqual(['users/byId', 2])

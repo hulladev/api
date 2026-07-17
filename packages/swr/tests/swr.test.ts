@@ -1,21 +1,21 @@
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
-import { init } from '../../core/src'
-import { swr } from '../src/swr'
+import { createApi } from '../../core/src'
+import { swrPlugin } from '../src/swr'
 
 export const users = [
   { id: 1, name: 'John' },
   { id: 2, name: 'Jane' },
 ] as const
 
-export const routes = init({
-  plugins: [swr()],
+export const routes = createApi({
+  plugins: [swrPlugin()],
   settings: {
     plugins: {
       swr: {
         aliases: {
           procedure: {
-            mutation: 'swrMutation',
+            mutationOptions: 'swrMutation',
           },
         },
       },
@@ -30,21 +30,21 @@ export const routes = init({
 
 describe('swr plugin', () => {
   test('uses the shared query namespace with swr semantics', async () => {
-    expectTypeOf(routes.byId.key.root).toEqualTypeOf<'users/byId'>()
-    const [boundByIdKey, boundByIdFetcher] = routes.byId.query.options(1)
+    expectTypeOf(routes.byId.$key.root).toEqualTypeOf<'users/byId'>()
+    const [boundByIdKey, boundByIdFetcher] = routes.byId.$swr.queryOptions(1)
     expectTypeOf(boundByIdKey[0]).toEqualTypeOf<'users/byId'>()
     expectTypeOf(boundByIdKey[1]).toEqualTypeOf<number>()
     expectTypeOf(boundByIdFetcher).returns.toEqualTypeOf<Promise<(typeof users)[number]>>()
 
-    expect(routes.all.key.root).toBe('users/all')
-    expect(routes.all.key.full()).toStrictEqual(['users/all'])
-    expect(routes.byId.key.full(1)).toStrictEqual(['users/byId', 1])
-    expect(routes.byId.query.options(1)).toStrictEqual([['users/byId', 1], expect.any(Function)])
-    expect(routes.byId.query.options()).toStrictEqual([['users/byId'], expect.any(Function)])
+    expect(routes.all.$key.root).toBe('users/all')
+    expect(routes.all.$key.full()).toStrictEqual(['users/all'])
+    expect(routes.byId.$key.full(1)).toStrictEqual(['users/byId', 1])
+    expect(routes.byId.$swr.queryOptions(1)).toStrictEqual([['users/byId', 1], expect.any(Function)])
+    expect(routes.byId.$swr.queryOptions()).toStrictEqual([['users/byId'], expect.any(Function)])
 
-    const [allKey, allFetcher] = routes.all.query.options()
-    const [byIdKey, byIdFetcher] = routes.byId.query.options(1)
-    const [byIdRootKey, byIdRootFetcher] = routes.byId.query.options()
+    const [allKey, allFetcher] = routes.all.$swr.queryOptions()
+    const [byIdKey, byIdFetcher] = routes.byId.$swr.queryOptions(1)
+    const [byIdRootKey, byIdRootFetcher] = routes.byId.$swr.queryOptions()
     expectTypeOf(byIdRootKey[0]).toEqualTypeOf<'users/byId'>()
     expectTypeOf(byIdRootFetcher).parameter(0).toEqualTypeOf<number>()
 
@@ -58,22 +58,22 @@ describe('swr plugin', () => {
 
   test('works alongside a second plugin on the same handlers', async () => {
     const aliasedRoute = routes.byId as typeof routes.byId & {
-      swrMutation: {
-        options: (() => readonly [readonly ['users/byId'], (input: number) => Promise<(typeof users)[number]>]) &
+      $swr: {
+        swrMutation: (() => readonly [readonly ['users/byId'], (input: number) => Promise<(typeof users)[number]>]) &
           ((input: number) => readonly [readonly ['users/byId', number], () => Promise<(typeof users)[number]>])
       }
     }
 
-    const [aliasedMutationKey, aliasedMutate] = aliasedRoute.swrMutation.options(2)
+    const [aliasedMutationKey, aliasedMutate] = aliasedRoute.$swr.swrMutation(2)
     expectTypeOf(aliasedMutationKey[0]).toEqualTypeOf<'users/byId'>()
     expectTypeOf(aliasedMutationKey[1]).toEqualTypeOf<number>()
     expectTypeOf(aliasedMutate).returns.toEqualTypeOf<Promise<(typeof users)[number]>>()
 
-    expect(aliasedRoute.swrMutation.options(2)).toStrictEqual([['users/byId', 2], expect.any(Function)])
-    expect(aliasedRoute.swrMutation.options()).toStrictEqual([['users/byId'], expect.any(Function)])
+    expect(aliasedRoute.$swr.swrMutation(2)).toStrictEqual([['users/byId', 2], expect.any(Function)])
+    expect(aliasedRoute.$swr.swrMutation()).toStrictEqual([['users/byId'], expect.any(Function)])
 
-    const [key, mutate] = aliasedRoute.swrMutation.options(2)
-    const [rootKey, mutateWithInput] = aliasedRoute.swrMutation.options()
+    const [key, mutate] = aliasedRoute.$swr.swrMutation(2)
+    const [rootKey, mutateWithInput] = aliasedRoute.$swr.swrMutation()
     expect(key).toStrictEqual(['users/byId', 2])
     expect(rootKey).toStrictEqual(['users/byId'])
     await expect(mutateWithInput(2)).resolves.toStrictEqual(users[1])
