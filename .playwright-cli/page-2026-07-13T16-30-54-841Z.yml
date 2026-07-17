@@ -1,0 +1,1200 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - link "@hulla/api interactive example home" [ref=e5] [cursor=pointer]:
+      - /url: "#top"
+      - generic [ref=e6]: "@"
+      - generic [ref=e7]:
+        - text: "@hulla/api"
+        - generic [ref=e8]: Signal desk / 2026
+    - navigation "Learning path shortcuts" [ref=e9]:
+      - link "Routers" [ref=e10] [cursor=pointer]:
+        - /url: "#router"
+      - link "Plugins" [ref=e11] [cursor=pointer]:
+        - /url: "#plugins"
+      - link "Existing APIs" [ref=e12] [cursor=pointer]:
+        - /url: "#openapi"
+      - link "Backend" [ref=e13] [cursor=pointer]:
+        - /url: "#backend"
+      - link "State" [ref=e14] [cursor=pointer]:
+        - /url: "#cache"
+    - generic [ref=e15]: localhost:3001
+  - main [ref=e17]:
+    - generic [ref=e18]:
+      - generic [ref=e19]:
+        - paragraph [ref=e20]: ●@hulla/api / one contract across your stack
+        - heading "Keep your backend. Stop rewriting its contract." [level=1] [ref=e21]
+        - paragraph [ref=e22]: "@hulla/api keeps handlers, validation, HTTP routes, and client types attached to one procedure tree. This tour teaches those pieces locally, then assembles the complete server-to-client workflow—without replacing the framework or database you already use."
+        - link "Follow the full contract ↓" [ref=e23] [cursor=pointer]:
+          - /url: "#router"
+          - text: Follow the full contract
+          - generic [ref=e24]: ↓
+      - list "Learning path" [ref=e25]:
+        - listitem [ref=e26]:
+          - generic [ref=e27]: "01"
+          - strong [ref=e28]: Define
+          - generic [ref=e29]: router · procedure · middleware
+        - listitem [ref=e30]:
+          - generic [ref=e31]: "02"
+          - strong [ref=e32]: Extend
+          - generic [ref=e33]: query adapters · existing OpenAPI
+        - listitem [ref=e34]:
+          - generic [ref=e35]: "03"
+          - strong [ref=e36]: Connect
+          - generic [ref=e37]: your server · generation · client
+          - text: BEST TOGETHER
+        - listitem [ref=e38]:
+          - generic [ref=e39]: "04"
+          - strong [ref=e40]: Accelerate
+          - generic [ref=e41]: query cache · local-first state
+    - generic [ref=e42]:
+      - generic [ref=e43]:
+        - generic [ref=e44]:
+          - generic [ref=e45]: "01"
+          - paragraph [ref=e46]: ●Core / router
+        - heading "A router is the typed home for one feature." [level=2] [ref=e47]
+        - paragraph [ref=e48]: Name the feature once and keep every operation under tasks. Start with the contract itself; the same router can stay local or become part of your server's HTTP API.
+      - generic [ref=e49]:
+        - generic [ref=e50]:
+          - complementary "Files in this lesson" [ref=e51]:
+            - generic [ref=e52]:
+              - generic [ref=e53]: EXPLORER
+              - generic [ref=e54]: 1 files
+            - generic [ref=e55]: demo/
+            - generic [ref=e57]:
+              - button "⌄ src" [expanded] [ref=e58] [cursor=pointer]:
+                - generic [ref=e59]: ⌄
+                - text: src
+              - button "TS api.ts new" [ref=e60] [cursor=pointer]:
+                - generic [ref=e61]: TS
+                - generic [ref=e62]: api.ts
+                - emphasis [ref=e63]: new
+          - figure "TS src/api.ts edit · hover types reset" [ref=e64]:
+            - generic [ref=e65]:
+              - generic [ref=e66]:
+                - generic [ref=e67]: TS
+                - generic [ref=e68]: src/api.ts
+              - generic [ref=e69]:
+                - generic [ref=e70]: edit · hover types
+                - button "reset" [ref=e71] [cursor=pointer]
+            - generic [ref=e73]:
+              - generic [ref=e74]: TS
+              - generic [ref=e75]: Actual @hulla/api + project declarations loaded
+              - generic [ref=e76]: Starting language service…
+        - complementary "Guided code reading" [ref=e77]:
+          - generic [ref=e78]:
+            - paragraph [ref=e79]: Hover to read the code
+            - generic [ref=e80]: 02 concepts
+          - list [ref=e81]:
+            - listitem [ref=e82]:
+              - button "01 Name the feature boundary router('tasks') gives every operation a stable, discoverable home. api.ts · L12–12" [ref=e83] [cursor=pointer]:
+                - generic [ref=e84]: "01"
+                - strong [ref=e85]: Name the feature boundary
+                - generic [ref=e86]: router('tasks') gives every operation a stable, discoverable home.
+                - emphasis [ref=e87]: api.ts · L12–12
+              - text: ‹
+            - listitem [ref=e88]:
+              - button "02 Add related operations create and isUrgent share the namespace, while keeping independent inputs and results. api.ts · L13–21" [ref=e89] [cursor=pointer]:
+                - generic [ref=e90]: "02"
+                - strong [ref=e91]: Add related operations
+                - generic [ref=e92]: create and isUrgent share the namespace, while keeping independent inputs and results.
+                - emphasis [ref=e93]: api.ts · L13–21
+              - text: ‹
+          - paragraph [ref=e94]:
+            - generic [ref=e95]: ↗
+            - text: Move away to restore the full editor.
+    - generic [ref=e96]:
+      - generic [ref=e97]:
+        - generic [ref=e98]:
+          - generic [ref=e99]: "02"
+          - paragraph [ref=e100]: ●Core / procedure + schema
+        - heading "A procedure turns unknown input into useful work." [level=2] [ref=e101]
+        - paragraph [ref=e102]: One schema validates runtime input and supplies both the handler and caller types.
+      - generic [ref=e103]:
+        - generic [ref=e104]:
+          - complementary "Files in this lesson" [ref=e105]:
+            - generic [ref=e106]:
+              - generic [ref=e107]: EXPLORER
+              - generic [ref=e108]: 1 files
+            - generic [ref=e109]: demo/
+            - generic [ref=e111]:
+              - button "⌄ src" [expanded] [ref=e112] [cursor=pointer]:
+                - generic [ref=e113]: ⌄
+                - text: src
+              - button "TS api.ts changed" [ref=e114] [cursor=pointer]:
+                - generic [ref=e115]: TS
+                - generic [ref=e116]: api.ts
+                - emphasis [ref=e117]: changed
+          - figure "TS src/api.ts edit · hover types reset" [ref=e118]:
+            - generic [ref=e119]:
+              - generic [ref=e120]:
+                - generic [ref=e121]: TS
+                - generic [ref=e122]: src/api.ts
+              - generic [ref=e123]:
+                - generic [ref=e124]: edit · hover types
+                - button "reset" [ref=e125] [cursor=pointer]
+            - generic [ref=e127]:
+              - generic [ref=e128]: TS
+              - generic [ref=e129]: Actual @hulla/api + project declarations loaded
+              - generic [ref=e130]: Starting language service…
+        - complementary "Guided code reading" [ref=e131]:
+          - generic [ref=e132]:
+            - paragraph [ref=e133]: Hover to read the code
+            - generic [ref=e134]: 03 concepts
+          - list [ref=e135]:
+            - listitem [ref=e136]:
+              - button "01 Validate once at the edge The Zod schema is the runtime gate and the source of the inferred input type. api.ts · L4–7" [ref=e137] [cursor=pointer]:
+                - generic [ref=e138]: "01"
+                - strong [ref=e139]: Validate once at the edge
+                - generic [ref=e140]: The Zod schema is the runtime gate and the source of the inferred input type.
+                - emphasis [ref=e141]: api.ts · L4–7
+              - text: ‹
+            - listitem [ref=e142]:
+              - button "02 Use trusted input in the handler After .input(newTask), the handler receives a parsed value—no cast or second schema. api.ts · L13–17" [ref=e143] [cursor=pointer]:
+                - generic [ref=e144]: "02"
+                - strong [ref=e145]: Use trusted input in the handler
+                - generic [ref=e146]: After .input(newTask), the handler receives a parsed value—no cast or second schema.
+                - emphasis [ref=e147]: api.ts · L13–17
+              - text: ‹
+            - listitem [ref=e148]:
+              - button "03 Carry the contract to the caller The same contract follows .call(), so an invalid priority fails before execution. api.ts · L24–28" [ref=e149] [cursor=pointer]:
+                - generic [ref=e150]: "03"
+                - strong [ref=e151]: Carry the contract to the caller
+                - generic [ref=e152]: The same contract follows .call(), so an invalid priority fails before execution.
+                - emphasis [ref=e153]: api.ts · L24–28
+              - text: ‹
+          - paragraph [ref=e154]:
+            - generic [ref=e155]: ↗
+            - text: Move away to restore the full editor.
+      - generic [ref=e157]:
+        - paragraph [ref=e158]: One contract / two outcomes
+        - generic [ref=e159]:
+          - button "Valid call" [ref=e160] [cursor=pointer]
+          - button "Production bug" [ref=e161] [cursor=pointer]
+        - generic [ref=e162]:
+          - generic [ref=e163]:
+            - generic [ref=e164]: Task title
+            - textbox "Task title" [ref=e165]: Ship the demo
+          - generic [ref=e166]:
+            - generic [ref=e167]: Priority
+            - combobox "Priority" [ref=e168]:
+              - option "Low"
+              - option "Medium"
+              - option "High" [selected]
+          - button "Create local task" [ref=e169] [cursor=pointer]
+          - generic [ref=e170]: // Ready to create
+    - generic [ref=e171]:
+      - generic [ref=e172]:
+        - generic [ref=e173]:
+          - generic [ref=e174]: "03"
+          - paragraph [ref=e175]: ●Core / middleware
+        - heading "Shared rules belong on the router. Exceptional rules stay local." [level=2] [ref=e176]
+        - paragraph [ref=e177]: Put session checks on the router; add admin only where the risk changes.
+      - generic [ref=e178]:
+        - generic [ref=e179]:
+          - complementary "Files in this lesson" [ref=e180]:
+            - generic [ref=e181]:
+              - generic [ref=e182]: EXPLORER
+              - generic [ref=e183]: 2 files
+            - generic [ref=e184]: demo/
+            - generic [ref=e186]:
+              - button "⌄ src" [expanded] [ref=e187] [cursor=pointer]:
+                - generic [ref=e188]: ⌄
+                - text: src
+              - button "TS api.ts changed" [ref=e189] [cursor=pointer]:
+                - generic [ref=e190]: TS
+                - generic [ref=e191]: api.ts
+                - emphasis [ref=e192]: changed
+              - button "TS auth.ts new" [ref=e193] [cursor=pointer]:
+                - generic [ref=e194]: TS
+                - generic [ref=e195]: auth.ts
+                - emphasis [ref=e196]: new
+          - figure "TS src/api.ts edit · hover types reset" [ref=e197]:
+            - generic [ref=e198]:
+              - generic [ref=e199]:
+                - generic [ref=e200]: TS
+                - generic [ref=e201]: src/api.ts
+              - generic [ref=e202]:
+                - generic [ref=e203]: edit · hover types
+                - button "reset" [ref=e204] [cursor=pointer]
+            - generic [ref=e206]:
+              - generic [ref=e207]: TS
+              - generic [ref=e208]: Actual @hulla/api + project declarations loaded
+              - generic [ref=e209]: Starting language service…
+        - complementary "Guided code reading" [ref=e210]:
+          - generic [ref=e211]:
+            - paragraph [ref=e212]: Hover to read the code
+            - generic [ref=e213]: 03 concepts
+          - list [ref=e214]:
+            - listitem [ref=e215]:
+              - button "01 Register capabilities once Named middleware keeps the router readable and the provider implementation replaceable. api.ts · L5–10" [ref=e216] [cursor=pointer]:
+                - generic [ref=e217]: "01"
+                - strong [ref=e218]: Register capabilities once
+                - generic [ref=e219]: Named middleware keeps the router readable and the provider implementation replaceable.
+                - emphasis [ref=e220]: api.ts · L5–10
+              - text: ‹
+            - listitem [ref=e221]:
+              - button "02 Apply the shared rule high Session belongs on tasks because every task operation needs the signed-in user. api.ts · L12–18" [ref=e222] [cursor=pointer]:
+                - generic [ref=e223]: "02"
+                - strong [ref=e224]: Apply the shared rule high
+                - generic [ref=e225]: Session belongs on tasks because every task operation needs the signed-in user.
+                - emphasis [ref=e226]: api.ts · L12–18
+              - text: ‹
+            - listitem [ref=e227]:
+              - button "03 Keep the exception local Admin is added only to deleteAny; its context composes with session automatically. api.ts · L23–29" [ref=e228] [cursor=pointer]:
+                - generic [ref=e229]: "03"
+                - strong [ref=e230]: Keep the exception local
+                - generic [ref=e231]: Admin is added only to deleteAny; its context composes with session automatically.
+                - emphasis [ref=e232]: api.ts · L23–29
+              - text: ‹
+          - paragraph [ref=e233]:
+            - generic [ref=e234]: ↗
+            - text: Move away to restore the full editor.
+    - generic [ref=e235]:
+      - generic [ref=e236]:
+        - generic [ref=e237]:
+          - generic [ref=e238]: "04"
+          - paragraph [ref=e239]: ●Extension system / plugins
+        - heading "Give every query and mutation the same cache identity." [level=2] [ref=e240]
+        - paragraph [ref=e241]: The adapter derives keys and functions from the procedure, so components, invalidations, and mutations cannot quietly drift into different conventions across files.
+      - generic [ref=e242]:
+        - generic [ref=e243]:
+          - complementary "Files in this lesson" [ref=e244]:
+            - generic [ref=e245]:
+              - generic [ref=e246]: EXPLORER
+              - generic [ref=e247]: 2 files
+            - generic [ref=e248]: demo/
+            - generic [ref=e250]:
+              - button "⌄ src" [expanded] [ref=e251] [cursor=pointer]:
+                - generic [ref=e252]: ⌄
+                - text: src
+              - button "TS api.ts changed" [ref=e253] [cursor=pointer]:
+                - generic [ref=e254]: TS
+                - generic [ref=e255]: api.ts
+                - emphasis [ref=e256]: changed
+              - button "TX App.tsx new" [ref=e257] [cursor=pointer]:
+                - generic [ref=e258]: TX
+                - generic [ref=e259]: App.tsx
+                - emphasis [ref=e260]: new
+          - figure "TS src/api.ts edit · hover types reset" [ref=e261]:
+            - generic [ref=e262]:
+              - generic [ref=e263]:
+                - generic [ref=e264]: TS
+                - generic [ref=e265]: src/api.ts
+              - generic [ref=e266]:
+                - generic [ref=e267]: edit · hover types
+                - button "reset" [ref=e268] [cursor=pointer]
+            - generic [ref=e270]:
+              - generic [ref=e271]: TS
+              - generic [ref=e272]: Actual @hulla/api + project declarations loaded
+              - generic [ref=e273]: Starting language service…
+        - complementary "Guided code reading" [ref=e274]:
+          - generic [ref=e275]:
+            - paragraph [ref=e276]: Hover to read the code
+            - generic [ref=e277]: 04 concepts
+          - list [ref=e278]:
+            - listitem [ref=e279]:
+              - button "01 Install adapters at the API edge Plugins extend procedure capabilities without changing its handler or return type. api.ts · L1–7" [ref=e280] [cursor=pointer]:
+                - generic [ref=e281]: "01"
+                - strong [ref=e282]: Install adapters at the API edge
+                - generic [ref=e283]: Plugins extend procedure capabilities without changing its handler or return type.
+                - emphasis [ref=e284]: api.ts · L1–7
+              - text: ‹
+            - listitem [ref=e285]:
+              - button "02 Keep ordinary procedure code The handler still performs a normal fetch and can still be called directly. api.ts · L10–27" [ref=e286] [cursor=pointer]:
+                - generic [ref=e287]: "02"
+                - strong [ref=e288]: Keep ordinary procedure code
+                - generic [ref=e289]: The handler still performs a normal fetch and can still be called directly.
+                - emphasis [ref=e290]: api.ts · L10–27
+              - text: ‹
+            - listitem [ref=e291]:
+              - button "03 Share keys and bind query input Every file derives the same typed keys; keyed queries require their procedure input up front. App.tsx · L6–11" [ref=e292] [cursor=pointer]:
+                - generic [ref=e293]: "03"
+                - strong [ref=e294]: Share keys and bind query input
+                - generic [ref=e295]: Every file derives the same typed keys; keyed queries require their procedure input up front.
+                - emphasis [ref=e296]: App.tsx · L6–11
+              - text: ‹
+            - listitem [ref=e297]:
+              - button "04 Pass mutation input when it happens Unbound mutation options let mutate(input) provide the validated variables at interaction time. App.tsx · L13–17" [ref=e298] [cursor=pointer]:
+                - generic [ref=e299]: "04"
+                - strong [ref=e300]: Pass mutation input when it happens
+                - generic [ref=e301]: Unbound mutation options let mutate(input) provide the validated variables at interaction time.
+                - emphasis [ref=e302]: App.tsx · L13–17
+              - text: ‹
+          - paragraph [ref=e303]:
+            - generic [ref=e304]: ↗
+            - text: Move away to restore the full editor.
+      - generic [ref=e306]:
+        - generic [ref=e307]:
+          - paragraph [ref=e308]: One procedure / one cache identity
+          - heading "Make cache consistency the default." [level=3] [ref=e309]
+          - paragraph [ref=e310]: The adapter derives query keys, mutation keys, and their functions from the procedure path and typed input. Every component, prefetch, and invalidation can address the same data without coordinating string arrays across files.
+        - complementary [ref=e311]:
+          - strong [ref=e312]: No key registry to maintain.
+          - generic [ref=e313]: No duplicated strings. No wrapper functions. No naming convention that only survives through code review.
+        - generic [ref=e314]:
+          - generic [ref=e315]:
+            - generic [ref=e316]:
+              - generic [ref=e317]: Handwritten integration
+              - generic [ref=e318]: recreated by every consumer
+            - code [ref=e320]: "useQuery({ queryKey: ['tasks', 'list'], queryFn: () => tasks.list.call(), }) useMutation({ mutationKey: ['tasks', 'create'], mutationFn: input => tasks.create.call(input), })"
+            - generic [ref=e321]:
+              - generic [ref=e322]: You maintain
+              - generic [ref=e323]: keys + wrappers + cross-file conventions
+          - generic [ref=e324]:
+            - generic [ref=e325]: plugin
+            - generic [ref=e326]: →
+          - generic [ref=e327]:
+            - generic [ref=e328]:
+              - generic [ref=e329]: Procedure-derived
+              - generic [ref=e330]: consistent in every file
+            - code [ref=e332]: useQuery( tasks.list.tanstack .queryOptions() ) useMutation( tasks.create.tanstack .mutationOptions() )
+            - generic [ref=e333]:
+              - generic [ref=e334]: The adapter guarantees
+              - generic [ref=e335]: typed keys + functions from one source
+        - complementary [ref=e336]:
+          - generic [ref=e337]: Still TanStack Query
+          - code [ref=e338]: useQuery(…)
+          - code [ref=e339]: useMutation(…)
+          - generic [ref=e340]: ·
+          - generic [ref=e341]: Now procedure-derived
+          - code [ref=e342]: queryKey
+          - code [ref=e343]: mutationKey
+          - code [ref=e344]: queryFn / mutationFn
+    - generic [ref=e345]:
+      - generic [ref=e346]:
+        - generic [ref=e347]:
+          - generic [ref=e348]: "05"
+          - paragraph [ref=e349]: ●Existing API / OpenAPI
+        - heading "Generate the whole procedure layer from an OpenAPI contract." [level=2] [ref=e350]
+        - paragraph [ref=e351]: Schemas, routers, handlers, and typed calls are generated together. You only supply the transport policy.
+      - generic [ref=e353]:
+        - generic [ref=e354]:
+          - generic [ref=e355]: Quick generation / terminal
+          - generic [ref=e356]: Best for trying a contract once
+        - code [ref=e357]: $ bunx @hulla/api-openapi ./openapi/acme.json --output ./apps/web/src/api/acme.generated.ts
+        - generic "or" [ref=e358]: OR
+        - generic [ref=e360]:
+          - generic [ref=e361]:
+            - strong [ref=e362]: Repeatable project generation
+            - generic [ref=e363]: For CI and watch mode
+          - paragraph [ref=e364]:
+            - text: Use the repeatable
+            - strong [ref=e365]: api.config.ts
+            - text: source shown below.
+      - generic [ref=e366]:
+        - generic [ref=e367]:
+          - complementary "Files in this lesson" [ref=e368]:
+            - generic [ref=e369]:
+              - generic [ref=e370]: EXPLORER
+              - generic [ref=e371]: 4 files
+            - generic [ref=e372]: demo/
+            - generic [ref=e373]:
+              - generic [ref=e374]:
+                - button "⌄ openapi" [expanded] [ref=e375] [cursor=pointer]:
+                  - generic [ref=e376]: ⌄
+                  - text: openapi
+                - 'button "{} acme.json new" [ref=e377] [cursor=pointer]':
+                  - generic [ref=e378]: "{}"
+                  - generic [ref=e379]: acme.json
+                  - emphasis [ref=e380]: new
+              - generic [ref=e381]:
+                - button "⌄ src" [expanded] [ref=e382] [cursor=pointer]:
+                  - generic [ref=e383]: ⌄
+                  - text: src
+                - button "TS acme.generated.ts new" [ref=e384] [cursor=pointer]:
+                  - generic [ref=e385]: TS
+                  - generic [ref=e386]: acme.generated.ts
+                  - emphasis [ref=e387]: new
+                - button "TS api.ts new" [ref=e388] [cursor=pointer]:
+                  - generic [ref=e389]: TS
+                  - generic [ref=e390]: api.ts
+                  - emphasis [ref=e391]: new
+              - button "TS api.config.ts new" [ref=e392] [cursor=pointer]:
+                - generic [ref=e393]: TS
+                - generic [ref=e394]: api.config.ts
+                - emphasis [ref=e395]: new
+          - figure "TS api.config.ts edit · hover types reset" [ref=e396]:
+            - generic [ref=e397]:
+              - generic [ref=e398]:
+                - generic [ref=e399]: TS
+                - generic [ref=e400]: api.config.ts
+              - generic [ref=e401]:
+                - generic [ref=e402]: edit · hover types
+                - button "reset" [ref=e403] [cursor=pointer]
+            - generic [ref=e405]:
+              - generic [ref=e406]: TS
+              - generic [ref=e407]: Actual @hulla/api + project declarations loaded
+              - generic [ref=e408]: Starting language service…
+        - complementary "Guided code reading" [ref=e409]:
+          - generic [ref=e410]:
+            - paragraph [ref=e411]: Hover to read the code
+            - generic [ref=e412]: 04 concepts
+          - list [ref=e413]:
+            - listitem [ref=e414]:
+              - button "01 Choose one generation path Use the direct command for a quick conversion, or api.config.ts for repeatable generation and CI. api.config.ts · L4–10" [ref=e415] [cursor=pointer]:
+                - generic [ref=e416]: "01"
+                - strong [ref=e417]: Choose one generation path
+                - generic [ref=e418]: Use the direct command for a quick conversion, or api.config.ts for repeatable generation and CI.
+                - emphasis [ref=e419]: api.config.ts · L4–10
+              - text: ‹
+            - listitem [ref=e420]:
+              - button "02 Get routers and handlers—not just types Operation ids become @hulla/api routers, validated procedures, and handlers wired to your transport. acme.generated.ts · L11–18" [ref=e421] [cursor=pointer]:
+                - generic [ref=e422]: "02"
+                - strong [ref=e423]: Get routers and handlers—not just types
+                - generic [ref=e424]: Operation ids become @hulla/api routers, validated procedures, and handlers wired to your transport.
+                - emphasis [ref=e425]: acme.generated.ts · L11–18
+              - text: ‹
+            - listitem [ref=e426]:
+              - button "03 Own the transport policy The only glue you write is the fetcher, so auth, base URL, retries, and tracing stay application concerns. api.ts · L1–10" [ref=e427] [cursor=pointer]:
+                - generic [ref=e428]: "03"
+                - strong [ref=e429]: Own the transport policy
+                - generic [ref=e430]: The only glue you write is the fetcher, so auth, base URL, retries, and tracing stay application concerns.
+                - emphasis [ref=e431]: api.ts · L1–10
+              - text: ‹
+            - listitem [ref=e432]:
+              - button "04 Call generated operations like procedures Operation ids become discoverable calls with contract-derived result types. api.ts · L12–13" [ref=e433] [cursor=pointer]:
+                - generic [ref=e434]: "04"
+                - strong [ref=e435]: Call generated operations like procedures
+                - generic [ref=e436]: Operation ids become discoverable calls with contract-derived result types.
+                - emphasis [ref=e437]: api.ts · L12–13
+              - text: ‹
+          - paragraph [ref=e438]:
+            - generic [ref=e439]: ↗
+            - text: Move away to restore the full editor.
+    - generic [ref=e440]:
+      - generic [ref=e441]:
+        - generic [ref=e442]: +
+        - text: Your server completes the contract
+      - generic [ref=e443]:
+        - generic [ref=e444]:
+          - generic [ref=e445]: "06"
+          - paragraph [ref=e446]: ●Complete workflow / client + server
+        - heading "Client-only is a start. @hulla/api shines when your server shares the contract." [level=2] [ref=e447]
+        - paragraph [ref=e448]: "@hulla/api fits the backend you already run—from Fetch-native runtimes and frameworks to Express and Nest—while your handlers keep using any database. It takes care of route definitions, validation, HTTP transport, serialization, and generated client types, so you can focus on business logic instead of API glue."
+      - generic [ref=e449]:
+        - generic [ref=e450]:
+          - complementary "Files in this lesson" [ref=e451]:
+            - generic [ref=e452]:
+              - generic [ref=e453]: EXPLORER
+              - generic [ref=e454]: 2 files
+            - generic [ref=e455]: demo/
+            - generic [ref=e457]:
+              - button "⌄ apps" [expanded] [ref=e458] [cursor=pointer]:
+                - generic [ref=e459]: ⌄
+                - text: apps
+              - generic [ref=e460]:
+                - button "⌄ backend" [expanded] [ref=e461] [cursor=pointer]:
+                  - generic [ref=e462]: ⌄
+                  - text: backend
+                - generic [ref=e463]:
+                  - button "⌄ src" [expanded] [ref=e464] [cursor=pointer]:
+                    - generic [ref=e465]: ⌄
+                    - text: src
+                  - generic [ref=e466]:
+                    - button "⌄ api" [expanded] [ref=e467] [cursor=pointer]:
+                      - generic [ref=e468]: ⌄
+                      - text: api
+                    - button "TS tasks.ts new" [ref=e469] [cursor=pointer]:
+                      - generic [ref=e470]: TS
+                      - generic [ref=e471]: tasks.ts
+                      - emphasis [ref=e472]: new
+              - generic [ref=e473]:
+                - button "⌄ web" [expanded] [ref=e474] [cursor=pointer]:
+                  - generic [ref=e475]: ⌄
+                  - text: web
+                - generic [ref=e476]:
+                  - button "⌄ src" [expanded] [ref=e477] [cursor=pointer]:
+                    - generic [ref=e478]: ⌄
+                    - text: src
+                  - button "TS api.ts" [ref=e479] [cursor=pointer]:
+                    - generic [ref=e480]: TS
+                    - generic [ref=e481]: api.ts
+          - figure "TS apps/backend/src/api/tasks.ts edit · hover types reset" [ref=e482]:
+            - generic [ref=e483]:
+              - generic [ref=e484]:
+                - generic [ref=e485]: TS
+                - generic [ref=e486]: apps/backend/src/api/tasks.ts
+              - generic [ref=e487]:
+                - generic [ref=e488]: edit · hover types
+                - button "reset" [ref=e489] [cursor=pointer]
+            - generic [ref=e491]:
+              - generic [ref=e492]: TS
+              - generic [ref=e493]: Actual @hulla/api + project declarations loaded
+              - generic [ref=e494]: Starting language service…
+        - complementary "Guided code reading" [ref=e495]:
+          - generic [ref=e496]:
+            - paragraph [ref=e497]: Hover to read the code
+            - generic [ref=e498]: 02 concepts
+          - list [ref=e499]:
+            - listitem [ref=e500]:
+              - button "01 Describe the public boundary Method, path, input and output make the HTTP contract explicit beside the handler. tasks.ts · L17–24" [ref=e501] [cursor=pointer]:
+                - generic [ref=e502]: "01"
+                - strong [ref=e503]: Describe the public boundary
+                - generic [ref=e504]: Method, path, input and output make the HTTP contract explicit beside the handler.
+                - emphasis [ref=e505]: tasks.ts · L17–24
+              - text: ‹
+            - listitem [ref=e506]:
+              - button "02 Keep business logic ordinary The handler receives validated input and can use your existing database and runtime. tasks.ts · L25–35" [ref=e507] [cursor=pointer]:
+                - generic [ref=e508]: "02"
+                - strong [ref=e509]: Keep business logic ordinary
+                - generic [ref=e510]: The handler receives validated input and can use your existing database and runtime.
+                - emphasis [ref=e511]: tasks.ts · L25–35
+              - text: ‹
+          - paragraph [ref=e512]:
+            - generic [ref=e513]: ↗
+            - text: Move away to restore the full editor.
+    - generic [ref=e514]:
+      - generic [ref=e515]:
+        - generic [ref=e516]:
+          - generic [ref=e517]: "07"
+          - paragraph [ref=e518]: ●Build step / generation
+        - heading "Generate the bridge inside the web app's API boundary." [level=2] [ref=e519]
+        - paragraph [ref=e520]: One config carries the server contract into a browser-safe client.
+      - generic [ref=e521]:
+        - generic [ref=e522]:
+          - complementary "Files in this lesson" [ref=e523]:
+            - generic [ref=e524]:
+              - generic [ref=e525]: EXPLORER
+              - generic [ref=e526]: 2 files
+            - generic [ref=e527]: demo/
+            - generic [ref=e528]:
+              - generic [ref=e529]:
+                - button "⌄ apps" [expanded] [ref=e530] [cursor=pointer]:
+                  - generic [ref=e531]: ⌄
+                  - text: apps
+                - generic [ref=e532]:
+                  - button "⌄ backend" [expanded] [ref=e533] [cursor=pointer]:
+                    - generic [ref=e534]: ⌄
+                    - text: backend
+                  - generic [ref=e535]:
+                    - button "⌄ src" [expanded] [ref=e536] [cursor=pointer]:
+                      - generic [ref=e537]: ⌄
+                      - text: src
+                    - generic [ref=e538]:
+                      - button "⌄ api" [expanded] [ref=e539] [cursor=pointer]:
+                        - generic [ref=e540]: ⌄
+                        - text: api
+                      - button "TS tasks.ts" [ref=e541] [cursor=pointer]:
+                        - generic [ref=e542]: TS
+                        - generic [ref=e543]: tasks.ts
+              - button "TS api.config.ts changed" [ref=e544] [cursor=pointer]:
+                - generic [ref=e545]: TS
+                - generic [ref=e546]: api.config.ts
+                - emphasis [ref=e547]: changed
+          - figure "TS api.config.ts edit · hover types reset" [ref=e548]:
+            - generic [ref=e549]:
+              - generic [ref=e550]:
+                - generic [ref=e551]: TS
+                - generic [ref=e552]: api.config.ts
+              - generic [ref=e553]:
+                - generic [ref=e554]: edit · hover types
+                - button "reset" [ref=e555] [cursor=pointer]
+            - generic [ref=e557]:
+              - generic [ref=e558]: TS
+              - generic [ref=e559]: Actual @hulla/api + project declarations loaded
+              - generic [ref=e560]: Starting language service…
+        - complementary "Guided code reading" [ref=e561]:
+          - generic [ref=e562]:
+            - paragraph [ref=e563]: Hover to read the code
+            - generic [ref=e564]: 02 concepts
+          - list [ref=e565]:
+            - listitem [ref=e566]:
+              - button "01 Read contracts from the backend The generator discovers routers where the server already defines them. api.config.ts · L4–6" [ref=e567] [cursor=pointer]:
+                - generic [ref=e568]: "01"
+                - strong [ref=e569]: Read contracts from the backend
+                - generic [ref=e570]: The generator discovers routers where the server already defines them.
+                - emphasis [ref=e571]: api.config.ts · L4–6
+              - text: ‹
+            - listitem [ref=e572]:
+              - button "02 Write behind the web API boundary Generated files stay contained beneath the web app instead of coupling both runtimes. api.config.ts · L7–11" [ref=e573] [cursor=pointer]:
+                - generic [ref=e574]: "02"
+                - strong [ref=e575]: Write behind the web API boundary
+                - generic [ref=e576]: Generated files stay contained beneath the web app instead of coupling both runtimes.
+                - emphasis [ref=e577]: api.config.ts · L7–11
+              - text: ‹
+          - paragraph [ref=e578]:
+            - generic [ref=e579]: ↗
+            - text: Move away to restore the full editor.
+      - generic [ref=e580]:
+        - generic [ref=e581]:
+          - generic [ref=e582]:
+            - generic [ref=e583]:
+              - paragraph [ref=e584]: The handoff
+              - heading "Turn the backend contract into a client." [level=2] [ref=e585]
+              - paragraph [ref=e586]: The config above is all the generator needs. Run it and watch the web app gain typed files.
+            - button "Generate typed client →" [ref=e587] [cursor=pointer]:
+              - generic [ref=e588]: Generate typed client
+              - generic [ref=e589]: →
+          - generic [ref=e590]:
+            - generic [ref=e591]: demo — hulla api generate
+            - generic [ref=e596]:
+              - code [ref=e597]: $ hulla api generate
+              - code [ref=e598]: Waiting for you…
+          - paragraph [ref=e599]: "Nothing is hidden: source routers go in, ordinary TypeScript files come out."
+        - region [ref=e600]:
+          - generic [ref=e601]:
+            - generic [ref=e602]:
+              - paragraph [ref=e603]: Live contract lab / no build wait
+              - heading "Change the source. Watch every type follow." [level=2] [ref=e604]
+              - paragraph [ref=e605]: Add a route or change an existing field. The browser-safe client is derived from the same state, so the previews cannot drift apart.
+            - generic [ref=e606]:
+              - generic [ref=e608]: Revision 01
+              - strong [ref=e609]: Initial contract
+          - generic [ref=e610]:
+            - group "Update an existing type" [ref=e611]:
+              - generic [ref=e613]: Task.priority
+              - combobox "Task.priority" [ref=e614]:
+                - option "'low' | 'medium' | 'high'" [selected]
+                - option "string"
+                - option "number"
+              - generic [ref=e615]: Schema and client type update together.
+            - group "Add a route" [ref=e617]:
+              - generic [ref=e619]:
+                - generic [ref=e620]: Name
+                - textbox "Name" [ref=e621]:
+                  - /placeholder: archive
+                  - text: archive
+              - generic [ref=e622]:
+                - generic [ref=e623]: Method
+                - combobox "Method" [ref=e624]:
+                  - option "GET"
+                  - option "POST"
+                  - option "PATCH" [selected]
+                  - option "DELETE"
+              - generic [ref=e625]:
+                - generic [ref=e626]: Path
+                - textbox "Path" [ref=e627]:
+                  - /placeholder: /archive
+                  - text: /archive
+              - generic [ref=e628]:
+                - generic [ref=e629]: Returns
+                - combobox "Returns" [ref=e630]:
+                  - option "Task" [selected]
+                  - option "Task[]"
+                  - option "boolean"
+                  - option "string"
+              - button "Add route ＋" [ref=e631] [cursor=pointer]:
+                - generic [ref=e632]: Add route
+                - generic [ref=e633]: ＋
+          - generic "Routes in the demo contract" [ref=e634]:
+            - generic [ref=e635]: tasks
+            - generic [ref=e636]:
+              - generic [ref=e637]: GET
+              - code [ref=e638]: .list
+            - generic [ref=e639]:
+              - generic [ref=e640]: POST
+              - code [ref=e641]: .create
+          - generic [ref=e642]:
+            - article [ref=e643]:
+              - generic [ref=e644]:
+                - generic [ref=e645]: 01 / SOURCE
+                - strong [ref=e646]: apps/backend/src/api/tasks.ts
+              - code [ref=e648]: "const task = z.object({ id: z.string(), priority: z.enum(['low', 'medium', 'high']), }) export const tasks = api.router('tasks').define(({ route }) => ({ list: route('GET', '/') .output(z.array(task)) .handler(/* returns Task[] */), create: route('POST', '/') .output(task) .handler(/* returns Task */), }))"
+            - generic [ref=e649]:
+              - generic [ref=e650]: BUILD GRAPH
+              - strong [ref=e653]: hulla api generate
+              - generic [ref=e654]: schema → contract → client
+            - article [ref=e655]:
+              - generic [ref=e656]:
+                - generic [ref=e657]: 02 / GENERATED
+                - strong [ref=e658]: apps/web/src/api/generated/routes.ts
+              - code [ref=e660]: "type Task = { id: string priority: 'low' | 'medium' | 'high' } list: procedure .output(clientSchema<Task[]>()) // GET /api/tasks create: procedure .output(clientSchema<Task>()) // POST /api/tasks"
+              - generic [ref=e661]:
+                - generic [ref=e662]: ✓ synced
+                - code [ref=e663]: "2 routes · Task.priority: 'low' | 'medium' | 'high'"
+    - generic [ref=e664]:
+      - generic [ref=e665]:
+        - generic [ref=e666]:
+          - generic [ref=e667]: "08"
+          - paragraph [ref=e668]: ●Generated bridge / end-to-end contract
+        - heading "Generation makes two independent apps feel like one typed system." [level=2] [ref=e669]
+        - paragraph [ref=e670]: Types travel at build time. Plain HTTP travels at runtime.
+      - generic [ref=e671]:
+        - generic [ref=e672]:
+          - complementary "Files in this lesson" [ref=e673]:
+            - generic [ref=e674]:
+              - generic [ref=e675]: EXPLORER
+              - generic [ref=e676]: 4 files
+            - generic [ref=e677]: demo/
+            - generic [ref=e679]:
+              - button "⌄ apps" [expanded] [ref=e680] [cursor=pointer]:
+                - generic [ref=e681]: ⌄
+                - text: apps
+              - generic [ref=e682]:
+                - button "⌄ backend" [expanded] [ref=e683] [cursor=pointer]:
+                  - generic [ref=e684]: ⌄
+                  - text: backend
+                - generic [ref=e685]:
+                  - button "⌄ src" [expanded] [ref=e686] [cursor=pointer]:
+                    - generic [ref=e687]: ⌄
+                    - text: src
+                  - generic [ref=e688]:
+                    - button "⌄ api" [expanded] [ref=e689] [cursor=pointer]:
+                      - generic [ref=e690]: ⌄
+                      - text: api
+                    - button "TS tasks.ts" [ref=e691] [cursor=pointer]:
+                      - generic [ref=e692]: TS
+                      - generic [ref=e693]: tasks.ts
+              - generic [ref=e694]:
+                - button "⌄ web" [expanded] [ref=e695] [cursor=pointer]:
+                  - generic [ref=e696]: ⌄
+                  - text: web
+                - generic [ref=e697]:
+                  - button "⌄ src" [expanded] [ref=e698] [cursor=pointer]:
+                    - generic [ref=e699]: ⌄
+                    - text: src
+                  - generic [ref=e700]:
+                    - button "⌄ api" [expanded] [ref=e701] [cursor=pointer]:
+                      - generic [ref=e702]: ⌄
+                      - text: api
+                    - generic [ref=e703]:
+                      - button "⌄ generated" [expanded] [ref=e704] [cursor=pointer]:
+                        - generic [ref=e705]: ⌄
+                        - text: generated
+                      - button "TS routes.ts generated" [ref=e706] [cursor=pointer]:
+                        - generic [ref=e707]: TS
+                        - generic [ref=e708]: routes.ts
+                        - emphasis [ref=e709]: generated
+                    - button "TS client.ts generated" [ref=e710] [cursor=pointer]:
+                      - generic [ref=e711]: TS
+                      - generic [ref=e712]: client.ts
+                      - emphasis [ref=e713]: generated
+                  - button "TX App.tsx new" [ref=e714] [cursor=pointer]:
+                    - generic [ref=e715]: TX
+                    - generic [ref=e716]: App.tsx
+                    - emphasis [ref=e717]: new
+          - figure "TX apps/web/src/App.tsx edit · hover types reset" [ref=e718]:
+            - generic [ref=e719]:
+              - generic [ref=e720]:
+                - generic [ref=e721]: TX
+                - generic [ref=e722]: apps/web/src/App.tsx
+              - generic [ref=e723]:
+                - generic [ref=e724]: edit · hover types
+                - button "reset" [ref=e725] [cursor=pointer]
+            - generic [ref=e727]:
+              - generic [ref=e728]: TS
+              - generic [ref=e729]: Actual @hulla/api + project declarations loaded
+              - generic [ref=e730]: Starting language service…
+        - complementary "Guided code reading" [ref=e731]:
+          - generic [ref=e732]:
+            - paragraph [ref=e733]: Hover to read the code
+            - generic [ref=e734]: 02 concepts
+          - list [ref=e735]:
+            - listitem [ref=e736]:
+              - button "01 Read with the inferred result The generated call returns the serialized backend output without a duplicated client type. App.tsx · L1–4" [ref=e737] [cursor=pointer]:
+                - generic [ref=e738]: "01"
+                - strong [ref=e739]: Read with the inferred result
+                - generic [ref=e740]: The generated call returns the serialized backend output without a duplicated client type.
+                - emphasis [ref=e741]: App.tsx · L1–4
+              - text: ‹
+            - listitem [ref=e742]:
+              - button "02 Write with the inferred input Changing the backend input marks affected call sites before a request ships. App.tsx · L6–9" [ref=e743] [cursor=pointer]:
+                - generic [ref=e744]: "02"
+                - strong [ref=e745]: Write with the inferred input
+                - generic [ref=e746]: Changing the backend input marks affected call sites before a request ships.
+                - emphasis [ref=e747]: App.tsx · L6–9
+              - text: ‹
+          - paragraph [ref=e748]:
+            - generic [ref=e749]: ↗
+            - text: Move away to restore the full editor.
+      - generic [ref=e752]:
+        - generic [ref=e753]:
+          - generic [ref=e754]:
+            - paragraph [ref=e755]: One contract / four small steps
+            - heading "Start with the shape the backend promises." [level=2] [ref=e756]
+            - paragraph [ref=e757]: The output schema is the public contract. It validates real responses and gives generation one reliable source to read.
+          - generic [ref=e758]: 01 / 04
+        - navigation "Contract walkthrough" [ref=e759]:
+          - button "01 Backend contract" [ref=e760] [cursor=pointer]:
+            - generic [ref=e761]: "01"
+            - strong [ref=e762]: Backend contract
+          - button "02 Generated types" [ref=e763] [cursor=pointer]:
+            - generic [ref=e764]: "02"
+            - strong [ref=e765]: Generated types
+          - button "03 Web app" [ref=e766] [cursor=pointer]:
+            - generic [ref=e767]: "03"
+            - strong [ref=e768]: Web app
+          - button "04 HTTP exchange" [ref=e769] [cursor=pointer]:
+            - generic [ref=e770]: "04"
+            - strong [ref=e771]: HTTP exchange
+        - generic [ref=e772]:
+          - paragraph [ref=e773]: 01 / source of truth
+          - generic [ref=e774]:
+            - article [ref=e775]:
+              - generic [ref=e776]: APPS / BACKEND
+              - strong [ref=e777]: src/api/tasks.ts
+              - generic [ref=e778]:
+                - code [ref=e779]: "list: route('GET', '/')"
+                - code [ref=e780]: .output(z.array(task))
+            - complementary [ref=e781]:
+              - text: WHAT THIS CONTROLS
+              - strong [ref=e782]: The shape of every successful task response.
+              - paragraph [ref=e783]: Change the schema here first. Everything downstream can then be regenerated from it.
+        - generic [ref=e784]:
+          - button "← Previous" [disabled] [ref=e785]
+          - paragraph [ref=e786]:
+            - generic [ref=e787]: Backend contract
+            - text: The output schema is the public contract. It validates real responses and gives generation one reliable source to read.
+          - button "Next concept →" [ref=e788] [cursor=pointer]
+    - generic [ref=e789]:
+      - generic [ref=e790]:
+        - generic [ref=e791]:
+          - generic [ref=e792]: "09"
+          - paragraph [ref=e793]: ●Plugin payoff / query cache
+        - heading "The cache can answer before the network is needed." [level=2] [ref=e794]
+        - paragraph [ref=e795]: The first read pays for the network. Fresh reads reuse the same typed result instantly.
+      - generic [ref=e796]:
+        - generic [ref=e797]:
+          - complementary "Files in this lesson" [ref=e798]:
+            - generic [ref=e799]:
+              - generic [ref=e800]: EXPLORER
+              - generic [ref=e801]: 4 files
+            - generic [ref=e802]: demo/
+            - generic [ref=e804]:
+              - button "⌄ apps" [expanded] [ref=e805] [cursor=pointer]:
+                - generic [ref=e806]: ⌄
+                - text: apps
+              - generic [ref=e807]:
+                - button "⌄ backend" [expanded] [ref=e808] [cursor=pointer]:
+                  - generic [ref=e809]: ⌄
+                  - text: backend
+                - generic [ref=e810]:
+                  - button "⌄ src" [expanded] [ref=e811] [cursor=pointer]:
+                    - generic [ref=e812]: ⌄
+                    - text: src
+                  - generic [ref=e813]:
+                    - button "⌄ api" [expanded] [ref=e814] [cursor=pointer]:
+                      - generic [ref=e815]: ⌄
+                      - text: api
+                    - button "TS tasks.ts" [ref=e816] [cursor=pointer]:
+                      - generic [ref=e817]: TS
+                      - generic [ref=e818]: tasks.ts
+              - generic [ref=e819]:
+                - button "⌄ web" [expanded] [ref=e820] [cursor=pointer]:
+                  - generic [ref=e821]: ⌄
+                  - text: web
+                - generic [ref=e822]:
+                  - button "⌄ src" [expanded] [ref=e823] [cursor=pointer]:
+                    - generic [ref=e824]: ⌄
+                    - text: src
+                  - generic [ref=e825]:
+                    - button "⌄ api" [expanded] [ref=e826] [cursor=pointer]:
+                      - generic [ref=e827]: ⌄
+                      - text: api
+                    - generic [ref=e828]:
+                      - button "⌄ generated" [expanded] [ref=e829] [cursor=pointer]:
+                        - generic [ref=e830]: ⌄
+                        - text: generated
+                      - button "TS routes.ts generated" [ref=e831] [cursor=pointer]:
+                        - generic [ref=e832]: TS
+                        - generic [ref=e833]: routes.ts
+                        - emphasis [ref=e834]: generated
+                    - button "TS client.ts generated" [ref=e835] [cursor=pointer]:
+                      - generic [ref=e836]: TS
+                      - generic [ref=e837]: client.ts
+                      - emphasis [ref=e838]: generated
+                  - button "TX App.tsx changed" [ref=e839] [cursor=pointer]:
+                    - generic [ref=e840]: TX
+                    - generic [ref=e841]: App.tsx
+                    - emphasis [ref=e842]: changed
+          - figure "TX apps/web/src/App.tsx edit · hover types reset" [ref=e843]:
+            - generic [ref=e844]:
+              - generic [ref=e845]:
+                - generic [ref=e846]: TX
+                - generic [ref=e847]: apps/web/src/App.tsx
+              - generic [ref=e848]:
+                - generic [ref=e849]: edit · hover types
+                - button "reset" [ref=e850] [cursor=pointer]
+            - generic [ref=e852]:
+              - generic [ref=e853]: TS
+              - generic [ref=e854]: Actual @hulla/api + project declarations loaded
+              - generic [ref=e855]: Starting language service…
+        - complementary "Guided code reading" [ref=e856]:
+          - generic [ref=e857]:
+            - paragraph [ref=e858]: Hover to read the code
+            - generic [ref=e859]: 02 concepts
+          - list [ref=e860]:
+            - listitem [ref=e861]:
+              - button "01 Derive the cache contract queryOptions supplies a stable typed key and query function from the route. App.tsx · L1–6" [ref=e862] [cursor=pointer]:
+                - generic [ref=e863]: "01"
+                - strong [ref=e864]: Derive the cache contract
+                - generic [ref=e865]: queryOptions supplies a stable typed key and query function from the route.
+                - emphasis [ref=e866]: App.tsx · L1–6
+              - text: ‹
+            - listitem [ref=e867]:
+              - button "02 Render the same typed result Whether data came from the network or cache, the component still sees Task[]. App.tsx · L7–8" [ref=e868] [cursor=pointer]:
+                - generic [ref=e869]: "02"
+                - strong [ref=e870]: Render the same typed result
+                - generic [ref=e871]: Whether data came from the network or cache, the component still sees Task[].
+                - emphasis [ref=e872]: App.tsx · L7–8
+              - text: ‹
+          - paragraph [ref=e873]:
+            - generic [ref=e874]: ↗
+            - text: Move away to restore the full editor.
+      - generic [ref=e876]:
+        - generic [ref=e877]:
+          - generic [ref=e878]:
+            - paragraph [ref=e879]: Interactive cache lab
+            - heading "Open one app twice. See who answers." [level=2] [ref=e880]
+            - paragraph [ref=e881]: Use the highlighted control inside the demo. The inspector will follow the data.
+          - generic [ref=e882]:
+            - generic [ref=e883]:
+              - text: Artificial backend latency
+              - generic [ref=e884]: 1200 ms
+            - slider "Artificial backend latency 1200 ms" [ref=e885]: "1200"
+        - region "Interactive task board cache demonstration" [ref=e886]:
+          - generic [ref=e887]:
+            - generic [ref=e888]: DEMO / TASKS
+            - generic [ref=e891]: SERVER · 1200 MS
+          - generic [ref=e893]:
+            - generic [ref=e894]:
+              - generic [ref=e895]:
+                - generic [ref=e896]:
+                  - generic [ref=e897]: MONDAY, 13 JULY
+                  - strong [ref=e898]: Ship week.
+                - generic [ref=e899]: Task board
+              - generic "Waiting for server response" [ref=e901]:
+                - strong [ref=e905]: Waiting for GET /api/tasks…
+              - generic [ref=e906]:
+                - generic [ref=e907]: useQuery asks the cache before HTTP
+                - strong [ref=e908]: —
+            - complementary [ref=e909]:
+              - generic [ref=e910]:
+                - generic [ref=e911]: LIVE INSPECTOR
+                - generic [ref=e912]: 01 / 02
+              - generic [ref=e913]:
+                - generic [ref=e916]: Request in flight
+                - heading "The network is now the bottleneck." [level=3] [ref=e917]
+                - paragraph [ref=e918]: The UI has no Task[] to render until GET /api/tasks returns. Watch the same board fill in when it arrives.
+              - list "Current data path" [ref=e919]:
+                - listitem [ref=e920]:
+                  - generic [ref=e921]: "1"
+                  - generic [ref=e922]:
+                    - strong [ref=e923]: Task board
+                    - generic [ref=e924]: asks for Task[]
+                - listitem [ref=e925]:
+                  - generic [ref=e926]: "2"
+                  - generic [ref=e927]:
+                    - strong [ref=e928]: Query cache
+                    - generic [ref=e929]: no data found
+                - listitem [ref=e930]:
+                  - generic [ref=e931]: "3"
+                  - generic [ref=e932]:
+                    - strong [ref=e933]: Network
+                    - generic [ref=e934]: GET /api/tasks · 1200 ms
+              - generic [ref=e935]:
+                - button "Waiting for server" [disabled] [ref=e936]:
+                  - text: CLICK
+                  - generic [ref=e939]: →
+                - generic [ref=e940]: 1200 ms artificial delay
+    - generic [ref=e941]:
+      - generic [ref=e942]:
+        - generic [ref=e943]:
+          - generic [ref=e944]: "10"
+          - paragraph [ref=e945]: ●Local-first / TanStack DB
+        - heading "Cached reads are instant. Writes can still feel slow." [level=2] [ref=e946]
+        - paragraph [ref=e947]: Update the local collection now, then reconcile with the server in the background.
+      - generic [ref=e948]:
+        - generic [ref=e949]:
+          - complementary "Files in this lesson" [ref=e950]:
+            - generic [ref=e951]:
+              - generic [ref=e952]: EXPLORER
+              - generic [ref=e953]: 4 files
+            - generic [ref=e954]: demo/
+            - generic [ref=e956]:
+              - button "⌄ apps" [expanded] [ref=e957] [cursor=pointer]:
+                - generic [ref=e958]: ⌄
+                - text: apps
+              - generic [ref=e959]:
+                - button "⌄ backend" [expanded] [ref=e960] [cursor=pointer]:
+                  - generic [ref=e961]: ⌄
+                  - text: backend
+                - generic [ref=e962]:
+                  - button "⌄ src" [expanded] [ref=e963] [cursor=pointer]:
+                    - generic [ref=e964]: ⌄
+                    - text: src
+                  - generic [ref=e965]:
+                    - button "⌄ api" [expanded] [ref=e966] [cursor=pointer]:
+                      - generic [ref=e967]: ⌄
+                      - text: api
+                    - button "TS tasks.ts" [ref=e968] [cursor=pointer]:
+                      - generic [ref=e969]: TS
+                      - generic [ref=e970]: tasks.ts
+              - generic [ref=e971]:
+                - button "⌄ web" [expanded] [ref=e972] [cursor=pointer]:
+                  - generic [ref=e973]: ⌄
+                  - text: web
+                - generic [ref=e974]:
+                  - button "⌄ src" [expanded] [ref=e975] [cursor=pointer]:
+                    - generic [ref=e976]: ⌄
+                    - text: src
+                  - generic [ref=e977]:
+                    - button "⌄ api" [expanded] [ref=e978] [cursor=pointer]:
+                      - generic [ref=e979]: ⌄
+                      - text: api
+                    - generic [ref=e980]:
+                      - button "⌄ generated" [expanded] [ref=e981] [cursor=pointer]:
+                        - generic [ref=e982]: ⌄
+                        - text: generated
+                      - button "TS routes.ts generated" [ref=e983] [cursor=pointer]:
+                        - generic [ref=e984]: TS
+                        - generic [ref=e985]: routes.ts
+                        - emphasis [ref=e986]: generated
+                    - button "TS client.ts generated" [ref=e987] [cursor=pointer]:
+                      - generic [ref=e988]: TS
+                      - generic [ref=e989]: client.ts
+                      - emphasis [ref=e990]: generated
+                  - button "TS tasks.db.ts new" [ref=e991] [cursor=pointer]:
+                    - generic [ref=e992]: TS
+                    - generic [ref=e993]: tasks.db.ts
+                    - emphasis [ref=e994]: new
+          - figure "TS apps/web/src/tasks.db.ts edit · hover types reset" [ref=e995]:
+            - generic [ref=e996]:
+              - generic [ref=e997]:
+                - generic [ref=e998]: TS
+                - generic [ref=e999]: apps/web/src/tasks.db.ts
+              - generic [ref=e1000]:
+                - generic [ref=e1001]: edit · hover types
+                - button "reset" [ref=e1002] [cursor=pointer]
+            - generic [ref=e1004]:
+              - generic [ref=e1005]: TS
+              - generic [ref=e1006]: Actual @hulla/api + project declarations loaded
+              - generic [ref=e1007]: Starting language service…
+        - complementary "Guided code reading" [ref=e1008]:
+          - generic [ref=e1009]:
+            - paragraph [ref=e1010]: Hover to read the code
+            - generic [ref=e1011]: 02 concepts
+          - list [ref=e1012]:
+            - listitem [ref=e1013]:
+              - button "01 Map local writes to route input The collection adapter turns an optimistic record into the typed create payload. tasks.db.ts · L8–17" [ref=e1014] [cursor=pointer]:
+                - generic [ref=e1015]: "01"
+                - strong [ref=e1016]: Map local writes to route input
+                - generic [ref=e1017]: The collection adapter turns an optimistic record into the typed create payload.
+                - emphasis [ref=e1018]: tasks.db.ts · L8–17
+              - text: ‹
+            - listitem [ref=e1019]:
+              - button "02 Change local state immediately The collection updates first; persistence continues without blocking the interface. tasks.db.ts · L21–26" [ref=e1020] [cursor=pointer]:
+                - generic [ref=e1021]: "02"
+                - strong [ref=e1022]: Change local state immediately
+                - generic [ref=e1023]: The collection updates first; persistence continues without blocking the interface.
+                - emphasis [ref=e1024]: tasks.db.ts · L21–26
+              - text: ‹
+          - paragraph [ref=e1025]:
+            - generic [ref=e1026]: ↗
+            - text: Move away to restore the full editor.
+      - generic [ref=e1028]:
+        - generic [ref=e1029]:
+          - generic [ref=e1030]:
+            - paragraph [ref=e1031]: Same cached app / two mutation strategies
+            - heading "Watch when the interface is allowed to change." [level=2] [ref=e1032]
+          - generic [ref=e1033]:
+            - generic [ref=e1034]:
+              - text: Artificial backend latency
+              - generic [ref=e1035]: 1200 ms
+            - slider "Artificial backend latency 1200 ms" [ref=e1036]: "1200"
+        - generic [ref=e1037]:
+          - article [ref=e1038]:
+            - generic [ref=e1039]:
+              - generic [ref=e1040]:
+                - generic [ref=e1041]: 01 / QUERY CACHE ONLY
+                - strong [ref=e1042]: Cached read. Server-first write.
+              - generic [ref=e1043]: CACHE READY
+            - generic [ref=e1044]:
+              - generic [ref=e1045]:
+                - generic [ref=e1046]: TODAY / SHIP WEEK
+                - strong [ref=e1047]: My tasks
+                - generic [ref=e1048]: Task[] was already cached
+              - generic [ref=e1049]:
+                - generic [ref=e1051]:
+                  - strong [ref=e1052]: Loading cached task…
+                  - generic [ref=e1053]: medium priority
+                - generic [ref=e1054]: OPEN
+            - button "TRY IT Complete with the cached query →" [disabled] [ref=e1055]:
+              - generic [ref=e1056]: TRY IT
+              - strong [ref=e1057]: Complete with the cached query
+              - generic [ref=e1058]: →
+            - generic [ref=e1059]:
+              - generic [ref=e1060]: CLICK
+              - generic [ref=e1062]: SERVER
+              - generic [ref=e1064]: UI
+            - generic [ref=e1065]:
+              - generic [ref=e1066]: Read was instant
+              - strong [ref=e1067]: 0 ms read
+          - article [ref=e1068]:
+            - generic [ref=e1069]:
+              - generic [ref=e1070]:
+                - generic [ref=e1071]: 02 / TANSTACK DB
+                - strong [ref=e1072]: Local-first write. Background sync.
+              - generic [ref=e1073]: RUN STEP 01
+            - generic [ref=e1074]:
+              - generic [ref=e1075]:
+                - generic [ref=e1076]: TODAY / SHIP WEEK
+                - strong [ref=e1077]: My tasks
+                - generic [ref=e1078]: Live collection drives the UI
+              - generic [ref=e1079]:
+                - generic [ref=e1081]:
+                  - strong [ref=e1082]: Hydrating live collection…
+                  - generic [ref=e1083]: low priority
+                - generic [ref=e1084]: OPEN
+            - button "LOCKED Complete immediately with TanStack DB →" [disabled] [ref=e1085]:
+              - generic [ref=e1086]: LOCKED
+              - strong [ref=e1087]: Complete immediately with TanStack DB
+              - generic [ref=e1088]: →
+            - generic "The UI and TanStack DB collection live in the client. The sync engine persists changes to the server, refetches server state, and reconciles it into the collection." [ref=e1089]:
+              - generic [ref=e1090]:
+                - generic [ref=e1091]:
+                  - generic [ref=e1092]: CLIENT
+                  - generic [ref=e1096]: UI LIVES HERE
+                - generic [ref=e1097]:
+                  - generic [ref=e1102]:
+                    - strong [ref=e1103]: UI
+                    - generic [ref=e1104]: Live query
+                  - generic [ref=e1105]:
+                    - generic [ref=e1106]: render ↑
+                    - generic [ref=e1108]: ↓ update
+                  - generic [ref=e1113]:
+                    - strong [ref=e1114]: Local collection
+                    - generic [ref=e1115]: Optimistic state
+                - generic [ref=e1119]:
+                  - strong [ref=e1120]: Sync engine
+                  - generic [ref=e1121]: persist · refetch · reconcile
+              - generic [ref=e1122]:
+                - generic [ref=e1123]:
+                  - generic [ref=e1124]: PATCH
+                  - generic [ref=e1126]: →
+                - generic [ref=e1127]:
+                  - generic [ref=e1128]: ←
+                  - generic [ref=e1130]: FRESH TASK[]
+              - generic [ref=e1136]:
+                - generic [ref=e1137]: AUTHORITATIVE
+                - strong [ref=e1138]: Server
+                - generic [ref=e1139]: WAITING
+            - generic [ref=e1140]:
+              - generic [ref=e1141]: Local write is next
+              - strong [ref=e1142]: —
+        - generic [ref=e1143]:
+          - generic [ref=e1144]:
+            - generic [ref=e1145]: WHAT CHANGED?
+            - strong [ref=e1146]: TanStack DB separates the UI clock from the server clock.
+          - list [ref=e1147]:
+            - listitem [ref=e1148]:
+              - generic [ref=e1149]: "01"
+              - strong [ref=e1150]: Mutate collection
+              - generic [ref=e1151]: Live queries rerender synchronously
+            - listitem [ref=e1152]:
+              - generic [ref=e1153]: "02"
+              - strong [ref=e1154]: Persist + refetch
+              - generic [ref=e1155]: Typed PATCH followed by fresh Task[]
+            - listitem [ref=e1156]:
+              - generic [ref=e1157]: "03"
+              - strong [ref=e1158]: Reconcile server truth
+              - generic [ref=e1159]: The collection settles without a UI jump
+    - generic [ref=e1160]:
+      - paragraph [ref=e1161]: ●One router / only the layers you need
+      - heading "Local procedures are the beginning, not a limitation." [level=2] [ref=e1162]
+      - paragraph [ref=e1163]: Add a network, plugin, cache, or local database when it earns its place. The feature vocabulary stays stable.
+      - link "Return to the beginning ↑" [ref=e1164] [cursor=pointer]:
+        - /url: "#top"
+  - contentinfo [ref=e1165]:
+    - generic [ref=e1166]: "@hulla/api / interactive example"
+    - generic [ref=e1167]: Types travel. Boilerplate doesn’t.

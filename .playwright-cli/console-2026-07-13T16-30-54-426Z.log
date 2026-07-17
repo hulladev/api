@@ -1,0 +1,82 @@
+[     214ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:3003/node_modules/.vite/deps/react-dom_client.js?v=2aff7c14:14335
+[     381ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:3003/favicon.ico:0
+[  121685ms] [ERROR] The final argument passed to %s changed size between renders. The order and size of this array must remain constant.
+
+Previous: %s
+Incoming: %s useEffect [[object Object], ] [] @ http://127.0.0.1:3003/@vite/client:524
+[  121686ms] [ERROR] The final argument passed to %s changed size between renders. The order and size of this array must remain constant.
+
+Previous: %s
+Incoming: %s useEffect [[object Object], ] [] @ http://127.0.0.1:3003/@vite/client:524
+[  121686ms] [ERROR] The final argument passed to %s changed size between renders. The order and size of this array must remain constant.
+
+Previous: %s
+Incoming: %s useEffect [[object Object],[object Object], ] [] @ http://127.0.0.1:3003/@vite/client:524
+[  121687ms] [ERROR] The final argument passed to %s changed size between renders. The order and size of this array must remain constant.
+
+Previous: %s
+Incoming: %s useEffect [[object Object],[object Object], ] [] @ http://127.0.0.1:3003/@vite/client:524
+[  121688ms] [ERROR] The final argument passed to %s changed size between renders. The order and size of this array must remain constant.
+
+Previous: %s
+Incoming: %s useEffect [[object Object],[object Object],[object Object],[object Object], ] [] @ http://127.0.0.1:3003/@vite/client:524
+[  121688ms] [ERROR] The final argument passed to %s changed size between renders. The order and size of this array must remain constant.
+
+Previous: %s
+Incoming: %s useEffect [[object Object],[object Object], ] [] @ http://127.0.0.1:3003/@vite/client:524
+[  121689ms] [ERROR] The final argument passed to %s changed size between renders. The order and size of this array must remain constant.
+
+Previous: %s
+Incoming: %s useEffect [[object Object],[object Object], ] [] @ http://127.0.0.1:3003/@vite/client:524
+[  121690ms] [ERROR] The final argument passed to %s changed size between renders. The order and size of this array must remain constant.
+
+Previous: %s
+Incoming: %s useEffect [[object Object],[object Object],[object Object],[object Object], ] [] @ http://127.0.0.1:3003/@vite/client:524
+[  121691ms] [ERROR] The final argument passed to %s changed size between renders. The order and size of this array must remain constant.
+
+Previous: %s
+Incoming: %s useEffect [[object Object],[object Object],[object Object],[object Object], ] [] @ http://127.0.0.1:3003/@vite/client:524
+[  121693ms] [ERROR] The final argument passed to %s changed size between renders. The order and size of this array must remain constant.
+
+Previous: %s
+Incoming: %s useEffect [[object Object],[object Object],[object Object],[object Object], ] [] @ http://127.0.0.1:3003/@vite/client:524
+[  129585ms] [ERROR] The final argument passed to %s changed size between renders. The order and size of this array must remain constant.
+
+Previous: %s
+Incoming: %s useEffect [] [false, ] @ http://127.0.0.1:3003/@vite/client:524
+[  129586ms] [ERROR] The final argument passed to %s changed size between renders. The order and size of this array must remain constant.
+
+Previous: %s
+Incoming: %s useEffect [] [false, ] @ http://127.0.0.1:3003/@vite/client:524
+[  129586ms] [ERROR] The final argument passed to %s changed size between renders. The order and size of this array must remain constant.
+
+Previous: %s
+Incoming: %s useEffect [] [false, ] @ http://127.0.0.1:3003/@vite/client:524
+[  129587ms] [ERROR] The final argument passed to %s changed size between renders. The order and size of this array must remain constant.
+
+Previous: %s
+Incoming: %s useEffect [] [false, ] @ http://127.0.0.1:3003/@vite/client:524
+[  129587ms] [ERROR] The final argument passed to %s changed size between renders. The order and size of this array must remain constant.
+
+Previous: %s
+Incoming: %s useEffect [] [false, ] @ http://127.0.0.1:3003/@vite/client:524
+[  129588ms] [ERROR] The final argument passed to %s changed size between renders. The order and size of this array must remain constant.
+
+Previous: %s
+Incoming: %s useEffect [] [false, ] @ http://127.0.0.1:3003/@vite/client:524
+[  129589ms] [ERROR] The final argument passed to %s changed size between renders. The order and size of this array must remain constant.
+
+Previous: %s
+Incoming: %s useEffect [] [false, ] @ http://127.0.0.1:3003/@vite/client:524
+[  129590ms] [ERROR] The final argument passed to %s changed size between renders. The order and size of this array must remain constant.
+
+Previous: %s
+Incoming: %s useEffect [] [false, ] @ http://127.0.0.1:3003/@vite/client:524
+[  129591ms] [ERROR] The final argument passed to %s changed size between renders. The order and size of this array must remain constant.
+
+Previous: %s
+Incoming: %s useEffect [] [false, ] @ http://127.0.0.1:3003/@vite/client:524
+[  129592ms] [ERROR] The final argument passed to %s changed size between renders. The order and size of this array must remain constant.
+
+Previous: %s
+Incoming: %s useEffect [] [false, ] @ http://127.0.0.1:3003/@vite/client:524
