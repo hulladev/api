@@ -1,12 +1,9 @@
 #!/usr/bin/env node
-import { cli } from './args'
+import { parseArguments } from './args'
 import { generate } from './index'
 
 async function main() {
-  const args = cli.parse(process.argv.slice(2)).arguments
-  const input = args.input.value
-  const output = args.output.value
-  const operationNames = args.names.value ?? 'operationId'
+  const { input, output, operationNames = 'operationId' } = parseArguments(process.argv.slice(2))
 
   if (input === undefined || output === undefined) {
     printUsage()

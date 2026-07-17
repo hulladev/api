@@ -1,5 +1,8 @@
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
-import { dirname, extname, join } from 'node:path'
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { relativeImport, type APIPlugin, type APISource, type APISourceGenerateResult } from '@hulla/api'
+import { writeOpenAPIOutput } from './output'
+import { createApiExpression, pluginImportLines } from './plugins'
 
 export type OperationNameMode = 'operationId' | 'path'
 
@@ -9,6 +12,12 @@ export type GenerateOpenAPIConfig = {
   operationNames?: OperationNameMode
   apiImport?: string
   zodImport?: string
+  plugins?: readonly APIPlugin[]
+}
+
+export type OpenAPISourceConfig = Omit<GenerateOpenAPIConfig, 'output'> & {
+  name?: string
+  baseUrl?: string
 }
 
 export type GenerateOpenAPIResult = {
@@ -28,6 +37,9 @@ export type OpenAPIDocument = {
   swagger?: string
   components?: {
     schemas?: Record<string, JSONSchema>
+    parameters?: Record<string, ParameterObject | ReferenceObject>
+    requestBodies?: Record<string, RequestBody | ReferenceObject>
+    responses?: Record<string, ResponseObject | ReferenceObject>
   }
   paths: Record<string, PathItem | undefined>
 }
@@ -35,13 +47,13 @@ export type OpenAPIDocument = {
 type HTTPMethod = 'get' | 'put' | 'post' | 'delete' | 'options' | 'head' | 'patch' | 'trace'
 
 type PathItem = Partial<Record<HTTPMethod, Operation>> & {
-  parameters?: Parameter[]
+  parameters?: readonly Parameter[]
 }
 
 type Operation = {
   operationId?: string
-  tags?: string[]
-  parameters?: Parameter[]
+  tags?: readonly string[]
+  parameters?: readonly Parameter[]
   requestBody?: RequestBody | ReferenceObject
   responses?: Record<string, ResponseObject | ReferenceObject | undefined>
 }
@@ -52,7 +64,11 @@ type ParameterObject = {
   name: string
   in: 'query' | 'header' | 'path' | 'cookie'
   required?: boolean
+  style?: string
+  explode?: boolean
+  allowReserved?: boolean
   schema?: JSONSchema | ReferenceObject
+  content?: Record<string, MediaType | undefined>
 }
 
 type RequestBody = {
@@ -76,16 +92,16 @@ type JSONSchema = {
   $ref?: string
   type?: string | string[]
   format?: string
-  enum?: unknown[]
+  enum?: readonly unknown[]
   const?: unknown
   nullable?: boolean
   properties?: Record<string, JSONSchema | ReferenceObject | undefined>
-  required?: string[]
+  required?: readonly string[]
   items?: JSONSchema | ReferenceObject
   additionalProperties?: boolean | JSONSchema | ReferenceObject
-  oneOf?: (JSONSchema | ReferenceObject)[]
-  anyOf?: (JSONSchema | ReferenceObject)[]
-  allOf?: (JSONSchema | ReferenceObject)[]
+  oneOf?: readonly (JSONSchema | ReferenceObject)[]
+  anyOf?: readonly (JSONSchema | ReferenceObject)[]
+  allOf?: readonly (JSONSchema | ReferenceObject)[]
 }
 
 type OperationInputPart = {
@@ -105,10 +121,72 @@ type OutputFile = {
   code: string
 }
 
+type ComponentSchema = {
+  name: string
+  schema: JSONSchema
+  recursive: boolean
+}
+
 const httpMethods = ['get', 'post', 'put', 'patch', 'delete', 'options', 'head', 'trace'] as const
 
-export function defineConfig<const T extends GenerateOpenAPIConfig>(config: T): T {
-  return config
+export function openapi(config: OpenAPISourceConfig): APISource {
+  return {
+    name: config.name,
+    inputs: typeof config.input === 'string' && !isSourceOutputReference(config.input) ? [config.input] : [],
+    async generate(context) {
+      await generate({
+        ...config,
+        input: resolveOpenAPIInput(config.input, context.sources),
+        output: context.sourceDir,
+      })
+
+      return {
+        name: config.name ?? 'openapi',
+        baseUrl: config.baseUrl,
+        importPath: relativeImport(context.outDir, join(context.sourceDir, 'index')),
+        factoryName: 'createOpenAPIClient',
+      }
+    },
+  }
+}
+
+function resolveOpenAPIInput(input: string | OpenAPIDocument, sources: readonly APISourceGenerateResult[]) {
+  if (typeof input !== 'string') {
+    return input
+  }
+
+  const reference = parseSourceOutputReference(input)
+
+  if (reference === undefined) {
+    return input
+  }
+
+  const source = sources.find((candidate) => candidate.name === reference.sourceName)
+  const output = source?.outputs?.[reference.outputName]
+
+  if (output === undefined) {
+    throw new Error(`OpenAPI source input "${input}" could not be resolved from previous source outputs.`)
+  }
+
+  return output
+}
+
+function isSourceOutputReference(input: string): boolean {
+  return parseSourceOutputReference(input) !== undefined
+}
+
+function parseSourceOutputReference(input: string): { sourceName: string; outputName: string } | undefined {
+  if (input.includes('/') || input.includes('\\')) {
+    return undefined
+  }
+
+  const [sourceName, outputName, ...rest] = input.split('.')
+
+  if (sourceName === undefined || outputName !== 'openapi' || rest.length > 0) {
+    return undefined
+  }
+
+  return { sourceName, outputName }
 }
 
 export async function generate(config: GenerateOpenAPIConfig): Promise<GenerateOpenAPIResult> {
@@ -116,7 +194,7 @@ export async function generate(config: GenerateOpenAPIConfig): Promise<GenerateO
   const code = generateCode(document, config)
 
   if (config.output !== undefined) {
-    await writeOutput(config.output, code, document, config)
+    await writeOpenAPIOutput(config.output, code, generateOutputFiles(document, config))
   }
 
   return {
@@ -131,12 +209,16 @@ export async function generate(config: GenerateOpenAPIConfig): Promise<GenerateO
 }
 
 export function generateCode(document: OpenAPIDocument, config: Omit<GenerateOpenAPIConfig, 'input' | 'output'> = {}) {
+  validateLocalReferences(document)
   const apiImport = config.apiImport ?? '@hulla/api'
   const zodImport = config.zodImport ?? 'zod'
-  const componentSchemas = Object.entries(document.components?.schemas ?? {})
+  const componentSchemas = orderComponentSchemas(document.components?.schemas ?? {})
   const operations = collectOperations(document, config)
   const lines: string[] = [
-    `import { init } from ${quote(apiImport)}`,
+    `import { createApi } from ${quote(apiImport)}`,
+    "import { clientProcedure } from '@hulla/api/client'",
+    "import type { ClientRequestOptions } from '@hulla/api/client'",
+    ...pluginImportLines(config.plugins),
     `import { z } from ${quote(zodImport)}`,
     '',
     'export type OpenAPIRequest = {',
@@ -148,12 +230,12 @@ export function generateCode(document: OpenAPIDocument, config: Omit<GenerateOpe
     '  body?: unknown',
     '}',
     '',
-    'export type OpenAPIClient = <T>(request: OpenAPIRequest) => T | Promise<T>',
+    'export type OpenAPIClient = <T>(request: OpenAPIRequest, options?: ClientRequestOptions) => T | Promise<T>',
     '',
   ]
 
-  for (const [name, schema] of componentSchemas) {
-    lines.push(`export const ${schemaConstName(name)} = ${schemaToZod(schema)}`, '')
+  for (const component of componentSchemas) {
+    lines.push(componentSchemaDeclaration(component), '')
   }
 
   const operationSchemas = operations.flatMap((operation) => {
@@ -175,7 +257,7 @@ export function generateCode(document: OpenAPIDocument, config: Omit<GenerateOpe
   }
 
   lines.push('export function createOpenAPIClient(client: OpenAPIClient) {')
-  lines.push('  const api = init()')
+  lines.push(`  const api = ${createApiExpression(config.plugins)}`)
   lines.push('')
   lines.push('  return {')
 
@@ -183,7 +265,7 @@ export function generateCode(document: OpenAPIDocument, config: Omit<GenerateOpe
     lines.push(`    ${propertyKey(router.name)}: api.router(${quote(router.name)}).define(({ procedure }) => ({`)
 
     for (const operation of router.operations) {
-      lines.push(`      ${propertyKey(operation.procedureName)}: procedure`)
+      lines.push(`      ${propertyKey(operation.procedureName)}: clientProcedure(procedure`)
 
       if (operation.inputSchema !== undefined) {
         lines.push(`        .input(${operationConstName(operation, 'Input')})`)
@@ -193,7 +275,7 @@ export function generateCode(document: OpenAPIDocument, config: Omit<GenerateOpe
         lines.push(`        .output(${operationConstName(operation, 'Output')})`)
       }
 
-      lines.push(`        .handler(${handlerFor(operation)}),`)
+      lines.push(`        .handler(${handlerFor(operation)}), ${requestFor(operation)}),`)
     }
 
     lines.push('    })),')
@@ -212,13 +294,16 @@ function generateOutputFiles(
 ): OutputFile[] {
   const apiImport = config.apiImport ?? '@hulla/api'
   const zodImport = config.zodImport ?? 'zod'
-  const componentSchemas = Object.entries(document.components?.schemas ?? {})
+  validateLocalReferences(document)
+  const componentSchemas = orderComponentSchemas(document.components?.schemas ?? {})
   const operations = collectOperations(document, config)
   const routeGroups = groupByOutputPath(operations)
   const files: OutputFile[] = [
     {
       path: 'types.ts',
       code: [
+        "import type { ClientRequestOptions } from '@hulla/api/client'",
+        '',
         'export type OpenAPIRequest = {',
         '  method: string',
         '  path: string',
@@ -228,7 +313,7 @@ function generateOutputFiles(
         '  body?: unknown',
         '}',
         '',
-        'export type OpenAPIClient = <T>(request: OpenAPIRequest) => T | Promise<T>',
+        'export type OpenAPIClient = <T>(request: OpenAPIRequest, options?: ClientRequestOptions) => T | Promise<T>',
         '',
       ].join('\n'),
     },
@@ -237,8 +322,8 @@ function generateOutputFiles(
   if (componentSchemas.length > 0) {
     const schemaLines = [`import { z } from ${quote(zodImport)}`, '']
 
-    for (const [name, schema] of componentSchemas) {
-      schemaLines.push(`export const ${schemaConstName(name)} = ${schemaToZod(schema)}`, '')
+    for (const component of componentSchemas) {
+      schemaLines.push(componentSchemaDeclaration(component), '')
     }
 
     files.push({
@@ -256,7 +341,7 @@ function generateOutputFiles(
 
   files.push({
     path: 'index.ts',
-    code: generateOutputIndex(routeGroups, operations, apiImport, componentSchemas.length > 0),
+    code: generateOutputIndex(routeGroups, operations, apiImport, config.plugins, componentSchemas.length > 0),
   })
 
   return files
@@ -266,9 +351,15 @@ function generateOutputIndex(
   routeGroups: { name: string; operations: OperationModel[] }[],
   operations: OperationModel[],
   apiImport: string,
+  plugins: readonly APIPlugin[] | undefined,
   hasComponentSchemas: boolean
 ): string {
-  const lines = [`import { init } from ${quote(apiImport)}`, "import type { OpenAPIClient } from './types'"]
+  const lines = [
+    `import { createApi } from ${quote(apiImport)}`,
+    "import { clientProcedure } from '@hulla/api/client'",
+    ...pluginImportLines(plugins),
+    "import type { OpenAPIClient } from './types'",
+  ]
 
   for (const group of routeGroups) {
     const imports = group.operations.flatMap((operation) => [
@@ -287,7 +378,7 @@ function generateOutputIndex(
   }
 
   lines.push('', 'export function createOpenAPIClient(client: OpenAPIClient) {')
-  lines.push('  const api = init()')
+  lines.push(`  const api = ${createApiExpression(plugins)}`)
   lines.push('')
   lines.push('  return {')
 
@@ -295,7 +386,7 @@ function generateOutputIndex(
     lines.push(`    ${propertyKey(router.name)}: api.router(${quote(router.name)}).define(({ procedure }) => ({`)
 
     for (const operation of router.operations) {
-      lines.push(`      ${propertyKey(operation.procedureName)}: procedure`)
+      lines.push(`      ${propertyKey(operation.procedureName)}: clientProcedure(procedure`)
 
       if (operation.inputSchema !== undefined) {
         lines.push(`        .input(${modularOperationConstName(operation, 'Input')})`)
@@ -305,7 +396,7 @@ function generateOutputIndex(
         lines.push(`        .output(${modularOperationConstName(operation, 'Output')})`)
       }
 
-      lines.push(`        .handler(${operationHandlerName(operation)}(client)),`)
+      lines.push(`        .handler(${operationHandlerName(operation)}(client)), ${requestFor(operation)}),`)
     }
 
     lines.push('    })),')
@@ -320,7 +411,7 @@ function generateOutputIndex(
 
 function generateRouteFile(
   operations: OperationModel[],
-  componentSchemas: [string, JSONSchema][],
+  componentSchemas: ComponentSchema[],
   zodImport: string
 ): string {
   const lines = ["import type { OpenAPIClient } from '../types'"]
@@ -328,7 +419,7 @@ function generateRouteFile(
     (operation) => operation.inputSchema !== undefined || operation.outputSchema !== undefined
   )
   const usedComponentSchemas = componentSchemas
-    .map(([name]) => schemaConstName(name))
+    .map(({ name }) => schemaConstName(name))
     .filter((name) =>
       operations.some(
         (operation) => schemaReferences(operation.inputSchema, name) || schemaReferences(operation.outputSchema, name)
@@ -363,39 +454,6 @@ function generateRouteFile(
   return lines.join('\n')
 }
 
-async function writeOutput(
-  output: string,
-  code: string,
-  document: OpenAPIDocument,
-  config: Omit<GenerateOpenAPIConfig, 'input'>
-): Promise<void> {
-  if ((await outputKind(output)) === 'file') {
-    await writeFile(output, code)
-    return
-  }
-
-  await mkdir(output, { recursive: true })
-
-  for (const file of generateOutputFiles(document, config)) {
-    const filePath = join(output, file.path)
-
-    await mkdir(dirname(filePath), { recursive: true })
-    await writeFile(filePath, file.code)
-  }
-}
-
-async function outputKind(output: string): Promise<'file' | 'directory'> {
-  try {
-    return (await stat(output)).isDirectory() ? 'directory' : 'file'
-  } catch (error) {
-    if (isErrorCode(error, 'ENOENT')) {
-      return looksLikeDirectoryOutput(output) ? 'directory' : 'file'
-    }
-
-    throw error
-  }
-}
-
 async function readDocument(path: string): Promise<OpenAPIDocument> {
   const source = await readFile(path, 'utf8')
   const trimmed = source.trimStart()
@@ -405,6 +463,141 @@ async function readDocument(path: string): Promise<OpenAPIDocument> {
   }
 
   return JSON.parse(source) as OpenAPIDocument
+}
+
+function validateLocalReferences(document: OpenAPIDocument): void {
+  const visited = new WeakSet<object>()
+
+  const visit = (value: unknown): void => {
+    if (typeof value !== 'object' || value === null || visited.has(value)) return
+    visited.add(value)
+
+    if (isReference(value)) {
+      resolveJSONPointer(document, value.$ref)
+      return
+    }
+
+    for (const nested of Object.values(value)) visit(nested)
+  }
+
+  visit(document)
+}
+
+function resolveReference<T>(
+  document: OpenAPIDocument,
+  value: T | ReferenceObject | undefined,
+  description: string
+): T | undefined {
+  if (value === undefined || !isReference(value)) return value as T | undefined
+
+  const seen = new Set<string>()
+  let current: unknown = value
+
+  while (isReference(current)) {
+    if (seen.has(current.$ref)) {
+      throw new Error(`Circular OpenAPI ${description} reference "${current.$ref}".`)
+    }
+    seen.add(current.$ref)
+    current = resolveJSONPointer(document, current.$ref)
+  }
+
+  if (typeof current !== 'object' || current === null) {
+    throw new Error(`OpenAPI ${description} reference must resolve to an object.`)
+  }
+
+  return current as T
+}
+
+function resolveJSONPointer(document: OpenAPIDocument, reference: string): unknown {
+  if (!reference.startsWith('#/')) {
+    throw new Error(
+      `External OpenAPI reference "${reference}" is not supported. Bundle the document before generation.`
+    )
+  }
+
+  let current: unknown = document
+
+  for (const encodedPart of reference.slice(2).split('/')) {
+    const part = decodeJSONPointerPart(encodedPart)
+
+    if (typeof current !== 'object' || current === null || !(part in current)) {
+      throw new Error(`OpenAPI reference "${reference}" could not be resolved.`)
+    }
+    current = (current as Record<string, unknown>)[part]
+  }
+
+  return current
+}
+
+function decodeJSONPointerPart(value: string): string {
+  return value.replace(/~1/g, '/').replace(/~0/g, '~')
+}
+
+function orderComponentSchemas(schemas: Record<string, JSONSchema>): ComponentSchema[] {
+  const ordered: string[] = []
+  const state = new Map<string, 'visiting' | 'visited'>()
+  const stack: string[] = []
+  const recursive = new Set<string>()
+
+  const visit = (name: string): void => {
+    const currentState = state.get(name)
+
+    if (currentState === 'visited') return
+    if (currentState === 'visiting') {
+      const cycleStart = stack.lastIndexOf(name)
+      for (const cycleName of stack.slice(cycleStart)) recursive.add(cycleName)
+      return
+    }
+
+    state.set(name, 'visiting')
+    stack.push(name)
+
+    for (const dependency of componentSchemaDependencies(schemas[name])) {
+      if (dependency in schemas) visit(dependency)
+    }
+
+    stack.pop()
+    state.set(name, 'visited')
+    ordered.push(name)
+  }
+
+  for (const name of Object.keys(schemas)) visit(name)
+
+  return ordered.map((name) => ({
+    name,
+    schema: schemas[name]!,
+    recursive: recursive.has(name),
+  }))
+}
+
+function componentSchemaDependencies(schema: JSONSchema | ReferenceObject | undefined): Set<string> {
+  const dependencies = new Set<string>()
+  const visited = new WeakSet<object>()
+
+  const visit = (value: unknown): void => {
+    if (typeof value !== 'object' || value === null || visited.has(value)) return
+    visited.add(value)
+
+    if (isReference(value)) {
+      const prefix = '#/components/schemas/'
+      if (value.$ref.startsWith(prefix)) dependencies.add(decodeJSONPointerPart(value.$ref.slice(prefix.length)))
+      return
+    }
+
+    for (const nested of Object.values(value)) visit(nested)
+  }
+
+  visit(schema)
+  return dependencies
+}
+
+function componentSchemaDeclaration(component: ComponentSchema): string {
+  const name = schemaConstName(component.name)
+  const schema = schemaToZod(component.schema)
+
+  return component.recursive
+    ? `export const ${name}: z.ZodType<unknown> = z.lazy(() => ${schema})`
+    : `export const ${name} = ${schema}`
 }
 
 function collectOperations(
@@ -433,8 +626,9 @@ function collectOperations(
           ? operation.operationId
           : procedureNameFromPath(method, path)
       const procedureName = uniqueName(camelCase(rawProcedureName), usedByRouter, routerName)
-      const inputSchema = operationInputSchema(pathItem, operation)
-      const outputSchema = operationOutputSchema(operation)
+      const description = `${method.toUpperCase()} ${path}`
+      const inputSchema = operationInputSchema(document, pathItem, operation, description)
+      const outputSchema = operationOutputSchema(document, operation, description)
 
       operations.push({
         method,
@@ -454,8 +648,14 @@ function collectOperations(
   return operations
 }
 
-function operationInputSchema(pathItem: PathItem, operation: Operation): string | undefined {
-  const parameters = mergeParameters(pathItem.parameters ?? [], operation.parameters ?? [])
+function operationInputSchema(
+  document: OpenAPIDocument,
+  pathItem: PathItem,
+  operation: Operation,
+  description: string
+): string | undefined {
+  const parameters = mergeParameters(document, pathItem.parameters ?? [], operation.parameters ?? [])
+  validateOperationParameters(document, parameters, description)
   const parts: OperationInputPart[] = []
 
   for (const location of ['params', 'query', 'headers'] as const) {
@@ -484,10 +684,10 @@ function operationInputSchema(pathItem: PathItem, operation: Operation): string 
     })
   }
 
-  const requestBody = dereferenceRequestBody(operation.requestBody)
+  const requestBody = resolveReference<RequestBody>(document, operation.requestBody, 'request body')
 
   if (requestBody !== undefined) {
-    const schema = mediaTypeSchema(requestBody.content)
+    const schema = requestBodySchema(requestBody.content, description)
 
     if (schema !== undefined) {
       parts.push({
@@ -505,34 +705,38 @@ function operationInputSchema(pathItem: PathItem, operation: Operation): string 
   return objectSchema(parts.map((part) => ({ name: part.key, schema: part.schema, required: part.required })))
 }
 
-function operationOutputSchema(operation: Operation): string | undefined {
-  const response = bestResponse(operation.responses)
+function operationOutputSchema(
+  document: OpenAPIDocument,
+  operation: Operation,
+  description: string
+): string | undefined {
+  const response = resolveReference<ResponseObject>(document, bestResponse(operation.responses), 'response')
 
-  if (response === undefined || isReference(response)) {
+  if (response === undefined) {
     return undefined
   }
 
-  const schema = mediaTypeSchema(response.content)
+  const schema = responseSchema(document, response.content, description)
 
   return schema === undefined ? undefined : schemaToZod(schema)
 }
 
-function mergeParameters(pathParameters: Parameter[], operationParameters: Parameter[]): Parameter[] {
-  const merged = new Map<string, Parameter>()
+function mergeParameters(
+  document: OpenAPIDocument,
+  pathParameters: readonly Parameter[],
+  operationParameters: readonly Parameter[]
+): ParameterObject[] {
+  const merged = new Map<string, ParameterObject>()
 
   for (const parameter of [...pathParameters, ...operationParameters]) {
-    if (isReference(parameter)) {
-      continue
-    }
+    const resolved = resolveReference<ParameterObject>(document, parameter, 'parameter')
 
-    merged.set(`${parameter.in}:${parameter.name}`, parameter)
+    if (resolved === undefined) continue
+
+    merged.set(`${resolved.in}:${resolved.name}`, resolved)
   }
 
   return [...merged.values()]
-}
-
-function dereferenceRequestBody(requestBody: RequestBody | ReferenceObject | undefined): RequestBody | undefined {
-  return requestBody === undefined || isReference(requestBody) ? undefined : requestBody
 }
 
 function bestResponse(responses: Operation['responses']): ResponseObject | ReferenceObject | undefined {
@@ -547,17 +751,119 @@ function bestResponse(responses: Operation['responses']): ResponseObject | Refer
   return successStatus === undefined ? responses['default'] : responses[successStatus]
 }
 
-function mediaTypeSchema(
-  content: Record<string, MediaType | undefined> | undefined
+function requestBodySchema(
+  content: Record<string, MediaType | undefined> | undefined,
+  description: string
 ): JSONSchema | ReferenceObject | undefined {
-  if (content === undefined) {
-    return undefined
+  if (content === undefined) return undefined
+  const json = mediaTypeEntries(content).find(([mediaType]) => isJSONMediaType(mediaType))
+  if (json) return json[1]?.schema
+  const unsupported = mediaTypeEntries(content).filter(([, media]) => media?.schema !== undefined)
+  if (unsupported.length > 0) {
+    throw new Error(
+      `OpenAPI operation ${description} uses an unsupported request body media type (${unsupported
+        .map(([mediaType]) => mediaType)
+        .join(', ')}); generated clients support JSON request bodies only.`
+    )
   }
+  return undefined
+}
 
-  return (
-    content['application/json']?.schema ??
-    Object.values(content).find((mediaType) => mediaType?.schema !== undefined)?.schema
-  )
+function responseSchema(
+  document: OpenAPIDocument,
+  content: Record<string, MediaType | undefined> | undefined,
+  description: string
+): JSONSchema | ReferenceObject | undefined {
+  if (content === undefined) return undefined
+  const entries = mediaTypeEntries(content)
+  const json = entries.find(([mediaType]) => isJSONMediaType(mediaType))
+  if (json) return json[1]?.schema
+  const text = entries.find(([mediaType, media]) => mediaType.startsWith('text/') && media?.schema !== undefined)
+  if (text) {
+    if (schemaShape(document, text[1]!.schema) !== 'scalar-string') {
+      throw new Error(`OpenAPI operation ${description} must describe text responses with a string schema.`)
+    }
+    return text[1]!.schema
+  }
+  const unsupported = entries.filter(([, media]) => media?.schema !== undefined)
+  if (unsupported.length > 0) {
+    throw new Error(
+      `OpenAPI operation ${description} uses an unsupported response media type (${unsupported
+        .map(([mediaType]) => mediaType)
+        .join(', ')}).`
+    )
+  }
+  return undefined
+}
+
+function mediaTypeEntries(content: Record<string, MediaType | undefined>): [string, MediaType | undefined][] {
+  return Object.entries(content).map(([mediaType, media]) => [mediaType.toLowerCase(), media])
+}
+
+function isJSONMediaType(mediaType: string): boolean {
+  const normalized = mediaType.split(';', 1)[0]!.trim()
+  return normalized === 'application/json' || (normalized.startsWith('application/') && normalized.endsWith('+json'))
+}
+
+function validateOperationParameters(
+  document: OpenAPIDocument,
+  parameters: readonly ParameterObject[],
+  description: string
+): void {
+  for (const parameter of parameters) {
+    const owner = `OpenAPI operation ${description} parameter "${parameter.name}"`
+    if (parameter.content !== undefined) throw new Error(`${owner} uses unsupported content-based serialization.`)
+    if (parameter.in === 'cookie') throw new Error(`${owner} uses unsupported cookie transport.`)
+    if (parameter.allowReserved === true) throw new Error(`${owner} uses unsupported allowReserved serialization.`)
+
+    const shape = schemaShape(document, parameter.schema)
+    if (shape === 'object' || shape === 'unknown') {
+      throw new Error(`${owner} must use a supported scalar or repeated scalar array schema.`)
+    }
+
+    if (parameter.in === 'query') {
+      if (parameter.style !== undefined && parameter.style !== 'form') {
+        throw new Error(`${owner} uses unsupported query style "${parameter.style}".`)
+      }
+      if (parameter.explode === false) throw new Error(`${owner} uses unsupported explode: false serialization.`)
+      if (shape === 'array' && schemaArrayItemShape(document, parameter.schema) !== 'scalar') {
+        throw new Error(`${owner} must contain scalar array items.`)
+      }
+      continue
+    }
+
+    if (shape === 'array') throw new Error(`${owner} must use a scalar schema for ${parameter.in} transport.`)
+    if (parameter.style !== undefined && parameter.style !== 'simple') {
+      throw new Error(`${owner} uses unsupported ${parameter.in} style "${parameter.style}".`)
+    }
+    if (parameter.explode === true) throw new Error(`${owner} uses unsupported explode: true serialization.`)
+  }
+}
+
+type SchemaShape = 'scalar' | 'scalar-string' | 'array' | 'object' | 'unknown'
+
+function schemaShape(document: OpenAPIDocument, schema: JSONSchema | ReferenceObject | undefined): SchemaShape {
+  const resolved = resolveReference<JSONSchema>(document, schema, 'parameter schema')
+  if (resolved === undefined) return 'unknown'
+  const types = Array.isArray(resolved.type) ? resolved.type.filter((type) => type !== 'null') : [resolved.type]
+  if (types.length !== 1) return 'unknown'
+  const [type] = types
+  if (type === 'array') return 'array'
+  if (type === 'object' || resolved.properties !== undefined || resolved.additionalProperties !== undefined)
+    return 'object'
+  if (type === 'string') return 'scalar-string'
+  if (type === 'number' || type === 'integer' || type === 'boolean' || type === 'null') return 'scalar'
+  if (resolved.enum !== undefined || resolved.const !== undefined) return 'scalar'
+  return 'unknown'
+}
+
+function schemaArrayItemShape(
+  document: OpenAPIDocument,
+  schema: JSONSchema | ReferenceObject | undefined
+): 'scalar' | 'unsupported' {
+  const resolved = resolveReference<JSONSchema>(document, schema, 'array parameter schema')
+  const item = schemaShape(document, resolved?.items)
+  return item === 'scalar' || item === 'scalar-string' ? 'scalar' : 'unsupported'
 }
 
 function schemaToZod(schema: JSONSchema | ReferenceObject | undefined): string {
@@ -566,7 +872,13 @@ function schemaToZod(schema: JSONSchema | ReferenceObject | undefined): string {
   }
 
   if (isReference(schema)) {
-    return schemaConstName(schema.$ref.split('/').at(-1) ?? 'Schema')
+    const prefix = '#/components/schemas/'
+
+    if (!schema.$ref.startsWith(prefix)) {
+      throw new Error(`Schema reference "${schema.$ref}" must target #/components/schemas.`)
+    }
+
+    return schemaConstName(decodeJSONPointerPart(schema.$ref.slice(prefix.length)))
   }
 
   const nullable = schema.nullable === true || (Array.isArray(schema.type) && schema.type.includes('null'))
@@ -633,7 +945,7 @@ function objectSchemaFromJSONSchema(schema: JSONSchema): string {
   }))
 
   if (properties.length === 0 && typeof schema.additionalProperties === 'object') {
-    return `z.record(${schemaToZod(schema.additionalProperties)})`
+    return `z.record(z.string(), ${schemaToZod(schema.additionalProperties)})`
   }
 
   let result = objectSchema(properties)
@@ -665,7 +977,7 @@ function objectSchema(properties: { name: string; schema: string; required: bool
   return lines.join('\n')
 }
 
-function enumToZod(values: unknown[]): string {
+function enumToZod(values: readonly unknown[]): string {
   if (values.length === 0) {
     return 'z.never()'
   }
@@ -685,7 +997,7 @@ function enumToZod(values: unknown[]): string {
   return `z.union([${values.map((value) => `z.literal(${JSON.stringify(value)})`).join(', ')}])`
 }
 
-function unionToZod(schemas: (JSONSchema | ReferenceObject)[]): string {
+function unionToZod(schemas: readonly (JSONSchema | ReferenceObject)[]): string {
   if (schemas.length === 1) {
     return schemaToZod(schemas[0])
   }
@@ -718,6 +1030,17 @@ function handlerFor(operation: OperationModel): string {
   const call = `client${operation.outputType === undefined ? '' : `<${operation.outputType}>`}({ ${request} })`
 
   return operation.inputSchema === undefined ? `() => ${call}` : `({ input }) => ${call}`
+}
+
+function requestFor(operation: OperationModel): string {
+  const request = [
+    `method: ${quote(operation.method.toUpperCase())}`,
+    `path: ${quote(operation.path)}`,
+    ...(operation.inputSchema === undefined ? [] : ['...input']),
+  ].join(', ')
+  const call = `client({ ${request} }, options)`
+
+  return operation.inputSchema === undefined ? `(options) => ${call}` : `(options, input) => ${call}`
 }
 
 function modularHandlerFor(operation: OperationModel): string {
@@ -876,16 +1199,8 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-function looksLikeDirectoryOutput(output: string): boolean {
-  return /[\\/]$/.test(output) || extname(output) === ''
-}
-
-function isErrorCode(error: unknown, code: string): boolean {
-  return error instanceof Error && 'code' in error && error.code === code
-}
-
-function isReference<T extends object>(value: T | ReferenceObject): value is ReferenceObject {
-  return '$ref' in value
+function isReference(value: unknown): value is ReferenceObject {
+  return typeof value === 'object' && value !== null && '$ref' in value && typeof value.$ref === 'string'
 }
 
 function isParameterObject(parameter: Parameter): parameter is ParameterObject {
