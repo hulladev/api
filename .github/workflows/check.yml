@@ -38,6 +38,9 @@ jobs:
         run: |
           bun run build
 
+      - name: Check built-package consumers
+        run: bun run check:consumers
+
       - name: Install client-only example dependencies
         working-directory: examples/client-only
         run: bun install --frozen-lockfile

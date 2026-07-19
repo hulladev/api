@@ -6,7 +6,8 @@ export default defineConfig({
     alias: {
       '@hulla/api': resolve(__dirname, 'packages/core/src/index.ts'),
       '@hulla/api-fetch': resolve(__dirname, 'packages/fetch/src/index.ts'),
-      '@hulla/api-query': resolve(__dirname, 'packages/query/src/index.ts'),
+      '@hulla/api-tanstack-db': resolve(__dirname, 'packages/tanstack-db/src/index.ts'),
+      '@hulla/api-tanstack-query': resolve(__dirname, 'packages/tanstack-query/src/index.ts'),
       '@hulla/api-swr': resolve(__dirname, 'packages/swr/src/index.ts'),
     },
   },

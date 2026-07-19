@@ -1,4 +1,4 @@
-# Contibuting guide 💪
+# Contributing guide 💪
 
 Thank you for your willingness to contribute and even taking your time to read this guide.
 
@@ -27,23 +27,27 @@ After cloning the repository and doing `bun install` you're free to do any chang
 
 > You do not need to bump any versions or deploy anything. This will be done automatically in the next release.
 
-### Acceptence criteria ✅
+### Acceptance criteria ✅
 
 1. Adding any additional dependencies to the `core` package will result in closing the PR _(unless a good reason is provided)_
 2. Pull requests not adhering to the pull request template will be closed
 3. Disabling lint / ts rules must always be accompanied with a good reason as to why the rule is being disabled.
 
-### Additonal information ℹ️
+### Additional information ℹ️
 
 Here are some useful commands _(these will trigger and cache in all packages automatically, via `turborepo`. Consider these commands as global unless stated otherwise)_
 
-| Command         | Description                                              |
-| --------------- | -------------------------------------------------------- |
-| `bun install`   | Installs dependencies                                    |
-| `bun run clean` | Removes workspace install/build artifacts and `bun.lock` |
-| `bun run lint`  | Runs oxlint                                              |
-| `bun run fmt`   | Runs oxfmt                                               |
-| `bun run test`  | Runs vitest                                              |
+| Command             | Description                                                  |
+| ------------------- | ------------------------------------------------------------ |
+| `bun install`       | Installs dependencies                                        |
+| `bun run check`     | Checks formatting/lint, tests/builds packages, and runs smoke |
+| `bun run clean`     | Removes workspace install and build artifacts                 |
+| `bun run lint`      | Checks the repository with oxlint                            |
+| `bun run lint:fix`  | Applies safe oxlint fixes                                     |
+| `bun run fmt`       | Checks repository formatting                                 |
+| `bun run fmt:fix`   | Formats the repository                                        |
+| `bun run test`      | Runs package typechecks and Vitest                            |
+| `bun run build`     | Builds and publints every package                             |
 
 Here's the project structure _(just the most important parts)_
 
@@ -51,8 +55,9 @@ Here's the project structure _(just the most important parts)_
 📁 .github # CI/CD workflows and templates
 📁 packages
   📁 core # the main @hulla/api package
-  📁 request # @hulla/api-request
-  📁 query # @hulla/api-query
+  📁 drizzle # @hulla/api-drizzle
+  📁 openapi # @hulla/api-openapi
+  📁 tanstack-query # @hulla/api-tanstack-query
   📁 swr # @hulla/api-swr
 ⎗ .oxlintrc.json # shared oxlint configuration
 ⎗ .oxfmtrc.json # shared oxfmt configuration

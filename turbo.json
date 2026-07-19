@@ -3,14 +3,17 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "inputs": ["src/**/*.ts", "!tests/**/*"],
       "outputs": ["dist/**/*"]
     },
-    "test": {
-      "inputs": ["tests/**/*.ts"]
-    },
+    "test": {},
     "lint": {},
+    "lint:fix": {
+      "cache": false
+    },
     "fmt": {},
+    "fmt:fix": {
+      "cache": false
+    },
     "clean": {}
   }
 }

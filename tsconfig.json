@@ -11,6 +11,7 @@
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "noEmit": true,
+    "types": ["node"],
 
     /* Linting */
     "skipLibCheck": true,
@@ -22,10 +23,13 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noPropertyAccessFromIndexSignature": true,
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./*"],
-      "@hulla/api": ["./packages/core/src/index.ts"]
+      "@hulla/api": ["./packages/core/src/index.ts"],
+      "@hulla/api/client": ["./packages/core/src/client.ts"],
+      "@hulla/api/plugin": ["./packages/core/src/plugin.ts"],
+      "@hulla/api/server": ["./packages/core/src/server.ts"],
+      "@hulla/api/zod": ["./packages/core/src/zod.ts"]
     }
   },
   "include": ["./packages"]
