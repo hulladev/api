@@ -1,0 +1,14 @@
+{
+  "mode": "pre",
+  "tag": "beta",
+  "initialVersions": {
+    "@hulla/api": "1.2.5",
+    "@hulla/api-drizzle": "0.0.0",
+    "@hulla/api-express": "0.0.0",
+    "@hulla/api-openapi": "0.0.0",
+    "@hulla/api-swr": "1.2.5",
+    "@hulla/api-tanstack-db": "0.0.0",
+    "@hulla/api-tanstack-query": "1.2.5"
+  },
+  "changesets": ["cli-bin-ownership", "smooth-procedure-rpc"]
+}

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://unpkg.com/@changesets/config@3.0.0/schema.json",
+  "changelog": "@changesets/cli/changelog",
+  "commit": false,
+  "fixed": [
+    [
+      "@hulla/api",
+      "@hulla/api-drizzle",
+      "@hulla/api-express",
+      "@hulla/api-openapi",
+      "@hulla/api-swr",
+      "@hulla/api-tanstack-db",
+      "@hulla/api-tanstack-query"
+    ]
+  ],
+  "linked": [],
+  "access": "public",
+  "baseBranch": "master",
+  "updateInternalDependencies": "patch",
+  "ignore": [],
+  "snapshot": {
+    "useCalculatedVersion": true,
+    "prereleaseTemplate": "{tag}-{commit}-{datetime}"
+  }
+}
