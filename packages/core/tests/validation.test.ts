@@ -1,238 +1,153 @@
+import type { StandardSchemaV1 } from '@standard-schema/spec'
+import * as v from 'valibot'
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
-import { procedureBuilder } from '../src/procedure'
+import {
+  codec,
+  decodeSchema,
+  defineSchema,
+  encodeSchema,
+  isSchema,
+  SchemaValidationError,
+  type SchemaInput,
+  type SchemaOutput,
+} from '../src/validation'
 
-describe('validation with no input/output', () => {
-  const noMiddleware = procedureBuilder({ middleware: {}, settings: { output: 'raw' as const } })
-  const withMiddleware = procedureBuilder({
-    middleware: { sync: () => 'foo', async: async () => 'bar' },
-    settings: { output: 'raw' as const },
-  })
-  const sharedTests = (builder: typeof noMiddleware | typeof withMiddleware) => {
-    test('handler works with nothing passed', () => {
-      const result = builder.handler(() => 'handler')
-      expectTypeOf(result).returns.toEqualTypeOf<string>()
-      expect(result()).toBe('handler')
-    })
-    test('handler works with nothing passed (async)', async () => {
-      const result = builder.handler(async () => 'handler')
-      expectTypeOf(result).returns.toEqualTypeOf<Promise<string>>()
-      expect(await result()).toBe('handler')
-    })
+function transformSchema<Input, Output>(
+  transform: (value: Input) => Output,
+  check: (value: unknown) => value is Input,
+  message: string
+): StandardSchemaV1<Input, Output> {
+  return {
+    '~standard': {
+      version: 1,
+      vendor: 'test',
+      validate: (value: unknown) => (check(value) ? { value: transform(value) } : { issues: [{ message }] }),
+    },
   }
-  sharedTests(noMiddleware)
-  sharedTests(withMiddleware)
+}
 
-  test('named inputs preserve labels and explicit optional positions', () => {
-    const id = z.string()
-    const patch = z.object({ name: z.string() })
-    const limit = z.number().optional()
-    const update = noMiddleware.input
-      .$named<[id: typeof id, patch: typeof patch]>(id, patch)
-      .handler(({ input }) => input)
-    const search = noMiddleware.input
-      .$named<[query: typeof id, limit?: typeof limit]>(id, limit)
-      .handler(({ input }) => input)
+describe('Standard Schema validation', () => {
+  test('recognizes schemas structurally', () => {
+    const local = defineSchema({
+      name: 'a string',
+      check: (value: unknown): value is string => typeof value === 'string',
+    })
 
-    expectTypeOf(update).parameters.toEqualTypeOf<[id: string, patch: { name: string }]>()
-    expectTypeOf(search).parameters.toEqualTypeOf<[query: string, limit?: number | undefined]>()
-    expect(update('user_123', { name: 'Samuel' })).toEqual(['user_123', { name: 'Samuel' }])
-    expect(search('samuel')).toEqual(['samuel', undefined])
+    expect(isSchema(local)).toBe(true)
+    expect(isSchema(z.string())).toBe(true)
+    expect(isSchema({ '~standard': { version: 2, vendor: 'future', validate: () => ({ value: true }) } })).toBe(false)
+    expect(isSchema({})).toBe(false)
   })
-})
 
-describe('validation with input', () => {
-  const noMiddleware = procedureBuilder({ middleware: {}, settings: { output: 'raw' as const } })
-  const withMiddleware = procedureBuilder({
-    middleware: { sync: () => 'foo', async: async () => 'bar' },
-    settings: { output: 'raw' as const },
+  test('creates dependency-free identity schemas that validate both directions', async () => {
+    const positiveInteger = defineSchema({
+      name: 'a positive integer',
+      check: (value: unknown): value is number => Number.isInteger(value) && Number(value) > 0,
+    })
+
+    await expect(decodeSchema(positiveInteger, 42)).resolves.toBe(42)
+    await expect(encodeSchema(positiveInteger, 42)).resolves.toBe(42)
+    await expect(decodeSchema(positiveInteger, -1)).rejects.toMatchObject({
+      name: 'SchemaValidationError',
+      issues: [{ message: 'Expected a positive integer' }],
+    })
+    expectTypeOf<SchemaInput<typeof positiveInteger>>().toEqualTypeOf<number>()
+    expectTypeOf<SchemaOutput<typeof positiveInteger>>().toEqualTypeOf<number>()
   })
-  const sharedTests = (builder: typeof noMiddleware | typeof withMiddleware) => {
-    test('input modifies the handler', () => {
-      const result = builder.input(z.string()).handler(({ input }) => input)
-      expectTypeOf(result).parameter(0).toEqualTypeOf<string>()
-      expectTypeOf(result).returns.toEqualTypeOf<string>()
-      expect(result('hulla')).toBe('hulla')
-    })
-    test('input modifies the handler (async)', async () => {
-      const result = builder.input(z.string()).handler(async ({ input }) => input)
-      expectTypeOf(result).parameter(0).toEqualTypeOf<string>()
-      expectTypeOf(result).returns.toEqualTypeOf<Promise<string>>()
-      expect(await result('hulla')).toBe('hulla')
-    })
-    test('input parses before passing the value to the handler', () => {
-      const result = builder
-        .input(z.string().transform((value) => value.length))
-        .handler(({ input }) => input.toFixed(2))
-      expectTypeOf(result).parameter(0).toEqualTypeOf<string>()
-      expectTypeOf(result).returns.toEqualTypeOf<string>()
-      expect(result('hulla')).toBe('5.00')
-      expect(() => result(123 as never)).toThrow()
-    })
-    test('input throws error if input is not valid', () => {
-      const result = builder.input(z.string()).handler(({ input }) => input)
-      expect(() => result(123 as never)).toThrow()
-    })
-    test('input throws error if input is not valid (async)', () => {
-      const result = builder.input(z.string()).handler(async ({ input }) => input)
-      expect(() => result(123 as never)).toThrow()
-    })
-    test('input with object schema', () => {
-      const result = builder.input(z.object({ name: z.string(), age: z.number() })).handler(({ input }) => input)
-      expectTypeOf(result).parameter(0).toEqualTypeOf<{ name: string; age: number }>()
-      expectTypeOf(result).returns.toEqualTypeOf<{ name: string; age: number }>()
-      expect(result({ name: 'hulla', age: 123 })).toStrictEqual({ name: 'hulla', age: 123 })
-    })
-    test('input with object schema (async)', async () => {
-      const result = builder.input(z.object({ name: z.string(), age: z.number() })).handler(async ({ input }) => input)
-      expectTypeOf(result).parameter(0).toEqualTypeOf<{ name: string; age: number }>()
-      expectTypeOf(result).returns.toEqualTypeOf<Promise<{ name: string; age: number }>>()
-      expect(await result({ name: 'hulla', age: 123 })).toStrictEqual({ name: 'hulla', age: 123 })
-    })
-    test('a single array schema remains one input argument', () => {
-      const result = builder.input(z.array(z.string())).handler(({ input }) => input)
 
-      expectTypeOf(result).parameters.toEqualTypeOf<[string[]]>()
-      expect(result(['hulla', 'api'])).toEqual(['hulla', 'api'])
+  test('combines Standard Schemas into an explicitly reversible codec', async () => {
+    const numberString = codec({
+      decode: transformSchema(
+        (value: string) => Number(value),
+        (value: unknown): value is string => typeof value === 'string' && /^\d+$/.test(value),
+        'Expected an integer string'
+      ),
+      encode: transformSchema(
+        (value: number) => String(value),
+        (value: unknown): value is number => Number.isInteger(value),
+        'Expected an integer'
+      ),
     })
-    test('multiple inputs become positional call arguments and a tuple handler input', () => {
-      const result = builder
-        .input(
-          z.string().transform((value) => value.length),
-          z.number()
-        )
-        .handler(({ input }) => input)
 
-      expectTypeOf(result).parameters.toEqualTypeOf<[string, number]>()
-      expectTypeOf(result).returns.toEqualTypeOf<readonly [number, number]>()
-      expect(result('hulla', 2)).toEqual([5, 2])
-      // @ts-expect-error the second input is required
-      expect(() => result('hulla')).toThrow()
-      // @ts-expect-error extra input arguments are rejected
-      expect(() => result('hulla', 2, true as never)).toThrow()
-    })
-    test('an array can be one position in a multiple-input procedure', () => {
-      const result = builder.input(z.array(z.string()), z.number()).handler(({ input }) => input)
-
-      expectTypeOf(result).parameters.toEqualTypeOf<[string[], number]>()
-      expect(result(['hulla', 'api'], 2)).toEqual([['hulla', 'api'], 2])
-    })
-    test('trailing optional input schemas become optional call arguments', () => {
-      const result = builder.input(z.string(), z.string().optional()).handler(({ input }) => input)
-
-      expectTypeOf(result).parameters.toEqualTypeOf<[string, (string | undefined)?]>()
-      expect(result('hulla')).toEqual(['hulla', undefined])
-      expect(result('hulla', 'api')).toEqual(['hulla', 'api'])
-    })
-    test('optional schemas before required inputs keep their positional slot', () => {
-      const result = builder.input(z.string().optional(), z.number()).handler(({ input }) => input)
-
-      expectTypeOf(result).parameters.toEqualTypeOf<[string | undefined, number]>()
-      expect(result(undefined, 2)).toEqual([undefined, 2])
-    })
-    test('distinguishing between optional, default in input and output', () => {
-      const schema = z.object({ name: z.string(), age: z.number().default(123), optional: z.string().optional() })
-      const result = builder.input(schema).handler(({ input }) => input)
-      expectTypeOf(result).parameter(0).pick('name').toEqualTypeOf<{ name: string }>()
-      expectTypeOf(result).parameter(0).pick('age').toEqualTypeOf<{ age?: number }>()
-      expectTypeOf(result).parameter(0).pick('optional').toEqualTypeOf<{ optional?: string }>()
-      expectTypeOf(result).returns.pick('name').toEqualTypeOf<{ name: string }>()
-      // ! age coerces to number since it has default
-      expectTypeOf(result).returns.pick('age').toEqualTypeOf<{ age: number }>()
-      // ! optional stays | undefined since it is optional
-      expectTypeOf(result).returns.pick('optional').toEqualTypeOf<{ optional?: string }>()
-      expectTypeOf(result).parameter(0).toEqualTypeOf<{ name: string; age?: number; optional?: string }>()
-      expectTypeOf(result).returns.toEqualTypeOf<{ name: string; age: number; optional?: string }>()
-      expect(result({ name: 'hulla' })).toStrictEqual({ name: 'hulla', age: 123 })
-      expect(result({ name: 'hulla', age: 123 })).toStrictEqual({ name: 'hulla', age: 123 })
-      expect(result({ name: 'hulla', age: 123, optional: 'hulla' })).toStrictEqual({
-        name: 'hulla',
-        age: 123,
-        optional: 'hulla',
-      })
-    })
-  }
-  sharedTests(noMiddleware)
-  sharedTests(withMiddleware)
-})
-
-describe('validation with output', () => {
-  const noMiddleware = procedureBuilder({ middleware: {}, settings: { output: 'awaited' as const } })
-  const withMiddleware = procedureBuilder({
-    middleware: { sync: () => 'foo', async: async () => 'bar' },
-    settings: { output: 'awaited' as const },
+    await expect(decodeSchema(numberString, '42')).resolves.toBe(42)
+    await expect(encodeSchema(numberString, 42)).resolves.toBe('42')
+    await expect(decodeSchema(numberString, '4.2')).rejects.toBeInstanceOf(SchemaValidationError)
+    await expect(encodeSchema(numberString, 4.2)).rejects.toBeInstanceOf(SchemaValidationError)
+    expectTypeOf<SchemaInput<typeof numberString>>().toEqualTypeOf<string>()
+    expectTypeOf<SchemaOutput<typeof numberString>>().toEqualTypeOf<number>()
   })
-  const sharedTests = (builder: typeof noMiddleware | typeof withMiddleware) => {
-    test('no output allows any return value', () => {
-      const r1 = builder.handler(() => 'hulla')
-      expectTypeOf(r1).returns.toEqualTypeOf<string>()
-      const r2 = builder.handler(() => 2)
-      expectTypeOf(r2).returns.toEqualTypeOf<number>()
-      const r3 = builder.handler(() => Promise.resolve('hulla'))
-      expectTypeOf(r3).returns.toEqualTypeOf<Promise<string>>()
-      const r4 = builder.handler(() => {})
-      expectTypeOf(r4).returns.toEqualTypeOf<void>()
-    })
-    test('output enforces return type', () => {
-      const result = builder.output(z.string()).handler(() => 'hulla')
-      expectTypeOf(result).returns.toEqualTypeOf<string>()
-      // @ts-expect-error output schema expects a string
-      const result2 = builder.output(z.string()).handler(() => 2)
-      expect(() => result2()).toThrow()
-    })
-    test('output enforces return type (async)', () => {
-      const result = builder.output(z.string()).handler(async () => 'hulla')
-      expectTypeOf(() => result()).returns.toEqualTypeOf<Promise<string>>()
-    })
-    test('output parses the handler result through transformed schemas', () => {
-      const result = builder.output(z.string().transform((value) => value.length)).handler(() => 'hello')
-      expectTypeOf(result).returns.toEqualTypeOf<number>()
-      expect(result()).toBe(5)
-    })
-    test('output rejects invalid return type (async)', async () => {
-      // @ts-expect-error output schema expects a string
-      const result = builder.output(z.string()).handler(async () => 2)
-      await expect(result()).rejects.toThrow()
-    })
-  }
-  sharedTests(noMiddleware)
-  sharedTests(withMiddleware)
-})
 
-describe('validation with output in raw mode', () => {
-  const noMiddleware = procedureBuilder({ middleware: {}, settings: { output: 'raw' as const } })
-  const withMiddleware = procedureBuilder({
-    middleware: { sync: () => 'foo', async: async () => 'bar' },
-    settings: { output: 'raw' as const },
+  test('uses public Zod instance methods for codecs without a Zod adapter', async () => {
+    const schema = z.object({
+      createdAt: z.codec(z.iso.datetime(), z.date(), {
+        decode: (value) => new Date(value),
+        encode: (value) => value.toISOString(),
+      }),
+    })
+    const application = { createdAt: new Date('2026-08-05T10:00:00.000Z') }
+    const wire = { createdAt: '2026-08-05T10:00:00.000Z' }
+
+    await expect(decodeSchema(schema, wire)).resolves.toEqual(application)
+    await expect(encodeSchema(schema, application)).resolves.toEqual(wire)
+    await expect(decodeSchema(schema, { createdAt: 'invalid' })).rejects.toBeInstanceOf(SchemaValidationError)
   })
-  const sharedTests = (builder: typeof noMiddleware | typeof withMiddleware) => {
-    test('plain output schema stays sync-only', () => {
-      const result = builder.output(z.string()).handler(() => 'hulla')
-      expectTypeOf(result).returns.toEqualTypeOf<string>()
-      expect(result()).toBe('hulla')
-    })
-    test('plain output schema rejects async handlers in raw mode', async () => {
-      // @ts-expect-error raw output expects the raw handler return to match z.string()
-      const result = builder.output(z.string()).handler(async () => 'hulla')
-      await expect(Promise.resolve(result())).rejects.toThrow()
-    })
-    test('promise output schema preserves async handler shape', async () => {
-      const result = builder.output(z.promise(z.string())).handler(async () => 'hulla')
-      expectTypeOf(result).returns.toEqualTypeOf<Promise<string>>()
-      await expect(result()).resolves.toBe('hulla')
-    })
-    test('awaited mode parses async handler output after resolution', async () => {
-      const awaitedBuilder = procedureBuilder({ middleware: {}, settings: { output: 'awaited' as const } })
-      const result = awaitedBuilder.output(z.string().transform((value) => value.length)).handler(async () => 'hello')
 
-      expectTypeOf(result).returns.toEqualTypeOf<Promise<number>>()
-      await expect(result()).resolves.toBe(5)
+  test('uses Valibot schemas directly for identity contracts', async () => {
+    const schema = v.object({
+      id: v.string(),
+      active: v.boolean(),
     })
-    test('promise output schema rejects sync handlers in raw mode at runtime', () => {
-      const result = builder.output(z.promise(z.string())).handler(() => 'hulla')
-      expect(() => result()).toThrow()
+    const value = { id: 'user-1', active: true }
+
+    expect(isSchema(schema)).toBe(true)
+    await expect(decodeSchema(schema, value)).resolves.toEqual(value)
+    await expect(encodeSchema(schema, value)).resolves.toEqual(value)
+    await expect(decodeSchema(schema, { id: 1, active: true })).rejects.toBeInstanceOf(SchemaValidationError)
+    expectTypeOf<SchemaInput<typeof schema>>().toEqualTypeOf<{
+      id: string
+      active: boolean
+    }>()
+    expectTypeOf<SchemaOutput<typeof schema>>().toEqualTypeOf<{
+      id: string
+      active: boolean
+    }>()
+  })
+
+  test('builds directional contracts from paired Valibot schemas', async () => {
+    const schema = codec({
+      decode: v.object({
+        createdAt: v.pipe(
+          v.string(),
+          v.isoTimestamp(),
+          v.transform((value) => new Date(value))
+        ),
+      }),
+      encode: v.object({
+        createdAt: v.pipe(
+          v.date(),
+          v.transform((value) => value.toISOString())
+        ),
+      }),
     })
-  }
-  sharedTests(noMiddleware)
-  sharedTests(withMiddleware)
+    const application = { createdAt: new Date('2026-08-05T10:00:00.000Z') }
+    const wire = { createdAt: '2026-08-05T10:00:00.000Z' }
+
+    await expect(decodeSchema(schema, wire)).resolves.toEqual(application)
+    await expect(encodeSchema(schema, application)).resolves.toEqual(wire)
+    await expect(decodeSchema(schema, { createdAt: 'invalid' })).rejects.toBeInstanceOf(SchemaValidationError)
+    expectTypeOf<SchemaInput<typeof schema>>().toEqualTypeOf<{ createdAt: string }>()
+    expectTypeOf<SchemaOutput<typeof schema>>().toEqualTypeOf<{ createdAt: Date }>()
+  })
+
+  test('uses forward validation for plain identity Standard Schemas', async () => {
+    const upperCase = transformSchema(
+      (value: string) => value.toUpperCase(),
+      (value: unknown): value is string => typeof value === 'string',
+      'Expected a string'
+    )
+
+    await expect(decodeSchema(upperCase, 'hello')).resolves.toBe('HELLO')
+    await expect(encodeSchema(upperCase, 'hello')).resolves.toBe('HELLO')
+  })
 })
