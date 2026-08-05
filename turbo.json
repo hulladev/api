@@ -1,19 +1,34 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "ui": "tui",
   "tasks": {
+    "bench": {
+      "cache": false,
+      "dependsOn": ["^build"]
+    },
     "build": {
+      "dependsOn": ["^build", "typecheck"],
+      "inputs": ["$TURBO_DEFAULT$", "../../tsconfig.base.json"],
+      "outputs": ["dist/**"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "test": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**/*"]
+      "inputs": ["$TURBO_DEFAULT$", "../../tsconfig.base.json"]
     },
-    "test": {},
-    "lint": {},
-    "lint:fix": {
+    "test:watch": {
+      "cache": false,
+      "persistent": true
+    },
+    "typecheck": {
+      "dependsOn": ["^typecheck"],
+      "inputs": ["$TURBO_DEFAULT$", "../../tsconfig.base.json"]
+    },
+    "clean": {
       "cache": false
-    },
-    "fmt": {},
-    "fmt:fix": {
-      "cache": false
-    },
-    "clean": {}
+    }
   }
 }

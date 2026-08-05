@@ -1,15 +1,14 @@
 {
-  "name": "api",
-  "description": "Typed internal procedures, explicit HTTP routes, and generated clients 🚀",
-  "homepage": "https://hulla.dev/projects/api",
+  "name": "@hulla/api-workspace",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Greenfield workspace for the directional @hulla/api contract runtime",
+  "license": "MIT",
   "author": {
     "name": "Samuel Hulla",
     "email": "hulla@hulla.dev",
     "url": "https://hulla.dev"
   },
-  "maintainers": [
-    "Samuel Hulla <hulla@hulla.dev>"
-  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/hulladev/api.git"
@@ -17,101 +16,36 @@
   "workspaces": [
     "packages/*"
   ],
-  "type": "commonjs",
   "scripts": {
-    "build": "turbo build",
-    "check": "bun run fmt && bun run lint && turbo run test build && bun run check:consumers && bun run --cwd examples/client-only check && bun run --cwd examples/server-only check && bun run --cwd examples/interactive check && bun run --cwd examples/monorepo check",
-    "check:consumers": "bun scripts/check-consumers.ts",
-    "clean": "turbo clean && rm -rf node_modules .turbo packages/*/dist packages/*/node_modules",
-    "bundle": "bun run check && bunx changeset && bunx changeset version",
-    "release": "bunx changeset publish",
-    "lint": "oxlint .",
-    "lint:fix": "oxlint . --fix",
+    "bench": "turbo run bench",
+    "build": "turbo run build",
+    "check": "bun run fmt && bun run lint && bun run typecheck && bun run test && bun run build && bun run check:package",
+    "check:package": "bun run --cwd packages/core check:package",
+    "clean": "turbo run clean && rm -rf .turbo",
+    "dev": "turbo run dev",
     "fmt": "oxfmt --check .",
     "fmt:fix": "oxfmt --write .",
-    "test": "turbo test",
-    "prepare": "husky"
+    "lint": "oxlint .",
+    "lint:fix": "oxlint . --fix",
+    "prepare": "husky",
+    "test": "turbo run test",
+    "test:watch": "turbo run test:watch",
+    "typecheck": "turbo run typecheck"
   },
   "devDependencies": {
-    "@changesets/cli": "^2.30.0",
     "@commitlint/cli": "^20.4.3",
     "@types/node": "^20.14.12",
-    "commitizen": "^4.3.0",
-    "cz-emoji": "^1.3.2-canary.2",
     "husky": "^9.1.7",
     "oxfmt": "^0.36.0",
     "oxlint": "^1.51.0",
     "publint": "^0.3.18",
-    "tsdown": "^0.21.0",
+    "tsdown": "^0.22.14",
     "turbo": "^2.8.14",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"
   },
-  "config": {
-    "commitizen": {
-      "path": "./node_modules/cz-emoji"
-    },
-    "cz-emoji": {
-      "skipScope": true,
-      "scopes": [],
-      "types": [
-        {
-          "emoji": "✅",
-          "code": ":white_check_mark: feat:",
-          "description": "a new functionality",
-          "name": "feat"
-        },
-        {
-          "emoji": "🐞",
-          "code": ":lady_beetle: fix:",
-          "description": "a bug fix",
-          "name": "fix"
-        },
-        {
-          "emoji": "🔧",
-          "code": ":wrench: update:",
-          "description": "a code change that neither fixes a bug nor adds a feature",
-          "name": "update"
-        },
-        {
-          "emoji": "📚",
-          "code": ":books: docs:",
-          "description": "documentations",
-          "name": "docs"
-        },
-        {
-          "emoji": "🧪",
-          "code": ":test_tube: tests:",
-          "description": "tests",
-          "name": "tests"
-        },
-        {
-          "emoji": "🪛",
-          "code": ":screwdriver: config:",
-          "description": "configuration files",
-          "name": "config"
-        },
-        {
-          "emoji": "🤖",
-          "code": ":robot: devops:",
-          "description": "ci/cd or other form of automation",
-          "name": "devops"
-        },
-        {
-          "emoji": "♻️",
-          "code": ":recycle: cleanup:",
-          "description": "code cleanup",
-          "name": "cleanup"
-        },
-        {
-          "emoji": "📦",
-          "code": ":package: release:",
-          "description": "new release bundle",
-          "name": "release"
-        }
-      ]
-    }
+  "engines": {
+    "node": "^22.18.0 || >=24.11.0"
   },
-  "packageManager": "bun@1.3.9",
-  "namespace": "@hulla"
+  "packageManager": "bun@1.3.14"
 }

@@ -4,7 +4,10 @@
   "categories": {
     "correctness": "error"
   },
-  "ignorePatterns": ["dist/**", "node_modules/**", ".cache/**", ".turbo/**"],
+  "rules": {
+    "typescript/consistent-type-definitions": ["error", "type"]
+  },
+  "ignorePatterns": ["dist/**", "node_modules/**", ".cache/**", ".turbo/**", "legacy/**", "output/**"],
   "overrides": [
     {
       "files": ["packages/*/tests/**/*.ts"],

@@ -1,36 +1,5 @@
 {
-  "compilerOptions": {
-    "lib": ["ESNext", "DOM"],
-    "target": "ESNext",
-    "module": "ESNext",
-    "moduleDetection": "force",
-    "allowJs": true,
-
-    /* Bundler mode */
-    "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
-    "verbatimModuleSyntax": true,
-    "noEmit": true,
-    "types": ["node"],
-
-    /* Linting */
-    "skipLibCheck": true,
-    "strict": true,
-    "noFallthroughCasesInSwitch": true,
-
-    /* Strict flags */
-    "forceConsistentCasingInFileNames": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noPropertyAccessFromIndexSignature": true,
-    "paths": {
-      "@/*": ["./*"],
-      "@hulla/api": ["./packages/core/src/index.ts"],
-      "@hulla/api/client": ["./packages/core/src/client.ts"],
-      "@hulla/api/plugin": ["./packages/core/src/plugin.ts"],
-      "@hulla/api/server": ["./packages/core/src/server.ts"],
-      "@hulla/api/zod": ["./packages/core/src/zod.ts"]
-    }
-  },
-  "include": ["./packages"]
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "./tsconfig.base.json",
+  "files": []
 }
