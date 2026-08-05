@@ -1,6 +1,0 @@
-node_modules
-dist
-.turbo
-apps/web/src/api/client.ts
-apps/web/src/api/generated
-

@@ -1,9 +1,0 @@
-node_modules
-.turbo
-.output
-dist
-*.sqlite
-*.sqlite-shm
-*.sqlite-wal
-packages/api-client/src/generated
-packages/api-client/src/index.ts
