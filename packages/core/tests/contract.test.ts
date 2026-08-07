@@ -23,6 +23,7 @@ describe('contract declaration', () => {
       kind: 'contract',
       basePath: '/api',
       routes,
+      errors: {},
     })
     expect(contract.routes).not.toBe(routes)
     expect(Object.isFrozen(contract)).toBe(true)
@@ -31,6 +32,38 @@ describe('contract declaration', () => {
     expectTypeOf(contract.basePath).toEqualTypeOf<'/api'>()
     expectTypeOf(contract.routes).toEqualTypeOf<Readonly<typeof routes>>()
     expectTypeOf(contract).toExtend<Contract>()
+  })
+
+  test('declares reusable error responses by status', () => {
+    const unauthorized = response.json(z.object({ message: z.string() }))
+    const unavailable = response.text(z.literal('unavailable'))
+    const errors = { 401: unauthorized, 503: unavailable }
+    const contract = defineContract({
+      errors,
+      routes: {
+        health: route.get('/health', { responses: { 200: response.text() } }),
+      },
+    })
+
+    expect(contract.errors).toEqual({ 401: unauthorized, 503: unavailable })
+    expect(contract.errors[401]).toBe(unauthorized)
+    expect(contract.errors).not.toBe(errors)
+    expect(Object.isFrozen(contract.errors)).toBe(true)
+    expectTypeOf(contract.errors).toEqualTypeOf<
+      Readonly<{ readonly 401: typeof unauthorized; readonly 503: typeof unavailable }>
+    >()
+  })
+
+  test('validates error status maps at the contract boundary', () => {
+    const define = defineContract as (options: unknown) => unknown
+
+    expect(() => define({ routes: { health }, errors: [] })).toThrowError('Contract errors must be an object')
+    expect(() => define({ routes: { health }, errors: { 200: response.json() } })).toThrowError(
+      'must be an integer between 400 and 599'
+    )
+    expect(() => define({ routes: { health }, errors: { 401: {} } })).toThrowError(
+      'must be declared with a response helper'
+    )
   })
 
   test('base-path rejects empty segments (//)', () => {

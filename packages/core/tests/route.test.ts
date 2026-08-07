@@ -1,9 +1,11 @@
 import * as v from 'valibot'
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
+import { request } from '../src/request'
 import { response } from '../src/response'
-import { route, type AnyRoute, type RouteParams, type RouteQuery } from '../src/route'
+import { route, type Route, type RouteParams, type RouteQuery } from '../src/route'
 import type { SchemaInput, SchemaOutput } from '../src/validation'
+import { text } from '../src/zod'
 
 const responses = {
   200: response.json(
@@ -17,23 +19,23 @@ route.get('/', { responses: { 200: response.text(z.string()) } })
 
 describe('RouteParams', () => {
   test('extracts params from slash-prefixed paths', () => {
-    expectTypeOf<SchemaInput<RouteParams<'/:id'>>>().toEqualTypeOf<{ readonly id: unknown }>()
+    expectTypeOf<SchemaInput<RouteParams<'/:id'>>>().toEqualTypeOf<{ readonly id: string }>()
     expectTypeOf<SchemaInput<RouteParams<'/users/:userId'>>>().toEqualTypeOf<{
-      readonly userId: unknown
+      readonly userId: string
     }>()
   })
 
   test('extracts params from paths without a slash prefix', () => {
-    expectTypeOf<SchemaInput<RouteParams<':id'>>>().toEqualTypeOf<{ readonly id: unknown }>()
+    expectTypeOf<SchemaInput<RouteParams<':id'>>>().toEqualTypeOf<{ readonly id: string }>()
     expectTypeOf<SchemaInput<RouteParams<'users/:userId'>>>().toEqualTypeOf<{
-      readonly userId: unknown
+      readonly userId: string
     }>()
   })
 
   test('extracts multiple params', () => {
     expectTypeOf<SchemaInput<RouteParams<'/users/:userId/posts/:postId'>>>().toEqualTypeOf<{
-      readonly userId: unknown
-      readonly postId: unknown
+      readonly userId: string
+      readonly postId: string
     }>()
   })
 
@@ -72,7 +74,7 @@ describe('route declaration', () => {
     expectTypeOf(declaration.path).toEqualTypeOf<'/'>()
     expectTypeOf(declaration.params).toEqualTypeOf<undefined>()
     expectTypeOf(declaration.responses).toEqualTypeOf<Readonly<typeof responses>>()
-    expectTypeOf(declaration).toExtend<AnyRoute>()
+    expectTypeOf(declaration).toExtend<Route>()
   })
 
   test('accepts params for prefixed and prefixless dynamic paths', () => {
@@ -91,9 +93,9 @@ describe('route declaration', () => {
     const body = z.object({ name: z.string() })
     const declaration = route.post('/users', { responses, query, headers, body })
 
-    expectTypeOf(declaration.query).toEqualTypeOf<typeof query>()
+    expectTypeOf(declaration.query.schema).toEqualTypeOf<typeof query>()
     expectTypeOf(declaration.headers).toEqualTypeOf<typeof headers>()
-    expectTypeOf(declaration.body).toEqualTypeOf<typeof body>()
+    expectTypeOf(declaration.body.schema).toEqualTypeOf<typeof body>()
     expectTypeOf(declaration.params).toEqualTypeOf<undefined>()
   })
 
@@ -111,29 +113,96 @@ describe('route declaration', () => {
     })
 
     expectTypeOf(declaration.params).toEqualTypeOf<typeof params>()
-    expectTypeOf(declaration.query).toEqualTypeOf<typeof query>()
+    expectTypeOf(declaration.query.schema).toEqualTypeOf<typeof query>()
     expectTypeOf(declaration.headers).toEqualTypeOf<typeof headers>()
-    expectTypeOf(declaration.body).toEqualTypeOf<typeof body>()
+    expectTypeOf(declaration.body.schema).toEqualTypeOf<typeof body>()
   })
 
   test('rejects raw schema records for params and query', () => {
+    void (() => {
+      route.get('/:id', {
+        responses,
+        // @ts-expect-error Params must be declared as an object Standard Schema.
+        params: { id: z.string() },
+      })
+
+      route.get('/users', {
+        responses,
+        // @ts-expect-error Query parameters must be declared as an object Standard Schema.
+        query: { search: z.string() },
+      })
+
+      route.get('/users', {
+        responses,
+        // @ts-expect-error Headers must be declared as an object Standard Schema.
+        headers: z.string(),
+      })
+    })
+  })
+
+  test('enforces text-first params, query, and headers', () => {
     route.get('/:id', {
       responses,
-      // @ts-expect-error Params must be declared as an object Standard Schema.
-      params: { id: z.string() },
+      // @ts-expect-error Path parameters must accept text on the wire.
+      params: z.object({ id: z.number() }),
     })
 
     route.get('/users', {
       responses,
-      // @ts-expect-error Query parameters must be declared as an object Standard Schema.
-      query: { search: z.string() },
+      // @ts-expect-error Query fields must accept text or repeated text on the wire.
+      query: z.object({ page: z.number() }),
     })
 
     route.get('/users', {
       responses,
-      // @ts-expect-error Headers must be declared as an object Standard Schema.
-      headers: z.string(),
+      // @ts-expect-error Headers must accept text on the wire.
+      headers: z.object({ enabled: z.boolean() }),
     })
+
+    const declaration = route.get('/:id', {
+      responses,
+      params: z.object({ id: text.integer() }),
+      query: z.object({ page: text.integer(), tags: z.array(z.string()) }),
+    })
+
+    expectTypeOf<SchemaOutput<typeof declaration.params>>().toEqualTypeOf<{ id: number }>()
+    expectTypeOf<SchemaOutput<typeof declaration.query.schema>>().toEqualTypeOf<{
+      page: number
+      tags: string[]
+    }>()
+  })
+
+  test('requires explicit repeated metadata for non-Zod query schemas', () => {
+    const schema = v.object({ search: v.string(), tags: v.array(v.string()) })
+
+    void (() => {
+      route.get('/users', {
+        responses,
+        // @ts-expect-error Opaque Standard Schemas must declare repeated query keys.
+        query: schema,
+      })
+
+      // @ts-expect-error Every repeated input key must be listed.
+      request.query(schema, { repeated: [] })
+
+      // @ts-expect-error Singular input keys cannot be marked as repeated.
+      request.query(schema, { repeated: ['search'] })
+
+      // @ts-expect-error Unknown input keys cannot be marked as repeated.
+      request.query(schema, { repeated: ['missing'] })
+
+      const ambiguous = v.object({ value: v.union([v.string(), v.array(v.string())]) })
+      // @ts-expect-error Opaque query fields cannot mix singular and repeated wire inputs.
+      request.query(ambiguous, { repeated: [] })
+    })
+
+    const declaration = route.get('/users', {
+      responses,
+      query: request.query(schema, { repeated: ['tags'] }),
+    })
+
+    expect(declaration.query.repeated).toEqual(['tags'])
+    expectTypeOf(declaration.query.schema).toEqualTypeOf<typeof schema>()
   })
 
   test('requires params for a dynamic path', () => {

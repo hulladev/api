@@ -2,7 +2,7 @@ import type { PathParamOptions, PathParamsFor } from './paths'
 import type { RouteMap } from './route'
 import type { ObjectSchema } from './validation'
 
-export type RouterDefinition<
+export type Router<
   Path extends string = string,
   Routes extends RouteMap = RouteMap,
   Params extends ObjectSchema | undefined = ObjectSchema | undefined,
@@ -25,7 +25,7 @@ export function router<
   const Path extends string,
   const Routes extends RouteMap,
   const Params extends ObjectSchema | undefined = PathParamsFor<Path>,
->(path: Path, options: RouterOptions<Path, Routes, Params>): RouterDefinition<Path, Routes, Params> {
+>(path: Path, options: RouterOptions<Path, Routes, Params>): Router<Path, Routes, Params> {
   return Object.freeze({
     kind: 'router',
     path,

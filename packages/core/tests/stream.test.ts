@@ -1,7 +1,7 @@
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
 import { response } from '../src/response'
-import { defineStreamFormat, ndjson, sse, type StreamSource } from '../src/stream'
+import { defineStreamFormat, ndjson, sseJson, type StreamSource } from '../src/stream'
 
 async function collect<Value>(source: AsyncIterable<Value>): Promise<Value[]> {
   const values: Value[] = []
@@ -99,14 +99,14 @@ describe('stream formats', () => {
   })
 
   test('encodes JSON data as SSE and handles fragmented event fields', async () => {
-    const encoded = await collect(sse.encode([{ progress: 0.5 }, 'complete']))
+    const encoded = await collect(sseJson.encode([{ progress: 0.5 }, 'complete']))
 
     expect(encoded.map((value) => new TextDecoder().decode(value)).join('')).toBe(
       'data: {"progress":0.5}\n\ndata: "complete"\n\n'
     )
 
     const decoded = await collect(
-      sse.decode(
+      sseJson.decode(
         chunks(': keepalive\r\nevent: update\r\ndata: {"id":\r\ndata: "one"}\r\nid: event-1\r\n\r\n', [2, 19, 37])
       )
     )
@@ -142,13 +142,13 @@ describe('stream formats', () => {
 
   test('rejects schemas that cannot encode to JSON wire values', () => {
     ndjson(z.object({ message: z.string() }))
-    sse(z.string())
+    sseJson(z.string())
 
     // @ts-expect-error Bigints are not JSON wire values.
     ndjson(z.bigint())
 
     // @ts-expect-error Dates require a JSON-compatible directional codec.
-    sse(z.date())
+    sseJson(z.date())
 
     // @ts-expect-error A format must first be bound to an item schema.
     response.stream(ndjson)

@@ -1,17 +1,12 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
+import { bytesSchema, formDataSchema, jsonValueSchema, stringSchema, type JsonValue } from './representation'
 import { defineStreamResponse, type FormattedStreamResponseBody, type StreamResponseBody } from './stream'
-import { defineSchema, isSchema, type AnySchema, type ObjectSchema } from './validation'
+import { isSchema, type AnySchema, type ObjectSchema } from './validation'
+
+export type { JsonValue } from './representation'
 
 export type ResponseHeaders = ObjectSchema
 export type ResponseBodyKind = 'bytes' | 'empty' | 'form-data' | 'json' | 'raw' | 'stream' | 'text'
-
-export type JsonValue =
-  | string
-  | number
-  | boolean
-  | null
-  | readonly JsonValue[]
-  | { readonly [key: string]: JsonValue | undefined }
 
 export type ResponseBody<
   Kind extends ResponseBodyKind,
@@ -113,68 +108,34 @@ function defineDefaultBodyResponse<
   return bodyResponse as BodyResponseFactory<Kind, Wire, DefaultSchema, DefaultContentType>
 }
 
-function isJsonValue(value: unknown, ancestors = new Set<object>()): value is JsonValue {
-  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true
-  if (typeof value === 'number') return Number.isFinite(value)
-  if (typeof value !== 'object') return false
-
-  if (ancestors.has(value)) return false
-  ancestors.add(value)
-
-  const valid = Array.isArray(value)
-    ? value.every((item) => isJsonValue(item, ancestors))
-    : (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null) &&
-      Object.values(value).every((item) => isJsonValue(item, ancestors))
-
-  ancestors.delete(value)
-  return valid
-}
-
-const defaultJsonSchema = /* @__PURE__ */ defineSchema({
-  name: 'a JSON value',
-  check: isJsonValue,
-})
-const defaultTextSchema = /* @__PURE__ */ defineSchema({
-  name: 'a string',
-  check: (value: unknown): value is string => typeof value === 'string',
-})
-const defaultBytesSchema = /* @__PURE__ */ defineSchema({
-  name: 'a Uint8Array',
-  check: (value: unknown): value is Uint8Array => value instanceof Uint8Array,
-})
-const defaultFormDataSchema = /* @__PURE__ */ defineSchema({
-  name: 'FormData',
-  check: (value: unknown): value is FormData => value instanceof FormData,
-})
-
 /** Defaults to any valid JSON value. Pass a schema for a more precise client and server contract. */
 export const json = /* @__PURE__ */ defineDefaultBodyResponse<
   'json',
   JsonValue,
-  typeof defaultJsonSchema,
+  typeof jsonValueSchema,
   'application/json'
->('json', defaultJsonSchema, 'application/json')
+>('json', jsonValueSchema, 'application/json')
 
 export const text = /* @__PURE__ */ defineDefaultBodyResponse<
   'text',
   string,
-  typeof defaultTextSchema,
+  typeof stringSchema,
   'text/plain; charset=utf-8'
->('text', defaultTextSchema, 'text/plain; charset=utf-8')
+>('text', stringSchema, 'text/plain; charset=utf-8')
 
 export const bytes = /* @__PURE__ */ defineDefaultBodyResponse<
   'bytes',
   Uint8Array,
-  typeof defaultBytesSchema,
+  typeof bytesSchema,
   'application/octet-stream'
->('bytes', defaultBytesSchema, 'application/octet-stream')
+>('bytes', bytesSchema, 'application/octet-stream')
 
 export const formData = /* @__PURE__ */ defineDefaultBodyResponse<
   'form-data',
   FormData,
-  typeof defaultFormDataSchema,
+  typeof formDataSchema,
   'multipart/form-data'
->('form-data', defaultFormDataSchema, 'multipart/form-data')
+>('form-data', formDataSchema, 'multipart/form-data')
 
 export const stream = defineStreamResponse()
 

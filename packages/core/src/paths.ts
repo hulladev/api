@@ -8,12 +8,12 @@ export type ExtractPathParamNames<Path extends string> = Path extends `${infer S
   : SegmentParam<Path>
 
 type PathParamRecord<Path extends string> = {
-  readonly [Param in ExtractPathParamNames<Path>]: unknown
+  readonly [Param in ExtractPathParamNames<Path>]: string
 }
 
 export type PathParams<Path extends string> = StandardSchemaV1<
   PathParamRecord<Path>,
-  Readonly<Record<string, unknown>> & PathParamRecord<Path>
+  Readonly<Record<string, unknown>> & { readonly [Param in ExtractPathParamNames<Path>]: unknown }
 >
 
 export type PathParamsFor<Path extends string> = [ExtractPathParamNames<Path>] extends [never]
@@ -25,6 +25,34 @@ export type PathParamOptions<Path extends string, Params extends ObjectSchema | 
 ] extends [never]
   ? { readonly params?: never }
   : { readonly params: Params & PathParams<Path> }
+
+type TrimLeadingSlashes<Path extends string> = Path extends `/${infer Rest}` ? TrimLeadingSlashes<Rest> : Path
+
+type TrimTrailingSlashes<Path extends string> = Path extends `${infer Rest}/` ? TrimTrailingSlashes<Rest> : Path
+
+type TrimSlashes<Path extends string> = TrimTrailingSlashes<TrimLeadingSlashes<Path>>
+
+type AppendRoutePath<Joined extends string, Part extends string> =
+  TrimSlashes<Part> extends infer Segment extends string
+    ? Segment extends ''
+      ? Joined
+      : Joined extends ''
+        ? Segment
+        : `${Joined}/${Segment}`
+    : never
+
+type JoinedRoutePath<Parts extends readonly string[], Joined extends string = ''> = Parts extends readonly [
+  infer Part extends string,
+  ...infer Rest extends readonly string[],
+]
+  ? JoinedRoutePath<Rest, AppendRoutePath<Joined, Part>>
+  : Joined extends ''
+    ? '/'
+    : `/${Joined}`
+
+export type JoinRoutePaths<Parts extends readonly string[]> = string extends Parts[number]
+  ? string
+  : JoinedRoutePath<Parts>
 
 export function assertBasePath(basePath: string): void {
   if (basePath === '' || basePath === '/') return

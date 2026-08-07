@@ -2,7 +2,7 @@ import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
 import { response } from '../src/response'
 import { route } from '../src/route'
-import { router, type RouterDefinition } from '../src/router'
+import { router, type Router } from '../src/router'
 
 const routes = {
   list: route.get('/', { responses: { 200: response.text(z.string()) } }),
@@ -25,7 +25,7 @@ describe('router declaration', () => {
     expectTypeOf(declaration.path).toEqualTypeOf<'/users'>()
     expectTypeOf(declaration.params).toEqualTypeOf<undefined>()
     expectTypeOf(declaration.routes).toEqualTypeOf<Readonly<typeof routes>>()
-    expectTypeOf(declaration).toExtend<RouterDefinition>()
+    expectTypeOf(declaration).toExtend<Router>()
   })
 
   test('accepts params for prefixed and prefixless dynamic paths', () => {

@@ -2,7 +2,7 @@
   "name": "@hulla/api",
   "version": "0.0.0",
   "private": true,
-  "description": "Directional Standard Schema contracts with Fetch client and server bindings",
+  "description": "Directional Standard Schema contracts with typed client and server bindings",
   "license": "MIT",
   "files": [
     "dist"
@@ -19,8 +19,8 @@
       "import": "./dist/client.js"
     },
     "./server": {
-      "types": "./dist/server.d.ts",
-      "import": "./dist/server.js"
+      "types": "./dist/server/index.d.ts",
+      "import": "./dist/server/index.js"
     },
     "./stream": {
       "types": "./dist/stream.d.ts",
@@ -29,6 +29,10 @@
     "./validation": {
       "types": "./dist/validation.d.ts",
       "import": "./dist/validation.js"
+    },
+    "./zod": {
+      "types": "./dist/zod.d.ts",
+      "import": "./dist/zod.js"
     }
   },
   "scripts": {
@@ -47,5 +51,13 @@
   "devDependencies": {
     "valibot": "^1.4.2",
     "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "zod": "^4.1.0"
+  },
+  "peerDependenciesMeta": {
+    "zod": {
+      "optional": true
+    }
   }
 }

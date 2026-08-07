@@ -211,11 +211,11 @@ async function* decodeNdjson(source: StreamSource<Uint8Array>): AsyncIterable<Js
   }
 }
 
-async function* encodeServerSentEvents(source: StreamSource<JsonValue>): AsyncIterable<Uint8Array> {
+async function* encodeSseJson(source: StreamSource<JsonValue>): AsyncIterable<Uint8Array> {
   for await (const value of source) yield textEncoder.encode(`data: ${stringifyJson(value)}\n\n`)
 }
 
-async function* decodeServerSentEvents(source: StreamSource<Uint8Array>): AsyncIterable<JsonValue> {
+async function* decodeSseJson(source: StreamSource<Uint8Array>): AsyncIterable<JsonValue> {
   let data: string[] = []
 
   for await (const line of decodeTextLines(source)) {
@@ -245,10 +245,13 @@ export const ndjson = /* @__PURE__ */ defineStreamFormat({
   decode: decodeNdjson,
 })
 
-/** Frames JSON wire values in the data field of server-sent events. */
-export const sse = /* @__PURE__ */ defineStreamFormat({
-  id: 'sse',
+/**
+ * Frames JSON wire values in server-sent event data fields.
+ * Event names, IDs, retry directives, and reconnection policy remain application concerns.
+ */
+export const sseJson = /* @__PURE__ */ defineStreamFormat({
+  id: 'sse-json',
   contentType: 'text/event-stream',
-  encode: encodeServerSentEvents,
-  decode: decodeServerSentEvents,
+  encode: encodeSseJson,
+  decode: decodeSseJson,
 })

@@ -16,13 +16,16 @@ bun run check       # CI-equivalent verification
 
 The first vertical slice includes:
 
-- `defineApi`, `router`, and method-specific route declarations
+- `defineContract`, `router`, and method-specific route declarations
 - Standard Schema validation with dependency-free defaults and direct Zod 4 codec support
-- a Fetch server binder with startup route compilation
+- a transport-neutral server implementation binding for backend adapters
 - a Fetch client that mirrors the contract tree
 - normalized contract problems and a nested `Date` codec round-trip test
 
-See [`docs/architecture.md`](./docs/architecture.md) for the boundary and request call graph.
+See [`docs/architecture.md`](./docs/architecture.md) for the boundary and request call graph, and
+[`docs/server-authoring.md`](./docs/server-authoring.md) for the modular server implementation API. The text-first
+request model, repeated query behavior, and Zod codecs are documented in
+[`docs/request-transport.md`](./docs/request-transport.md).
 
 ## Package layout
 
@@ -31,10 +34,20 @@ packages/core/
   src/
     client.ts       Fetch client binding
     contract.ts     API and route declarations
-    errors.ts       Stable problem/error types
+    query.ts        normalized query cardinality and transport
+    request.ts      request representations and MIME matching
+    representation.ts shared intrinsic wire schemas
+    response.ts     response representation declarations
+    server/
+      index.ts      public server authoring entry point
+      context.ts    server context primitives
+      middleware.ts typed middleware actions and contract-error inference
+      response.ts   typed handler and middleware results
+      types.ts      handler fragments and implementation types
+      definition.ts fragment validation and assembly
+      errors.ts     internal server and validation errors
     validation.ts   Standard Schema validation and directional codecs
-    server.ts       Fetch server binding
-    shared/         Startup compilation and HTTP helpers
+    zod.ts          optional Zod text codecs
   tests/            Contract laws and vertical-slice tests
 ```
 
