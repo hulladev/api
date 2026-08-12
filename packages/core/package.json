@@ -15,8 +15,8 @@
       "import": "./dist/index.js"
     },
     "./client": {
-      "types": "./dist/client.d.ts",
-      "import": "./dist/client.js"
+      "types": "./dist/client/index.d.ts",
+      "import": "./dist/client/index.js"
     },
     "./server": {
       "types": "./dist/server/index.d.ts",

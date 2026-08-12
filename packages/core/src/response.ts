@@ -1,7 +1,9 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
+import { hasOwn, isRecord } from './object'
 import { bytesSchema, formDataSchema, jsonValueSchema, stringSchema, type JsonValue } from './representation'
+import type { Route } from './route'
 import { defineStreamResponse, type FormattedStreamResponseBody, type StreamResponseBody } from './stream'
-import { isSchema, type AnySchema, type ObjectSchema } from './validation'
+import { isSchema, type AnySchema, type ObjectSchema, type SchemaOutput } from './validation'
 
 export type { JsonValue } from './representation'
 
@@ -20,7 +22,7 @@ export type ResponseBody<
     ? { readonly kind: Kind; readonly schema: Schema } & Metadata
     : { readonly kind: Kind; readonly schema: Schema }
 
-type AnyResponseBody =
+export type AnyResponseBody =
   | ResponseBody<'bytes' | 'form-data' | 'json' | 'text', AnySchema>
   | ResponseBody<'empty' | 'raw'>
   | StreamResponseBody
@@ -40,6 +42,84 @@ export type RouteResponse<
 export type AnyRouteResponse = RouteResponse<AnyResponseBody, ResponseHeaders | undefined, string | undefined>
 
 export type RouteResponses = Record<number, AnyRouteResponse>
+
+/** The application value represented by a response body declaration. */
+export type ResponseBodyValue<Body extends AnyResponseBody> = Body extends { readonly kind: 'empty' }
+  ? undefined
+  : Body extends { readonly kind: 'raw' }
+    ? Response
+    : Body extends { readonly kind: 'stream'; readonly schema: infer Schema extends AnySchema }
+      ? AsyncIterable<SchemaOutput<Schema>>
+      : Body extends { readonly kind: 'stream' }
+        ? AsyncIterable<Uint8Array>
+        : Body extends { readonly schema: infer Schema extends AnySchema }
+          ? SchemaOutput<Schema>
+          : never
+
+export type RouteResponseStatus<RouteType> = RouteType extends {
+  readonly responses: infer Responses extends RouteResponses
+}
+  ? Extract<keyof Responses, number>
+  : never
+
+type SchemaResponseBody = ResponseBody<'bytes' | 'form-data' | 'json' | 'text', AnySchema>
+
+/** Declared response statuses whose complete body value is represented by one schema. */
+export type SchemaBackedResponseStatus<RouteType> = RouteType extends {
+  readonly responses: infer Responses extends RouteResponses
+}
+  ? {
+      [Status in keyof Responses]: Responses[Status] extends AnyRouteResponse
+        ? Responses[Status]['body'] extends SchemaResponseBody
+          ? Status
+          : never
+        : never
+    }[keyof Responses] &
+      number
+  : never
+
+/** The exact body schema declared for one schema-backed route response. */
+export type RouteResponseSchema<RouteType, Status extends SchemaBackedResponseStatus<RouteType>> = RouteType extends {
+  readonly responses: infer Responses extends RouteResponses
+}
+  ? Status extends keyof Responses
+    ? Responses[Status]['body'] extends SchemaResponseBody
+      ? Responses[Status]['body']['schema']
+      : never
+    : never
+  : never
+
+/** Selects an ordinary response body schema without exposing its HTTP descriptor to consumers. */
+export function routeOutput<const RouteType extends Route, const Status extends SchemaBackedResponseStatus<RouteType>>(
+  route: RouteType,
+  status: Status
+): RouteResponseSchema<RouteType, Status> {
+  if (!isRecord(route) || route.kind !== 'route' || !isRecord(route.responses)) {
+    throw new TypeError('Response schema route must be a route')
+  }
+  if (!hasOwn(route.responses, status)) throw new TypeError(`Route does not declare response status ${status}`)
+
+  const declaration = route.responses[status]
+  const body = declaration?.body
+  if (
+    !isRecord(body) ||
+    (body.kind !== 'bytes' && body.kind !== 'form-data' && body.kind !== 'json' && body.kind !== 'text') ||
+    !isSchema(body.schema)
+  ) {
+    throw new TypeError(`Route response ${status} does not declare a complete body schema`)
+  }
+
+  return body.schema as RouteResponseSchema<RouteType, Status>
+}
+
+/** The application body value for one declared route response status. */
+export type RouteResponseBody<RouteType, Status extends RouteResponseStatus<RouteType>> = RouteType extends {
+  readonly responses: infer Responses extends RouteResponses
+}
+  ? Status extends keyof Responses
+    ? ResponseBodyValue<Responses[Status]['body']>
+    : never
+  : never
 
 type ResponseOptions<Headers extends ResponseHeaders | undefined, ContentType extends string> = {
   readonly headers?: Headers

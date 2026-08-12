@@ -1,5 +1,5 @@
 import * as z from 'zod/v4'
-import type { JsonValue } from './representation'
+import type { JsonValue } from '../representation'
 
 const INTEGER_PATTERN = /^-?(?:0|[1-9]\d*)$/
 const NUMBER_PATTERN = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/
