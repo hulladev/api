@@ -19,25 +19,41 @@ The first vertical slice includes:
 - `defineContract`, `router`, and method-specific route declarations
 - Standard Schema validation with dependency-free defaults and direct Zod 4 codec support
 - a transport-neutral server implementation binding for backend adapters
-- a Fetch client that mirrors the contract tree
+- a Fetch client that mirrors the contract tree after an explicit `build()`
+- optional procedures with their own validation, context, middleware, and structurally identified callable trees
 - normalized contract problems and a nested `Date` codec round-trip test
 
 See [`docs/architecture.md`](./docs/architecture.md) for the boundary and request call graph, and
 [`docs/server-authoring.md`](./docs/server-authoring.md) for the modular server implementation API. The text-first
 request model, repeated query behavior, and Zod codecs are documented in
-[`docs/request-transport.md`](./docs/request-transport.md).
+[`docs/request-transport.md`](./docs/request-transport.md). Client call syntax and its intentionally small transport
+boundary are covered in [`docs/client-authoring.md`](./docs/client-authoring.md).
+Standalone procedure composition and route-derived schema helpers are covered in
+[`docs/procedures.md`](./docs/procedures.md).
 
 ## Package layout
 
 ```text
 packages/core/
   src/
-    client.ts       Fetch client binding
+    client/
+      index.ts      public client entry point
+      context.ts    client context aliases
+      middleware.ts client middleware aliases
+      request.ts    Fetch request construction
+      response.ts   response decoding and result types
+      types.ts      contract-shaped client and authoring scope
+      definition.ts context, middleware, and route assembly
+    context.ts      shared context and route metadata primitives
     contract.ts     API and route declarations
+    input.ts        shared route input type derivation
+    middleware.ts   shared middleware primitives and runtime guards
+    object.ts       safe record and tree utilities
     query.ts        normalized query cardinality and transport
     request.ts      request representations and MIME matching
     representation.ts shared intrinsic wire schemas
     response.ts     response representation declarations
+    procedure.ts    application procedures and callable registries
     server/
       index.ts      public server authoring entry point
       context.ts    server context primitives
