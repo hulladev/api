@@ -60,19 +60,23 @@ describe('route declaration', () => {
       kind: 'route',
       method: 'GET',
       path: '/',
-      params: undefined,
-      query: undefined,
-      headers: undefined,
-      body: undefined,
       responses,
     })
+    expect(Object.keys(declaration)).toEqual(['kind', 'method', 'path', 'responses'])
+    expect('params' in declaration).toBe(false)
+    expect('query' in declaration).toBe(false)
+    expect('headers' in declaration).toBe(false)
+    expect('body' in declaration).toBe(false)
     expect(declaration.responses).not.toBe(responses)
     expect(Object.isFrozen(declaration)).toBe(true)
     expect(Object.isFrozen(declaration.responses)).toBe(true)
     expectTypeOf(declaration.kind).toEqualTypeOf<'route'>()
     expectTypeOf(declaration.method).toEqualTypeOf<'GET'>()
     expectTypeOf(declaration.path).toEqualTypeOf<'/'>()
-    expectTypeOf(declaration.params).toEqualTypeOf<undefined>()
+    expectTypeOf<'params' extends keyof typeof declaration ? true : false>().toEqualTypeOf<false>()
+    expectTypeOf<'query' extends keyof typeof declaration ? true : false>().toEqualTypeOf<false>()
+    expectTypeOf<'headers' extends keyof typeof declaration ? true : false>().toEqualTypeOf<false>()
+    expectTypeOf<'body' extends keyof typeof declaration ? true : false>().toEqualTypeOf<false>()
     expectTypeOf(declaration.responses).toEqualTypeOf<Readonly<typeof responses>>()
     expectTypeOf(declaration).toExtend<Route>()
   })
@@ -96,7 +100,7 @@ describe('route declaration', () => {
     expectTypeOf(declaration.query.schema).toEqualTypeOf<typeof query>()
     expectTypeOf(declaration.headers).toEqualTypeOf<typeof headers>()
     expectTypeOf(declaration.body.schema).toEqualTypeOf<typeof body>()
-    expectTypeOf(declaration.params).toEqualTypeOf<undefined>()
+    expectTypeOf<'params' extends keyof typeof declaration ? true : false>().toEqualTypeOf<false>()
   })
 
   test('accepts Valibot schemas throughout a route contract', () => {
@@ -216,5 +220,25 @@ describe('route declaration', () => {
       // @ts-expect-error GET routes cannot declare a request body.
       body: z.object({ name: z.string() }),
     })
+  })
+
+  test.each(['/users//active', '/users?active=true', '/users#active', '/users/../active', '/users\\active'])(
+    'rejects unsafe route path %s',
+    (path) => {
+      const define = route.get as unknown as (
+        path: string,
+        options: { readonly responses: typeof responses }
+      ) => unknown
+      expect(() => define(path, { responses })).toThrow(TypeError)
+    }
+  )
+
+  test('rejects empty and duplicate parameter names at runtime', () => {
+    const define = route.get as unknown as (path: string, options: { readonly responses: typeof responses }) => unknown
+
+    expect(() => define('/users/:', { responses })).toThrowError('contains an empty parameter name')
+    expect(() => define('/parents/:id/children/:id', { responses })).toThrowError(
+      'declares parameter "id" more than once'
+    )
   })
 })

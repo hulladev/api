@@ -273,6 +273,12 @@ describe('defineServer', () => {
         handlerKeys: ['unknown'],
       })
     )
+    expect(() => implement({ toString: () => undefined })).toThrowError(
+      expect.objectContaining<Partial<ServerImplementationError>>({
+        code: 'unknown-handler',
+        handlerKeys: ['toString'],
+      })
+    )
     expect(() => implement({ health: 'not a function' })).toThrowError(
       expect.objectContaining<Partial<ServerImplementationError>>({
         code: 'invalid-handler',
@@ -439,7 +445,7 @@ describe('defineServer', () => {
   })
 
   test('exports response result unions without implementing serialization', () => {
-    type CreateUserResponses = typeof contract.routes.organizations.routes.createUser.responses
+    type CreateUserResponses = typeof contract.routes.organizations.createUser.responses
     type Result = ServerResponseResult<CreateUserResponses>
     type Created = Extract<Result, { readonly status: 201 }>
     type Conflict = Extract<Result, { readonly status: 409 }>
@@ -452,5 +458,22 @@ describe('defineServer', () => {
       message?: string
     }>()
     expectTypeOf<Conflict['headers']>().toEqualTypeOf<HeadersInit | undefined>()
+  })
+
+  test('preserves prototype-like handler keys safely', () => {
+    const keyedContract = defineContract({
+      routes: {
+        ['__proto__']: route.get('/safe', { responses: { 200: response.text(z.literal('ok')) } }),
+      },
+    })
+    const server = defineServer(keyedContract)
+    const fragment = server.implement({
+      ['__proto__']: (actions) => actions.respond({ status: 200, body: 'ok' }),
+    })
+    const implementation = server.build(fragment)
+
+    expect(Object.keys(implementation.handlers)).toEqual(['__proto__'])
+    expect(Object.getPrototypeOf(implementation.handlers)).toBe(Object.prototype)
+    expect(typeof implementation.handlers['__proto__']).toBe('function')
   })
 })

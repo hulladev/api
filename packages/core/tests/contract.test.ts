@@ -134,9 +134,9 @@ describe('contract declaration', () => {
       },
     })
 
-    expect(duplicateRouter.routes).toHaveProperty('second')
+    expect(duplicateRouter).toHaveProperty('second')
     expect(() => defineContract({ routes: { users: duplicateRouter } })).toThrowError(
-      'Contract contains conflicting routes "routes.users.routes.first" (GET /users/active) and "routes.users.routes.second" (GET /users/active)'
+      'Contract contains conflicting routes "routes.users.first" (GET /users/active) and "routes.users.second" (GET /users/active)'
     )
   })
 
@@ -155,7 +155,7 @@ describe('contract declaration', () => {
     })
 
     expect(() => defineContract({ basePath: '/api', routes: { users: duplicateRouter } })).toThrowError(
-      'Contract contains conflicting routes "routes.users.routes.byId" (GET /api/users/:id) and "routes.users.routes.byUserId" (GET /api/users/:userId)'
+      'Contract contains conflicting routes "routes.users.byId" (GET /api/users/:id) and "routes.users.byUserId" (GET /api/users/:userId)'
     )
   })
 
@@ -168,7 +168,7 @@ describe('contract declaration', () => {
     })
 
     expect(() => defineContract({ routes: { first, second } })).toThrowError(
-      'Contract contains conflicting routes "routes.first.routes.active" (GET /users/active) and "routes.second.routes.list" (GET /users/active)'
+      'Contract contains conflicting routes "routes.first.active" (GET /users/active) and "routes.second.list" (GET /users/active)'
     )
     expect(() =>
       defineContract({
@@ -178,7 +178,7 @@ describe('contract declaration', () => {
         },
       })
     ).toThrowError(
-      'Contract contains conflicting routes "routes.active" (GET /users/active) and "routes.users.routes.active" (GET /users/active)'
+      'Contract contains conflicting routes "routes.active" (GET /users/active) and "routes.users.active" (GET /users/active)'
     )
   })
 
@@ -195,7 +195,7 @@ describe('contract declaration', () => {
         },
       })
     ).toThrowError(
-      'Contract contains conflicting routes "routes.listUsers" (GET /users) and "routes.users.routes.list" (GET /users)'
+      'Contract contains conflicting routes "routes.listUsers" (GET /users) and "routes.users.list" (GET /users)'
     )
   })
 

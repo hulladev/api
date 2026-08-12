@@ -7,6 +7,7 @@ import {
   json as jsonResponse,
   raw as rawResponse,
   response,
+  routeOutput,
   stream as streamResponse,
   text as textResponse,
   type AnyRouteResponse,
@@ -81,6 +82,41 @@ describe('response declaration', () => {
 
     expect(json.body.schema).toBe(jsonSchema)
     expectTypeOf(json.body.schema).toEqualTypeOf<typeof jsonSchema>()
+  })
+
+  test('selects exact response schemas by a declared schema-backed status', () => {
+    const created = z.object({ id: z.string() })
+    const conflict = z.object({ code: z.literal('CONFLICT') })
+    const declaration = route.post('/users', {
+      responses: {
+        201: response.json(created),
+        204: response.empty(),
+        409: response.json(conflict),
+      },
+    })
+
+    expect(routeOutput(declaration, 201)).toBe(created)
+    expect(routeOutput(declaration, 409)).toBe(conflict)
+    expectTypeOf(routeOutput(declaration, 201)).toEqualTypeOf<typeof created>()
+    expectTypeOf(routeOutput(declaration, 409)).toEqualTypeOf<typeof conflict>()
+
+    const rejectStatusesWithoutSchemasAtCompileTime = () => {
+      // @ts-expect-error Empty responses do not have a complete body schema.
+      routeOutput(declaration, 204)
+      // @ts-expect-error The status must be declared by this route.
+      routeOutput(declaration, 200)
+    }
+    expectTypeOf(rejectStatusesWithoutSchemasAtCompileTime).toBeFunction()
+  })
+
+  test('rejects invalid runtime response schema selections', () => {
+    const declaration = route.get('/health', {
+      responses: { 204: response.empty() },
+    })
+    const select = routeOutput as unknown as (route: unknown, status: number) => unknown
+
+    expect(() => select(declaration, 200)).toThrowError('Route does not declare response status 200')
+    expect(() => select(declaration, 204)).toThrowError('Route response 204 does not declare a complete body schema')
   })
 
   test('validates the intrinsic response representations without Zod', async () => {

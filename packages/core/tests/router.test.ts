@@ -12,19 +12,18 @@ describe('router declaration', () => {
   test('returns a normalized immutable router for a static path', () => {
     const declaration = router('/users', { routes })
 
-    expect(declaration).toEqual({
-      kind: 'router',
-      path: '/users',
-      params: undefined,
-      routes,
-    })
-    expect(declaration.routes).not.toBe(routes)
+    expect(declaration).toEqual(routes)
+    expect(Object.keys(declaration)).toEqual(['list'])
+    expect(declaration.$meta).toEqual({ kind: 'router', path: '/users' })
+    expect('params' in declaration.$meta).toBe(false)
+    expect(declaration).not.toBe(routes)
+    expect(declaration.list).not.toBe(routes.list)
     expect(Object.isFrozen(declaration)).toBe(true)
-    expect(Object.isFrozen(declaration.routes)).toBe(true)
-    expectTypeOf(declaration.kind).toEqualTypeOf<'router'>()
-    expectTypeOf(declaration.path).toEqualTypeOf<'/users'>()
-    expectTypeOf(declaration.params).toEqualTypeOf<undefined>()
-    expectTypeOf(declaration.routes).toEqualTypeOf<Readonly<typeof routes>>()
+    expect(Object.isFrozen(declaration.$meta)).toBe(true)
+    expectTypeOf(declaration.$meta.kind).toEqualTypeOf<'router'>()
+    expectTypeOf(declaration.$meta.path).toEqualTypeOf<'/users'>()
+    expectTypeOf<'params' extends keyof (typeof declaration)['$meta'] ? true : false>().toEqualTypeOf<false>()
+    expectTypeOf(declaration.list).toExtend<(typeof routes)['list']>()
     expectTypeOf(declaration).toExtend<Router>()
   })
 
@@ -34,10 +33,10 @@ describe('router declaration', () => {
     const prefixed = router('/organizations/:organizationId', { params: prefixedParams, routes })
     const prefixless = router('organizations/:organizationId', { params: prefixlessParams, routes })
 
-    expect(prefixed.params).toBe(prefixedParams)
-    expect(prefixless.params).toBe(prefixlessParams)
-    expectTypeOf(prefixed.params).toEqualTypeOf<typeof prefixedParams>()
-    expectTypeOf(prefixless.params).toEqualTypeOf<typeof prefixlessParams>()
+    expect(prefixed.$meta.params).toBe(prefixedParams)
+    expect(prefixless.$meta.params).toBe(prefixlessParams)
+    expectTypeOf(prefixed.$meta.params).toEqualTypeOf<typeof prefixedParams>()
+    expectTypeOf(prefixless.$meta.params).toEqualTypeOf<typeof prefixlessParams>()
   })
 
   test('accepts a schema containing every parameter in a composite path', () => {
@@ -47,7 +46,7 @@ describe('router declaration', () => {
     })
     const declaration = router('/organizations/:organizationId/members/:memberId', { params, routes })
 
-    expectTypeOf(declaration.params).toEqualTypeOf<typeof params>()
+    expectTypeOf(declaration.$meta.params).toEqualTypeOf<typeof params>()
   })
 
   test('requires params for a dynamic path', () => {
@@ -94,7 +93,7 @@ describe('router declaration', () => {
       },
     })
 
-    expect(Object.keys(declaration.routes)).toEqual(['read', 'update'])
+    expect(Object.keys(declaration)).toEqual(['read', 'update'])
   })
 
   test('allows static and dynamic paths to coexist', () => {
@@ -109,6 +108,28 @@ describe('router declaration', () => {
       },
     })
 
-    expect(Object.keys(declaration.routes)).toEqual(['current', 'byId'])
+    expect(Object.keys(declaration)).toEqual(['current', 'byId'])
   })
+
+  test('rejects parameters redeclared by a child route', () => {
+    const child = route.get('/children/:id', {
+      params: z.object({ id: z.string() }),
+      responses: { 200: response.text(z.string()) },
+    })
+
+    expect(() =>
+      router('/parents/:id', {
+        params: z.object({ id: z.string() }),
+        routes: { child },
+      })
+    ).toThrowError('Router route "child" redeclares parameter "id"')
+  })
+
+  test.each(['/users//active', '/users?active=true', '/users#active', '/users/../active', '/users\\active'])(
+    'rejects unsafe router path %s',
+    (path) => {
+      const define = router as unknown as (path: string, options: { readonly routes: typeof routes }) => unknown
+      expect(() => define(path, { routes })).toThrow(TypeError)
+    }
+  )
 })
