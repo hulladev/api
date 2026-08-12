@@ -1,10 +1,11 @@
 import { HTTP_METHODS, type HttpMethod } from './http'
+import { isRecord } from './object'
 import { assertBasePath, joinRoutePaths, routePathShape } from './paths'
 import type { RouteResponses } from './response'
 import type { Route } from './route'
-import type { Router } from './router'
+import { isRouter, routerEntries, type AnyRouter } from './router'
 
-export type ContractRoute = Route | Router
+export type ContractRoute = Route | AnyRouter
 
 export type ContractRoutes = Readonly<Record<string, ContractRoute>>
 
@@ -35,10 +36,6 @@ type RegisteredRoute = {
   readonly path: string
 }
 
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
 function assertRoute(value: unknown, name: string): asserts value is Route {
   if (
     !isRecord(value) ||
@@ -51,13 +48,8 @@ function assertRoute(value: unknown, name: string): asserts value is Route {
   }
 }
 
-function assertRouter(value: unknown, name: string): asserts value is Router {
-  if (
-    !isRecord(value) ||
-    value['kind'] !== 'router' ||
-    typeof value['path'] !== 'string' ||
-    !isRecord(value['routes'])
-  ) {
+function assertRouter(value: unknown, name: string): asserts value is AnyRouter {
+  if (!isRouter(value) || typeof value.$meta.path !== 'string') {
     throw new TypeError(`Contract router "${name}" must be a router definition`)
   }
 }
@@ -85,11 +77,11 @@ function validateContract(basePath: string, routes: ContractRoutes): void {
   let routeCount = 0
 
   for (const [name, value] of Object.entries(routes)) {
-    if (!isRecord(value) || (value['kind'] !== 'route' && value['kind'] !== 'router')) {
+    if (!isRecord(value) || (!isRouter(value) && value.kind !== 'route')) {
       throw new TypeError(`Contract route "${name}" must be a route or router definition`)
     }
 
-    if (value['kind'] === 'route') {
+    if (!isRouter(value)) {
       assertRoute(value, name)
       registerRoute(routesBySignature, `routes.${name}`, joinRoutePaths(basePath, value.path), value)
       routeCount += 1
@@ -97,10 +89,15 @@ function validateContract(basePath: string, routes: ContractRoutes): void {
     }
 
     assertRouter(value, name)
-    for (const [routeName, routeValue] of Object.entries(value.routes)) {
-      const qualifiedName = `routes.${name}.routes.${routeName}`
+    for (const [routeName, routeValue] of routerEntries(value)) {
+      const qualifiedName = `routes.${name}.${routeName}`
       assertRoute(routeValue, qualifiedName)
-      registerRoute(routesBySignature, qualifiedName, joinRoutePaths(basePath, value.path, routeValue.path), routeValue)
+      registerRoute(
+        routesBySignature,
+        qualifiedName,
+        joinRoutePaths(basePath, value.$meta.path, routeValue.path),
+        routeValue
+      )
       routeCount += 1
     }
   }

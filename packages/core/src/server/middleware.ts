@@ -1,6 +1,8 @@
+import type { Awaitable } from '../context'
 import type { Contract } from '../contract'
+import type { MiddlewareActions as CoreMiddlewareActions, MiddlewareInput, MiddlewareNextResult } from '../middleware'
 import type { RouteResponses } from '../response'
-import type { Awaitable, ServerRouteMetadata } from './context'
+import type { ServerRouteMetadata } from './context'
 import type {
   ProducedServerResponse,
   ProducedServerResponseValue,
@@ -8,25 +10,14 @@ import type {
   ServerErrorResponder,
 } from './response'
 
-export type MiddlewareInput<Context extends object, RequestType, Route> = {
-  readonly context: Readonly<Context>
-  readonly request: RequestType
-  readonly route: Route
-}
+export type { MiddlewareInput, MiddlewareNextResult } from '../middleware'
 
 type ErrorAction<Errors extends RouteResponses> = [Extract<keyof Errors, number>] extends [never]
   ? { readonly error?: never }
   : { readonly error: ServerErrorResponder<Errors> }
 
-declare const middlewareNextResultType: unique symbol
-
-export type MiddlewareNextResult<Value> = Value & {
-  readonly [middlewareNextResultType]: Value
-}
-
-export type MiddlewareActions<Result, Errors extends RouteResponses> = {
-  readonly next: () => Promise<MiddlewareNextResult<Result>>
-} & ErrorAction<Errors>
+export type MiddlewareActions<Result, Errors extends RouteResponses> = CoreMiddlewareActions<Result> &
+  ErrorAction<Errors>
 
 export type Middleware<
   Context extends object,

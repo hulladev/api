@@ -1,4 +1,8 @@
+import type { ContextFrom } from '../context'
 import type { Contract, ContractRoutes } from '../contract'
+import { assertMiddleware, assertMiddlewares } from '../middleware'
+import { freezeRecordTree, hasOwn, isRecord, setOwn } from '../object'
+import { isRouter, routerRoutes } from '../router'
 import type { ServerContextInput } from './context'
 import { ServerImplementationError } from './errors'
 import type { ServerMiddleware, ServerMiddlewareCandidate, ServerMiddlewareErrorStatuses } from './middleware'
@@ -8,7 +12,6 @@ type EmptyServerContext = Record<string, never>
 type ContextFactoryShape<ContractType extends Contract> = (
   input: ServerContextInput<ContractType>
 ) => object | PromiseLike<object>
-type ContextFrom<Factory extends (...args: never[]) => unknown> = Awaited<ReturnType<Factory>>
 
 type FragmentMetadata = {
   readonly owner: object
@@ -16,10 +19,6 @@ type FragmentMetadata = {
 }
 
 const fragmentMetadata = new WeakMap<object, FragmentMetadata>()
-
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
 
 function qualifiedKey(prefix: string, key: string): string {
   return prefix === '' ? key : `${prefix}.${key}`
@@ -37,14 +36,14 @@ function copyFragmentTree(routes: ContractRoutes, handlers: unknown, prefix = ''
   const copy: Record<string, unknown> = {}
 
   for (const [key, handler] of Object.entries(handlers)) {
-    const definition = routes[key]
     const fullKey = qualifiedKey(prefix, key)
 
-    if (!definition) {
+    if (!hasOwn(routes, key)) {
       throw new ServerImplementationError('unknown-handler', [fullKey], `Unknown server handler "${fullKey}"`)
     }
+    const definition = routes[key]!
 
-    if (definition.kind === 'route') {
+    if (!isRouter(definition)) {
       if (typeof handler !== 'function') {
         throw new ServerImplementationError(
           'invalid-handler',
@@ -53,11 +52,11 @@ function copyFragmentTree(routes: ContractRoutes, handlers: unknown, prefix = ''
         )
       }
 
-      copy[key] = handler
+      setOwn(copy, key, handler)
       continue
     }
 
-    copy[key] = copyFragmentTree(definition.routes, handler, fullKey)
+    setOwn(copy, key, copyFragmentTree(routerRoutes(definition), handler, fullKey))
   }
 
   return Object.freeze(copy)
@@ -69,8 +68,8 @@ function routeKeys(routes: ContractRoutes, prefix = ''): readonly string[] {
   for (const [key, definition] of Object.entries(routes)) {
     const fullKey = qualifiedKey(prefix, key)
 
-    if (definition.kind === 'route') keys.push(fullKey)
-    else keys.push(...routeKeys(definition.routes, fullKey))
+    if (!isRouter(definition)) keys.push(fullKey)
+    else keys.push(...routeKeys(routerRoutes(definition), fullKey))
   }
 
   return keys
@@ -86,14 +85,14 @@ function mergeFragmentTree(
   prefix = ''
 ): void {
   for (const [key, handler] of Object.entries(fragment)) {
-    const definition = routes[key]
     const fullKey = qualifiedKey(prefix, key)
 
-    if (!definition) {
+    if (!hasOwn(routes, key)) {
       throw new ServerImplementationError('unknown-handler', [fullKey], `Unknown server handler "${fullKey}"`)
     }
+    const definition = routes[key]!
 
-    if (definition.kind === 'route') {
+    if (!isRouter(definition)) {
       if (seen.has(fullKey)) {
         throw new ServerImplementationError(
           'duplicate-handler',
@@ -103,19 +102,20 @@ function mergeFragmentTree(
       }
 
       seen.add(fullKey)
-      target[key] = handler
-      middlewareTarget[key] = middlewares
+      setOwn(target, key, handler)
+      setOwn(middlewareTarget, key, middlewares)
       continue
     }
 
-    const nestedTarget = isRecord(target[key]) ? (target[key] as Record<string, unknown>) : {}
-    const nestedMiddlewareTarget = isRecord(middlewareTarget[key])
-      ? (middlewareTarget[key] as Record<string, unknown>)
-      : {}
-    target[key] = nestedTarget
-    middlewareTarget[key] = nestedMiddlewareTarget
+    const nestedTarget = hasOwn(target, key) && isRecord(target[key]) ? (target[key] as Record<string, unknown>) : {}
+    const nestedMiddlewareTarget =
+      hasOwn(middlewareTarget, key) && isRecord(middlewareTarget[key])
+        ? (middlewareTarget[key] as Record<string, unknown>)
+        : {}
+    setOwn(target, key, nestedTarget)
+    setOwn(middlewareTarget, key, nestedMiddlewareTarget)
     mergeFragmentTree(
-      definition.routes,
+      routerRoutes(definition),
       nestedTarget,
       nestedMiddlewareTarget,
       handler as Readonly<Record<string, unknown>>,
@@ -124,22 +124,6 @@ function mergeFragmentTree(
       fullKey
     )
   }
-}
-
-function freezeHandlerTree(value: Record<string, unknown>): Readonly<Record<string, unknown>> {
-  for (const [key, nested] of Object.entries(value)) {
-    if (isRecord(nested)) value[key] = freezeHandlerTree(nested as Record<string, unknown>)
-  }
-
-  return Object.freeze(value)
-}
-
-function freezeMiddlewareTree(value: Record<string, unknown>): Readonly<Record<string, unknown>> {
-  for (const [key, nested] of Object.entries(value)) {
-    if (isRecord(nested)) value[key] = freezeMiddlewareTree(nested as Record<string, unknown>)
-  }
-
-  return Object.freeze(value)
 }
 
 function createDefinition<
@@ -155,16 +139,14 @@ function createDefinition<
   const frozenMiddlewares = Object.freeze([...middlewares])
 
   const middleware = (<const Handler extends ServerMiddlewareCandidate<Context, ContractType>>(handler: Handler) => {
-    if (typeof handler !== 'function') throw new TypeError('Server middleware must be a function')
+    assertMiddleware('Server', handler)
     return handler
   }) as ServerDefinition<ContractType, Context, MiddlewareStatuses>['middleware']
 
   const use = (<const Middlewares extends readonly ServerMiddlewareCandidate<Context, ContractType>[]>(
     ...applied: Middlewares
   ) => {
-    for (const handler of applied) {
-      if (typeof handler !== 'function') throw new TypeError('Server middleware must be a function')
-    }
+    assertMiddlewares('Server', applied)
 
     return createDefinition<
       ContractType,
@@ -224,9 +206,9 @@ function createDefinition<
 
     return Object.freeze({
       contract,
-      handlers: freezeHandlerTree(merged),
+      handlers: freezeRecordTree(merged, false),
       context: options.context,
-      middlewares: freezeMiddlewareTree(mergedMiddlewares),
+      middlewares: freezeRecordTree(mergedMiddlewares, false),
     })
   }) as ServerDefinition<ContractType, Context, MiddlewareStatuses>['build']
 

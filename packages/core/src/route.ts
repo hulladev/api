@@ -1,5 +1,5 @@
 import type { HttpMethod } from './http'
-import type { PathParamOptions, PathParams, PathParamsFor } from './paths'
+import { assertRoutePath, type PathParamOptions, type PathParams, type PathParamsFor } from './paths'
 import { normalizeRequestQuery, type NormalizedRequestQuery } from './query'
 import type { JsonValue } from './representation'
 import {
@@ -79,6 +79,12 @@ export type RouteShape = {
   readonly responses: Readonly<RouteResponses>
 }
 
+type DefinedField<Name extends PropertyKey, Value> = [Value] extends [undefined]
+  ? object
+  : undefined extends Value
+    ? { readonly [Key in Name]?: Exclude<Value, undefined> }
+    : { readonly [Key in Name]: Value }
+
 export type Route<
   Method extends HttpMethod = HttpMethod,
   Path extends string = string,
@@ -87,12 +93,11 @@ export type Route<
   readonly kind: 'route'
   readonly method: Method
   readonly path: Path
-  readonly params: Shape['params']
-  readonly query: Shape['query']
-  readonly headers: Shape['headers']
-  readonly body: Shape['body']
   readonly responses: Shape['responses']
-}
+} & DefinedField<'params', Shape['params']> &
+  DefinedField<'query', Shape['query']> &
+  DefinedField<'headers', Shape['headers']> &
+  DefinedField<'body', Shape['body']>
 
 export type RouteMap = Readonly<Record<string, Route>>
 
@@ -136,11 +141,13 @@ function defineRoute<const Method extends HttpMethod>(method: Method) {
   >(
     path: Path,
     options: RouteOptions<Method, Path, Responses, Params, Query, Headers, Body>
-  ): Route<
-    Method,
-    Path,
-    DefinedRouteShape<Params, NormalizedQuery<Query>, Headers, NormalizedBody<Body>, Responses>
+  ): NoInfer<
+    Route<Method, Path, DefinedRouteShape<Params, NormalizedQuery<Query>, Headers, NormalizedBody<Body>, Responses>>
   > => {
+    assertRoutePath(path, `${method} route path`)
+    if (typeof options !== 'object' || options === null || Array.isArray(options)) {
+      throw new TypeError(`${method} route options must be an object`)
+    }
     const query = options.query === undefined ? undefined : normalizeRequestQuery(options.query as RouteQueryInput)
     const body =
       options.body === undefined
@@ -153,12 +160,16 @@ function defineRoute<const Method extends HttpMethod>(method: Method) {
       kind: 'route',
       method,
       path,
-      params: options.params as Params,
-      query: query as NormalizedQuery<Query>,
-      headers: options.headers as Headers,
-      body: body as NormalizedBody<Body>,
+      ...(options.params === undefined ? {} : { params: options.params as Params }),
+      ...(query === undefined ? {} : { query: query as NormalizedQuery<Query> }),
+      ...(options.headers === undefined ? {} : { headers: options.headers as Headers }),
+      ...(body === undefined ? {} : { body: body as NormalizedBody<Body> }),
       responses: Object.freeze({ ...options.responses }) as Readonly<Responses>,
-    })
+    }) as Route<
+      Method,
+      Path,
+      DefinedRouteShape<Params, NormalizedQuery<Query>, Headers, NormalizedBody<Body>, Responses>
+    >
   }
 }
 

@@ -1,9 +1,9 @@
 import type { Contract, ContractRoute, ContractRoutes } from '../contract'
+import type { RouteInput } from '../input'
 import type { JoinRoutePaths } from '../paths'
-import type { AnyRequestBody, AnyRequestQuery } from '../request'
 import type { Route } from '../route'
 import type { Router } from '../router'
-import type { AnySchema, ObjectSchema, SchemaOutput } from '../validation'
+import type { ObjectSchema } from '../validation'
 import type { Awaitable, RouteMetadata, ServerContextFactory } from './context'
 import type { ServerMiddleware, ServerMiddlewareCandidate, ServerMiddlewareErrorStatuses } from './middleware'
 import type {
@@ -12,22 +12,6 @@ import type {
   ServerResponder,
   ServerResponseResult,
 } from './response'
-
-type SchemaValue<Schema> = Schema extends AnySchema ? SchemaOutput<Schema> : Record<never, never>
-
-type RequestField<Name extends string, Schema> = Schema extends AnySchema
-  ? { readonly [Key in Name]: SchemaOutput<Schema> }
-  : Schema extends AnyRequestQuery
-    ? { readonly [Key in Name]: SchemaOutput<Schema['schema']> }
-    : Schema extends AnyRequestBody
-      ? { readonly [Key in Name]: SchemaOutput<Schema['schema']> }
-      : object
-
-type ParamsField<RouterParams, RouteParams> = RouterParams extends AnySchema
-  ? { readonly params: SchemaValue<RouterParams> & SchemaValue<RouteParams> }
-  : RouteParams extends AnySchema
-    ? { readonly params: SchemaValue<RouteParams> }
-    : object
 
 export type ServerHandlerInput<
   RouteType extends Route,
@@ -38,10 +22,7 @@ export type ServerHandlerInput<
   readonly context: Readonly<Context>
   readonly request: Request
   readonly route: Metadata
-} & ParamsField<RouterParams, RouteType['params']> &
-  RequestField<'query', RouteType['query']> &
-  RequestField<'headers', RouteType['headers']> &
-  RequestField<'body', RouteType['body']>
+} & RouteInput<RouteType, RouterParams>
 
 export type ServerHandlerActions<RouteType extends Route> = {
   readonly respond: ServerResponder<ServerResponseResult<RouteType['responses']>>

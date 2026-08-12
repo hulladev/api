@@ -54,31 +54,71 @@ export type JoinRoutePaths<Parts extends readonly string[]> = string extends Par
   ? string
   : JoinedRoutePath<Parts>
 
-export function assertBasePath(basePath: string): void {
-  if (basePath === '' || basePath === '/') return
+export function pathParamNames(path: string): readonly string[] {
+  return path
+    .split('/')
+    .filter((segment) => segment.startsWith(':'))
+    .map((segment) => segment.slice(1))
+}
 
-  if (basePath.includes('?')) {
+function assertSafePath(path: string, label: string, allowParameters: boolean): void {
+  if (path.includes('?')) {
     throw new TypeError(
-      `Contract base path "${basePath}" cannot contain a query string; declare query parameters with the route "query" option instead`
+      `${label} "${path}" cannot contain a query string; declare query parameters with the route "query" option instead`
     )
   }
+  if (path.includes('#')) {
+    throw new TypeError(`${label} "${path}" cannot contain a hash fragment`)
+  }
+  if (path.includes('//')) {
+    throw new TypeError(`${label} "${path}" cannot contain empty segments (//)`)
+  }
+  if (path.includes('\\')) {
+    throw new TypeError(`${label} "${path}" cannot contain backslashes`)
+  }
+
+  const parameterNames = new Set<string>()
+  for (const segment of path.split('/').filter(Boolean)) {
+    if (segment === '.' || segment === '..') throw new TypeError(`${label} "${path}" contains an unsafe segment`)
+    if (!segment.startsWith(':')) continue
+    if (!allowParameters) throw new TypeError(`${label} "${path}" cannot contain parameters`)
+
+    const name = segment.slice(1)
+    if (name.length === 0) throw new TypeError(`${label} "${path}" contains an empty parameter name`)
+    if (parameterNames.has(name)) {
+      throw new TypeError(`${label} "${path}" declares parameter "${name}" more than once`)
+    }
+    parameterNames.add(name)
+  }
+}
+
+export function assertBasePath(basePath: string): void {
+  if (basePath === '' || basePath === '/') return
   if (basePath.includes('#')) {
     throw new TypeError(
       `Contract base path "${basePath}" cannot contain a hash fragment; fragments are client-side only and should not be included in contract paths`
     )
   }
-  if (basePath.includes('//')) {
-    throw new TypeError(`Contract base path "${basePath}" cannot contain empty segments (//)`)
+  assertSafePath(basePath, 'Contract base path', false)
+}
+
+export function assertRoutePath(path: string, label: string): void {
+  if (typeof path !== 'string') throw new TypeError(`${label} must be a string`)
+  assertSafePath(path, label, true)
+}
+
+export function conflictingPathParamNames(...paths: readonly string[]): readonly string[] {
+  const seen = new Set<string>()
+  const conflicts = new Set<string>()
+
+  for (const path of paths) {
+    for (const name of pathParamNames(path)) {
+      if (seen.has(name)) conflicts.add(name)
+      else seen.add(name)
+    }
   }
 
-  for (const segment of basePath.split('/').filter(Boolean)) {
-    if (segment === '.' || segment === '..') {
-      throw new TypeError(`Contract base path "${basePath}" contains an unsafe segment`)
-    }
-    if (segment.startsWith(':')) {
-      throw new TypeError(`Contract base path "${basePath}" cannot contain parameters`)
-    }
-  }
+  return [...conflicts]
 }
 
 export function joinRoutePaths(...parts: readonly string[]): string {
