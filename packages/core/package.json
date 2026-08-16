@@ -44,7 +44,6 @@
     }
   },
   "scripts": {
-    "bench": "bun bench/fetch-roundtrip.ts",
     "build": "tsdown",
     "check:package": "publint",
     "clean": "rm -rf dist coverage",

@@ -14,10 +14,11 @@
     "url": "git+https://github.com/hulladev/api.git"
   },
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "benchmarks"
   ],
   "scripts": {
-    "bench": "turbo run bench",
+    "bench": "bun run --cwd packages/core build && bun run --cwd benchmarks bench",
     "build": "turbo run build",
     "check": "bun run fmt && bun run lint && bun run typecheck && bun run test && bun run build && bun run check:package",
     "check:package": "bun run --cwd packages/core check:package",
