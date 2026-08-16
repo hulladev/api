@@ -1,6 +1,6 @@
 # Request transport
 
-Hulla treats every request schema directionally: schema input is the HTTP wire value and schema output is the value exposed to application code.
+@hulla/api treats every request schema directionally: schema input is the HTTP wire value and schema output is the value exposed to application code.
 
 ## Text-first URL values
 
@@ -8,19 +8,19 @@ Path parameters, headers, and query values arrive as text. Keep values as string
 
 ```ts
 import { z } from 'zod'
-import { text } from '@hulla/api/zod'
+import { codec, query, text } from '@hulla/api-zod'
 
-const query = z.object({
+const searchQuery = query(z.object({
   search: z.string().optional(),
   page: text.integer().optional(),
   active: text.boolean().optional(),
   cursor: text.bigint().optional(),
   since: text.datetime().optional(),
   tags: z.array(z.string()).min(1).optional(),
-})
+}))
 ```
 
-`text.*` values are native Zod codecs. Their input is text and their output is the handler value. Custom conversions use `z.codec()` directly.
+`text.*` values retain their native Zod APIs while carrying explicit @hulla/api codec metadata. Wrap custom reversible Zod declarations with `codec(z.codec(...))`; ordinary identity schemas need no wrapper. Use `query(schema)` when Zod should infer repeated URL fields.
 
 Using `z.number()` or `z.boolean()` directly in params, headers, or query fields is a type error because those schemas expect a non-text wire value. They remain appropriate for JSON bodies.
 

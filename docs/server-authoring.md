@@ -61,9 +61,9 @@ export const implementation = server.build(healthHandlers, organizationHandlers)
 - `server.build()` also checks duplicates and completeness at runtime for JavaScript consumers.
 - Framework adapters require the complete implementation type, preserving the full-contract guarantee at the transport boundary.
 
-## Fetch runtime
+## Fetch handler
 
-Core provides a deliberately small Web Fetch runtime for a completed implementation:
+`@hulla/api` adapts a completed implementation to Web Fetch out of the box:
 
 ```ts
 import { createFetchHandler } from '@hulla/api/server'
@@ -72,7 +72,7 @@ import { implementation } from './implementation'
 export const fetchHandler = createFetchHandler(implementation)
 ```
 
-The returned value has the exact `(request: Request) => Promise<Response>` surface used by Fetch-native hosts and by the Hulla client transport:
+The returned value has the exact `(request: Request) => Promise<Response>` surface used by Fetch-native hosts and by the @hulla/api client transport:
 
 ```ts
 // Bun
@@ -88,9 +88,30 @@ const client = defineClient(contract, {
 }).build()
 ```
 
-The runtime owns contract semantics: compiled route matching, path/query/header/body decoding, context and middleware execution, response validation and encoding, streams, and protocol-safe 404/405/400/415/500 responses. It uses only Web `Request`, `Response`, `Headers`, `FormData`, and `ReadableStream` primitives.
+Core owns contract semantics: compiled route matching, path/query/header/body decoding, context and middleware execution, response validation and encoding, streams, and protocol-safe 404/405/400/415/500 wire responses. The Fetch adapter alone translates Web `Request`, `Response`, `Headers`, `FormData`, and `ReadableStream` primitives.
 
-Node's Fetch globals provide those primitives, but `node:http` uses `IncomingMessage` and `ServerResponse`; translating those host objects is intentionally the job of a thin Node or framework integration. Integrations can add lifecycle hooks, connection information, logging, compression, and framework-specific behavior around the core handler without duplicating contract transport logic.
+For hosts that already perform routing or body parsing, use the compiled wire dispatcher instead of rebuilding a second contract runtime:
+
+```ts
+import { createWireHandler } from '@hulla/api/wire'
+
+const dispatch = createWireHandler(implementation)
+
+const response = await dispatch({
+  request,
+  method: hostRequest.method,
+  pathname: hostRequest.pathname,
+  query: hostRequest.searchParams,
+  body: {
+    value: hostRequest.parsedJson,
+    contentType: hostRequest.contentType,
+  },
+})
+```
+
+`request` remains the original host request exposed to context, middleware, and handlers. `headers`, `query`, and `body` contain adapter-extracted wire values. A lazy `readBody` callback lets an adapter defer extraction until the matched route requires it. The dispatcher always owns route selection, contract validation, handler execution, and wire response production.
+
+Node's Fetch globals provide the required primitives, but `node:http` uses `IncomingMessage` and `ServerResponse`; translating those host objects is intentionally the job of a thin Node or framework integration. Integrations can add lifecycle hooks, connection information, logging, compression, and framework-specific behavior around the core handler without duplicating contract transport logic.
 
 An optional error hook can observe internal failures or replace the default response:
 
@@ -143,7 +164,7 @@ const contract = defineContract({
 })
 ```
 
-The error body has no Hulla-required fields. Different statuses may use different response representations, schemas, and headers. A route may reuse the same response descriptor, but its declarations remain owned by the route.
+The error body requires no @hulla/api-specific fields. Different statuses may use different response representations, schemas, and headers. A route may reuse the same response descriptor, but its declarations remain owned by the route.
 
 Handlers use `actions.respond()` for every route-owned response, including failure statuses:
 

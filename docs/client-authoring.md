@@ -3,6 +3,8 @@
 `defineClient()` mirrors server authoring: configure a scope, derive it with `use()`, then call `build()`. The built value is the contract-shaped callable tree itself—there is no extra `routes`, `api`, or procedure namespace:
 
 ```ts
+import { defineClient } from '@hulla/api/client'
+
 const client = defineClient(contract, {
   baseUrl: 'https://api.example.com',
 }).build()
@@ -81,4 +83,4 @@ export async function createUser(input: Parameters<typeof client.organizations.c
 }
 ```
 
-Use a Hulla procedure only when its schema, context, middleware, or structural identity provides concrete value. Procedures do not change or wrap the client surface.
+Use an @hulla/api procedure only when its schema, context, middleware, or structural identity provides concrete value. Procedures do not change or wrap the client surface.

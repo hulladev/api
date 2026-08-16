@@ -1,8 +1,8 @@
 # @hulla/api
 
-Greenfield implementation of a small directional contract layer for TypeScript APIs. Standard Schema input is the wire value, Standard Schema output is the application value, and Fetch performs the HTTP mechanics.
+Greenfield implementation of a small directional contract layer for TypeScript APIs. Ordinary Standard Schemas validate identity representations; explicit codecs map between wire and application values. Fetch client/server support is built in, while validator-specific mechanics remain optional.
 
-The active workspace intentionally contains one package: [`packages/core`](./packages/core). The previous implementation, examples, release scripts, and in-progress beta metadata are preserved in [`legacy`](./legacy) for behavioral reference, but `legacy/**` is not a workspace and is excluded from builds, tests, linting, formatting, and package output.
+The active workspace contains the batteries-included [`@hulla/api`](./packages/core) package plus the optional [`@hulla/api-zod`](./packages/zod) integration. The previous implementation remains in [`legacy`](./legacy) for behavioral reference and is excluded from the active workspace.
 
 ## Start here
 
@@ -10,7 +10,7 @@ The active workspace intentionally contains one package: [`packages/core`](./pac
 bun install
 bun run dev         # rebuild the package while editing
 bun run test:watch  # run the focused test loop
-bun run bench       # measure the Fetch + nested codec vertical slice
+bun run bench       # compare the standalone runtime matrix and write a detailed report
 bun run check       # CI-equivalent verification
 ```
 
@@ -18,9 +18,9 @@ The first vertical slice includes:
 
 - `defineContract`, `router`, and method-specific route declarations
 - a canonical immutable compiled route manifest for runtimes, adapters, and generators
-- Standard Schema validation with dependency-free defaults and direct Zod 4 codec support
-- a transport-neutral server implementation binding plus a minimal Web Fetch runtime for backend adapters
-- a Fetch client that mirrors the contract tree after an explicit `build()`
+- Standard Schema identity validation and explicit directional codecs
+- a built-in Fetch client and server handler over a compiled host-parsed wire runtime
+- an advanced `@hulla/api/wire` server-adapter boundary and optional Zod integration package
 - optional procedures with exact sync/async return types, validation, context, middleware, and structurally identified callable trees
 - normalized contract problems and a nested `Date` codec round-trip test
 
@@ -39,18 +39,11 @@ Structured operational errors, Standard Schema issue compatibility, and protocol
 ```text
 packages/core/
   src/
-    client/
-      index.ts      public client entry point
-      context.ts    client context aliases
-      middleware.ts client middleware aliases
-      request.ts    Fetch request construction
-      response.ts   response decoding and result types
-      types.ts      contract-shaped client and authoring scope
-      definition.ts context, middleware, and route assembly
     context.ts      shared context and route metadata primitives
     compiler.ts     canonical flat contract manifest for runtimes and integrations
     contract.ts     API and route declarations
     errors.ts       shared structured errors and protocol problem conversion
+    execution.ts    sync-preserving execution steps and mapping
     input.ts        shared route input type derivation
     middleware.ts   shared middleware primitives and runtime guards
     object.ts       safe record and tree utilities
@@ -60,6 +53,7 @@ packages/core/
     representation.ts shared intrinsic wire schemas
     response.ts     response representation declarations
     procedure.ts    application procedures and callable registries
+    client/         built-in Fetch client authoring and execution
     server/
       index.ts      public server authoring entry point
       context.ts    server context primitives
@@ -68,10 +62,14 @@ packages/core/
       types.ts      handler fragments and implementation types
       definition.ts fragment validation and assembly
       errors.ts     internal server and validation errors
-      runtime.ts    minimal Web Fetch routing, execution, and response encoding
+      fetch.ts      built-in Request/Response adapter
+      runtime.ts    platform-neutral wire routing, execution, and response encoding
+    wire.ts         public advanced server-adapter entry point
     validation.ts   Standard Schema validation and directional codecs
-    zod.ts          optional Zod text codecs
   tests/            Contract laws and vertical-slice tests
+
+packages/zod/
+  src/              explicit Zod codecs, query inference, and schema composition
 ```
 
-The package is marked private during the rewrite so a partial API cannot be published accidentally. Remove `private` and establish a release policy only when the public surface is ready.
+The publishable packages use the next major version while the root workspace and benchmarks remain private.

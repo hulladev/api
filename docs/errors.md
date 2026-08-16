@@ -1,6 +1,6 @@
 # Error model
 
-Hulla operational errors use one structural interface:
+@hulla/api operational errors use one structural interface:
 
 ```ts
 type APIError = Error & {
@@ -11,12 +11,12 @@ type APIError = Error & {
 type APIErrorIssue = {
   readonly message: string
   readonly path?: readonly (PropertyKey | { readonly key: PropertyKey })[]
-  readonly code?: unknown // vendor-defined; Hulla-created issue codes are strings
+  readonly code?: unknown // vendor-defined; @hulla/api-created issue codes are strings
   readonly location?: 'body' | 'headers' | 'input' | 'output' | 'params' | 'query' | 'response'
 }
 ```
 
-`APIErrorIssue` extends the Standard Schema issue shape. Validator messages, paths, and vendor metadata therefore flow through Hulla without translation, with boundary metadata added when core knows where validation occurred. Applications do not need a separate validation-error representation.
+`APIErrorIssue` extends the Standard Schema issue shape. Validator messages, paths, and vendor metadata therefore flow through @hulla/api without translation, with boundary metadata added when core knows where validation occurred. Applications do not need a separate validation-error representation.
 
 The error `code` identifies the broad failure. An issue `code` identifies a specific leaf failure and may come from the schema vendor. For example, a Zod response failure has the error code `schema-validation`, issue location `response`, and may retain an issue code such as `invalid_type`.
 

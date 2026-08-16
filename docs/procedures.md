@@ -23,7 +23,7 @@ Use a validator-specific route input helper to compose a route's declared params
 
 ```ts
 import { procedure } from '@hulla/api'
-import { routeInput, routeOutput } from '@hulla/api/zod'
+import { routeInput, routeOutput } from '@hulla/api-zod'
 
 const route = contract.routes.organizations.createUser
 const input = routeInput(route)
@@ -48,9 +48,24 @@ The output declaration is optional. Without one, the return type is inferred fro
 
 ## Exact synchronous and asynchronous calls
 
-Procedure calls do not expose `Result | Promise<Result>`. A synchronous handler with synchronous input, output, and context returns `Result` directly. An async handler or context returns `Promise<Result>`, as does a procedure with applied middleware. The selected mode is carried through both standalone procedures and built procedure trees.
+Procedure calls do not expose `Result | Promise<Result>`. A synchronous handler with synchronous input, output, context, and middleware returns `Result` directly. An async handler, context, schema, or middleware returns `Promise<Result>`. The selected mode is carried through both standalone procedures and built procedure trees.
 
-Standard Schema deliberately does not describe whether a validator runs synchronously. Ordinary validator schemas need no Hulla-specific field and retain their normal developer experience. If a schema intentionally performs async validation, mark it without mutating the validator-owned object:
+Middleware therefore does not impose an asynchronous boundary by itself. Its `next()` call has the exact downstream result type, so a synchronous middleware can inspect or transform a synchronous result without a promise:
+
+```ts
+const trace = procedures.middleware((actions) => {
+  events.push('before')
+  const result = actions.next()
+  events.push('after')
+  return result
+})
+
+const value: string = procedures.use(trace).handler(() => 'ok')()
+```
+
+Declaring the middleware `async` intentionally changes procedures using it to `Promise<Result>`. HTTP client and server middleware remain promise-based at their public boundary because Fetch execution is asynchronous.
+
+Standard Schema deliberately does not describe whether a validator runs synchronously. Ordinary validator schemas need no @hulla/api-specific field and retain their normal developer experience. If a schema intentionally performs async validation, mark it without mutating the validator-owned object:
 
 ```ts
 import { procedure, validation } from '@hulla/api'
@@ -64,7 +79,7 @@ const registerName = procedure.input(availableName).handler(({ input }) => input
 const pending: Promise<string> = registerName('Ada')
 ```
 
-`validation.async(schema)` is a small Hulla wrapper used only to make the execution mode explicit. Validator authors and users do not add a special property to their schemas. HTTP client and server calls remain asynchronous because Fetch itself is asynchronous.
+`validation.async(schema)` is a small @hulla/api wrapper used only to make the execution mode explicit. Validator authors and users do not add a special property to their schemas. HTTP client and server calls remain asynchronous because Fetch itself is asynchronous.
 
 ## Context and middleware
 
