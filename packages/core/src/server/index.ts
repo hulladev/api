@@ -6,8 +6,16 @@ export type {
   ServerContextInput,
   ServerRouteMetadata,
 } from './context'
-export { ContractError, ServerImplementationError } from './errors'
-export type { ApiProblem, ApiProblemIssue, ContractLocation, ServerImplementationErrorCode } from './errors'
+export { ContractError, ServerImplementationError, ServerRuntimeError } from './errors'
+export type {
+  APIProblem,
+  APIProblemIssue,
+  ContractLocation,
+  ServerImplementationErrorCode,
+  ServerImplementationIssue,
+  ServerRuntimeErrorCode,
+  ServerRuntimeIssue,
+} from './errors'
 export type {
   Middleware,
   MiddlewareActions,
@@ -19,6 +27,8 @@ export type {
   ServerMiddlewareInput,
 } from './middleware'
 export { defineServer } from './definition'
+export { createFetchHandler } from './runtime'
+export type { FetchHandler, FetchServerErrorInput, FetchServerOptions, FetchServerPhase } from './runtime'
 export type {
   ProducedServerResponse,
   ProducedServerResponseValue,

@@ -1,5 +1,8 @@
+import { annotateAPIErrorIssues, type APIError, type APIErrorIssue, type QueryTransportErrorCode } from './errors'
 import { isRequestQueryDefinition, type AnyRequestQuery, type RequestQueryDefinition } from './request'
 import { decodeSchema, encodeSchema, isSchema, type ObjectSchema, type SchemaOutput } from './validation'
+
+export type { QueryTransportErrorCode } from './errors'
 
 export type QueryCardinality = 'repeated' | 'single'
 
@@ -14,21 +17,30 @@ export type NormalizedRequestQuery<Schema extends ObjectSchema = ObjectSchema> =
   readonly transport: QueryTransportPlan
 }
 
-export type QueryTransportErrorCode =
-  | 'duplicate-query-value'
-  | 'empty-query-array'
-  | 'invalid-query-value'
-  | 'mixed-query-cardinality'
-  | 'unsupported-query-schema'
-
-export class QueryTransportError extends TypeError {
+export type QueryTransportIssue = APIErrorIssue & {
+  readonly location: 'query'
   readonly code: QueryTransportErrorCode
+  readonly key?: string
+}
+
+export class QueryTransportError extends TypeError implements APIError<QueryTransportErrorCode, QueryTransportIssue> {
+  readonly code: QueryTransportErrorCode
+  readonly issues: readonly QueryTransportIssue[]
   readonly key?: string
 
   constructor(code: QueryTransportErrorCode, message: string, key?: string) {
     super(message)
     this.name = 'QueryTransportError'
     this.code = code
+    this.issues = annotateAPIErrorIssues(
+      [
+        {
+          message,
+          ...(key === undefined ? {} : { key, path: [key] }),
+        },
+      ],
+      { code, location: 'query' }
+    ) as readonly QueryTransportIssue[]
     if (key !== undefined) this.key = key
   }
 }
@@ -190,7 +202,7 @@ export async function encodeQuery<const Query extends AnyRequestQuery & { readon
   query: Query,
   value: SchemaOutput<Query['schema']>
 ): Promise<URLSearchParams> {
-  const encoded = await encodeSchema(query.schema, value)
+  const encoded = await encodeSchema(query.schema, value, { location: 'query' })
   if (!recordValue(encoded)) {
     throw new QueryTransportError('invalid-query-value', 'Encoded query must be an object')
   }
@@ -256,5 +268,5 @@ export async function decodeQuery<const Query extends AnyRequestQuery & { readon
     if (value !== undefined) input[key] = value
   }
 
-  return decodeSchema(query.schema, input)
+  return decodeSchema(query.schema, input, { location: 'query' })
 }

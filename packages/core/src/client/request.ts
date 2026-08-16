@@ -1,9 +1,8 @@
-import { isRecord } from '../object'
-import { pathParamNames } from '../paths'
+import type { CompiledContractRoute } from '../compiler'
+import { encodePathParameters } from '../parameters'
 import { encodeQuery } from '../query'
-import { encodeRequestBody, type AnyRequestBody, type TextWireObject } from '../request'
-import type { Route } from '../route'
-import { encodeSchema, type ObjectSchema } from '../validation'
+import { encodeRequestBodyValue, textWireObject, type AnyRequestBody } from '../request'
+import { encodeSchemaValue, isSchemaStepAsync, mapSchemaStep, type SchemaStep } from '../validation'
 
 export type ClientRequestOptions = {
   readonly headers?: HeadersInit
@@ -12,33 +11,14 @@ export type ClientRequestOptions = {
 
 export type ClientHeaders = HeadersInit | (() => HeadersInit | undefined | PromiseLike<HeadersInit | undefined>)
 
+/** The exact transport surface used by the client after it constructs a Web Request. */
+export type ClientFetch = (request: Request) => Response | PromiseLike<Response>
+
 export type ClientTransportOptions = {
   /** URL prefix placed before the contract base path. Omit it to issue a relative request. */
   readonly baseUrl?: string | URL
-  readonly fetch?: typeof fetch
+  readonly fetch?: ClientFetch
   readonly headers?: ClientHeaders
-}
-
-export type ParameterDeclaration = {
-  readonly names: readonly string[]
-  readonly schema: ObjectSchema
-}
-
-export type CompiledClientRoute = {
-  readonly method: string
-  readonly parameters: readonly ParameterDeclaration[]
-  readonly path: string
-  readonly route: Route
-}
-
-export function compileParameterDeclaration(
-  path: string,
-  schema: ObjectSchema | undefined
-): ParameterDeclaration | undefined {
-  const names = pathParamNames(path)
-  if (names.length === 0) return undefined
-  if (schema === undefined) throw new TypeError(`Client route path "${path}" is missing a parameter schema`)
-  return Object.freeze({ names: Object.freeze(names), schema })
 }
 
 function appendBaseUrl(baseUrl: string, path: string): string {
@@ -57,47 +37,6 @@ export function assertClientBaseUrl(baseUrl: string | URL | undefined): void {
 function assignHeaders(target: Headers, source: HeadersInit | undefined): void {
   if (source === undefined) return
   new Headers(source).forEach((value, key) => target.set(key, value))
-}
-
-async function encodeParameters(
-  path: string,
-  declarations: readonly ParameterDeclaration[],
-  value: Readonly<Record<string, unknown>>
-): Promise<string> {
-  const encodedValues: Record<string, string> = {}
-
-  for (const declaration of declarations) {
-    const input: Record<string, unknown> = {}
-    for (const name of declaration.names) input[name] = value[name]
-
-    const encoded = await encodeSchema(declaration.schema, input)
-    if (!isRecord(encoded)) throw new TypeError('Encoded route parameters must be an object')
-
-    for (const name of declaration.names) {
-      const parameter = encoded[name]
-      if (typeof parameter !== 'string') {
-        throw new TypeError(`Route parameter "${name}" must encode to a string`)
-      }
-      encodedValues[name] = parameter
-    }
-  }
-
-  return path
-    .split('/')
-    .map((segment) => (segment.startsWith(':') ? encodeURIComponent(encodedValues[segment.slice(1)] ?? '') : segment))
-    .join('/')
-}
-
-function textWireObject(value: unknown, name: string): TextWireObject {
-  if (!isRecord(value)) throw new TypeError(`Encoded ${name} must be an object`)
-
-  for (const [key, field] of Object.entries(value)) {
-    if (field !== undefined && typeof field !== 'string') {
-      throw new TypeError(`Encoded ${name} field "${key}" must be a string or undefined`)
-    }
-  }
-
-  return value as TextWireObject
 }
 
 function bodyInit(declaration: AnyRequestBody, value: unknown): BodyInit {
@@ -120,38 +59,58 @@ function bodyInit(declaration: AnyRequestBody, value: unknown): BodyInit {
 }
 
 export async function createClientRequest(
-  compiled: CompiledClientRoute,
+  compiled: CompiledContractRoute,
   transport: ClientTransportOptions,
   input: Readonly<Record<string, unknown>>,
   options: ClientRequestOptions
 ): Promise<Request> {
   const route = compiled.route
-  const path =
-    compiled.parameters.length === 0
+  const hasHeaders = 'headers' in route
+  const hasBody = 'body' in route
+  const values = [
+    compiled.pathParameters.length === 0
       ? compiled.path
-      : await encodeParameters(compiled.path, compiled.parameters, input['params'] as Readonly<Record<string, unknown>>)
-  const query = 'query' in route ? await encodeQuery(route.query, input['query'] as never) : undefined
+      : encodePathParameters(
+          compiled.path,
+          compiled.pathParameters,
+          input['params'] as Readonly<Record<string, unknown>>
+        ),
+    'query' in route ? encodeQuery(route.query, input['query'] as never) : undefined,
+    typeof transport.headers === 'function' ? transport.headers() : transport.headers,
+    hasHeaders
+      ? mapSchemaStep(encodeSchemaValue(route.headers, input['headers'] as never, { location: 'headers' }), (encoded) =>
+          textWireObject(encoded, 'headers')
+        )
+      : undefined,
+    hasBody ? encodeRequestBodyValue(route.body, input['body'] as never) : undefined,
+  ] as const satisfies readonly SchemaStep<unknown>[]
+  type ResolvedValues = readonly [
+    path: string,
+    query: URLSearchParams | undefined,
+    configuredHeaders: HeadersInit | undefined,
+    routeHeaders: Readonly<Record<string, string | undefined>> | undefined,
+    body: { readonly body: unknown; readonly contentType: string } | undefined,
+  ]
+  const [path, query, resolvedConfiguredHeaders, encodedRouteHeaders, encodedBody] = (
+    values.some(isSchemaStepAsync) ? await Promise.all(values) : values
+  ) as ResolvedValues
   const queryString = query && query.size > 0 ? `?${query.toString()}` : ''
   const headers = new Headers()
-  const resolvedConfiguredHeaders =
-    typeof transport.headers === 'function' ? await transport.headers() : transport.headers
   assignHeaders(headers, resolvedConfiguredHeaders)
   assignHeaders(headers, options.headers)
 
-  if ('headers' in route) {
-    const encoded = textWireObject(await encodeSchema(route.headers, input['headers'] as never), 'headers')
-    for (const [key, value] of Object.entries(encoded)) {
+  if (encodedRouteHeaders !== undefined) {
+    for (const [key, value] of Object.entries(encodedRouteHeaders)) {
       if (value === undefined) headers.delete(key)
       else headers.set(key, value)
     }
   }
 
   let body: BodyInit | undefined
-  if ('body' in route) {
-    const encoded = await encodeRequestBody(route.body, input['body'] as never)
-    body = bodyInit(route.body, encoded.body)
+  if (hasBody && encodedBody !== undefined) {
+    body = bodyInit(route.body, encodedBody.body)
     if (route.body.representation === 'form-data') headers.delete('content-type')
-    else headers.set('content-type', encoded.contentType)
+    else headers.set('content-type', encodedBody.contentType)
   }
 
   const baseUrl = transport.baseUrl === undefined ? '' : String(transport.baseUrl)

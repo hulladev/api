@@ -476,4 +476,29 @@ describe('defineServer', () => {
     expect(Object.getPrototypeOf(implementation.handlers)).toBe(Object.prototype)
     expect(typeof implementation.handlers['__proto__']).toBe('function')
   })
+
+  test('keeps dotted route keys distinct from equivalent nested keys', () => {
+    const keyedContract = defineContract({
+      routes: {
+        'group.member': route.get('/flat', { responses: { 200: response.text() } }),
+        group: router('/group', {
+          routes: {
+            member: route.get('/member', { responses: { 200: response.text() } }),
+          },
+        }),
+      },
+    })
+    const server = defineServer(keyedContract)
+    const implementation = server.build(
+      server.implement({
+        'group.member': (actions) => actions.respond({ status: 200, body: 'flat' }),
+        group: {
+          member: (actions) => actions.respond({ status: 200, body: 'nested' }),
+        },
+      })
+    )
+
+    expect(implementation.handlers['group.member']).toBeTypeOf('function')
+    expect(implementation.handlers.group.member).toBeTypeOf('function')
+  })
 })

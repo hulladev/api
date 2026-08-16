@@ -67,6 +67,7 @@ describe('query transport', () => {
       name: 'QueryTransportError',
       code: 'duplicate-query-value',
       key: 'search',
+      issues: [{ code: 'duplicate-query-value', location: 'query', path: ['search'] }],
     })
   })
 
@@ -80,6 +81,7 @@ describe('query transport', () => {
       name: 'QueryTransportError',
       code: 'empty-query-array',
       key: 'tags',
+      issues: [{ code: 'empty-query-array', location: 'query', path: ['tags'] }],
     })
   })
 
@@ -95,6 +97,19 @@ describe('query transport', () => {
 
     await expect(decodeQuery(required.query, new URLSearchParams('tags='))).resolves.toEqual({ tags: [''] })
     await expect(decodeQuery(defaulted.query, new URLSearchParams())).resolves.toEqual({ tags: [] })
+  })
+
+  test('annotates Standard Schema failures with the query boundary', async () => {
+    const declaration = route.get('/search', {
+      query: z.object({ search: z.string() }),
+      responses,
+    })
+
+    await expect(decodeQuery(declaration.query, new URLSearchParams())).rejects.toMatchObject({
+      code: 'schema-validation',
+      location: 'query',
+      issues: [{ location: 'query', path: ['search'] }],
+    })
   })
 
   test('rejects Zod unions with mixed scalar and repeated inputs at declaration time', () => {

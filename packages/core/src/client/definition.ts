@@ -1,20 +1,22 @@
+import { compileContract, type CompiledContractRoute } from '../compiler'
 import type { ContextFrom } from '../context'
-import type { Contract, ContractRoutes } from '../contract'
-import { assertMiddleware, assertMiddlewares } from '../middleware'
-import { freezeRecordTree, isRecord, setOwn } from '../object'
-import { joinRoutePaths } from '../paths'
+import type { Contract } from '../contract'
+import { assertMiddleware, assertMiddlewares, dispatchMiddlewares } from '../middleware'
+import { freezeRecordTree, hasOwn, isRecord, setOwn } from '../object'
 import type { Route } from '../route'
-import { isRouter, routerRoutes } from '../router'
 import type { ClientContextInput, ClientContractRouteMetadata } from './context'
-import type { ClientMiddleware, ClientMiddlewareCandidate, ClientMiddlewareNextResult } from './middleware'
+import type {
+  ClientMiddleware,
+  ClientMiddlewareActions,
+  ClientMiddlewareCandidate,
+  ClientMiddlewareInput,
+  ClientMiddlewareNextResult,
+} from './middleware'
 import {
-  compileParameterDeclaration,
-  createClientRequest,
   assertClientBaseUrl,
+  createClientRequest,
   type ClientRequestOptions,
   type ClientTransportOptions,
-  type CompiledClientRoute,
-  type ParameterDeclaration,
 } from './request'
 import { ClientResponseError, decodeClientResponse } from './response'
 import type { ClientDefinition, ClientRoutes, DefineClientOptions } from './types'
@@ -27,7 +29,7 @@ type ContextFactoryShape<ContractType extends Contract> = (
 const emptyContext = Object.freeze({}) as EmptyClientContext
 
 type RuntimeRoute = {
-  readonly compiled: CompiledClientRoute
+  readonly compiled: CompiledContractRoute
   readonly metadata: ClientContractRouteMetadata
 }
 
@@ -58,85 +60,72 @@ async function executeRoute(
   const context =
     contextFactory === undefined ? emptyContext : await contextFactory({ request, route: runtime.metadata })
   if (!isRecord(context)) throw new TypeError('Client context factory must return an object')
-  const middlewareInput = Object.freeze({ context, request, route: runtime.metadata })
   const fetcher = transport.fetch ?? globalThis.fetch
-
-  const dispatch = async (index: number): Promise<ClientMiddlewareNextResult<unknown>> => {
-    const middleware = middlewares[index]
-    if (middleware === undefined) {
-      const response = await fetcher(request)
-      return (await decodeClientResponse(
-        response,
-        selectResponseDefinition(contract, runtime.compiled.route, response)
-      )) as ClientMiddlewareNextResult<unknown>
-    }
-
-    return (await middleware(
-      Object.freeze({ next: () => dispatch(index + 1) }),
-      middlewareInput
+  const fetchAndDecode = async () => {
+    const response = await fetcher(request)
+    return (await decodeClientResponse(
+      response,
+      selectResponseDefinition(contract, runtime.compiled.route, response)
     )) as ClientMiddlewareNextResult<unknown>
   }
 
-  return dispatch(0)
+  if (middlewares.length === 0) return fetchAndDecode()
+
+  const middlewareInput = Object.freeze({ context, request, route: runtime.metadata })
+
+  return dispatchMiddlewares<
+    ClientMiddlewareInput<object, Contract>,
+    ClientMiddlewareNextResult<unknown>,
+    ClientMiddlewareActions<unknown>
+  >(middlewares, middlewareInput, fetchAndDecode, (next) => ({ next }), {
+    invalidMiddleware: () => new TypeError('Client middleware must be a function'),
+    multipleNext: () => new TypeError('Client middleware called next() more than once'),
+  })
 }
 
-function compileRoutes(
-  contract: Contract,
-  routes: ContractRoutes,
-  transport: ClientTransportOptions,
-  contextFactory: ((input: ClientContextInput) => object | PromiseLike<object>) | undefined,
-  middlewares: readonly ClientMiddleware<object, Contract>[],
-  pathPrefix: readonly string[] = [contract.basePath],
-  keyPrefix: readonly string[] = [],
-  parameters: readonly ParameterDeclaration[] = []
-): Readonly<Record<string, unknown>> {
-  const tree: Record<string, unknown> = {}
+function setClientRoute(target: Record<string, unknown>, key: readonly string[], value: unknown): void {
+  let parent = target
 
-  for (const [key, definition] of Object.entries(routes)) {
-    if (isRouter(definition)) {
-      const parameter = compileParameterDeclaration(
-        definition.$meta.path,
-        'params' in definition.$meta ? definition.$meta.params : undefined
-      )
-      setOwn(
-        tree,
-        key,
-        compileRoutes(
-          contract,
-          routerRoutes(definition),
-          transport,
-          contextFactory,
-          middlewares,
-          [...pathPrefix, definition.$meta.path],
-          [...keyPrefix, key],
-          parameter === undefined ? parameters : [...parameters, parameter]
-        )
-      )
+  for (const segment of key.slice(0, -1)) {
+    const existing = hasOwn(parent, segment) ? parent[segment] : undefined
+    if (existing !== undefined) {
+      if (!isRecord(existing)) throw new TypeError(`Compiled client key "${key.join('.')}" collides with a route`)
+      parent = existing as Record<string, unknown>
       continue
     }
 
-    const parameter = compileParameterDeclaration(
-      definition.path,
-      'params' in definition ? definition.params : undefined
-    )
-    const path = joinRoutePaths(...pathPrefix, definition.path)
+    const nested: Record<string, unknown> = {}
+    setOwn(parent, segment, nested)
+    parent = nested
+  }
+
+  const routeKey = key.at(-1)
+  if (routeKey === undefined) throw new TypeError('Compiled client route key must not be empty')
+  setOwn(parent, routeKey, value)
+}
+
+function buildClientRoutes(
+  contract: Contract,
+  transport: ClientTransportOptions,
+  contextFactory: ((input: ClientContextInput) => object | PromiseLike<object>) | undefined,
+  middlewares: readonly ClientMiddleware<object, Contract>[]
+): Readonly<Record<string, unknown>> {
+  const tree: Record<string, unknown> = {}
+
+  for (const compiled of compileContract(contract).routes) {
+    const definition = compiled.route
     const runtime: RuntimeRoute = Object.freeze({
-      compiled: Object.freeze({
-        method: definition.method,
-        parameters: Object.freeze(parameter === undefined ? [...parameters] : [...parameters, parameter]),
-        path,
-        route: definition,
-      }),
+      compiled,
       metadata: Object.freeze({
-        key: Object.freeze([...keyPrefix, key]),
-        method: definition.method,
-        path,
+        key: compiled.key,
+        method: compiled.method,
+        path: compiled.path,
       }) as ClientContractRouteMetadata,
     })
 
-    setOwn(tree, key, (...args: readonly unknown[]) => {
+    setClientRoute(tree, compiled.key, (...args: readonly unknown[]) => {
       const hasInput =
-        runtime.compiled.parameters.length > 0 ||
+        runtime.compiled.pathParameters.length > 0 ||
         'query' in definition ||
         'headers' in definition ||
         'body' in definition
@@ -180,9 +169,8 @@ function createDefinition<ContractType extends Contract, Context extends object>
 
   let builtClient: ClientRoutes<ContractType> | undefined
   const build = (() => {
-    builtClient ??= compileRoutes(
+    builtClient ??= buildClientRoutes(
       contract,
-      contract.routes,
       transport,
       options.context as ((input: ClientContextInput) => object | PromiseLike<object>) | undefined,
       frozenMiddlewares as readonly ClientMiddleware<object, Contract>[]

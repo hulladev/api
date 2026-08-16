@@ -1,7 +1,6 @@
-import type { Contract, ContractRoute } from './contract'
-import type { JoinRoutePaths } from './paths'
-import type { Route, RouteMap } from './route'
-import type { Router } from './router'
+import type { CompiledContractRouteFor } from './compiler'
+import type { Contract } from './contract'
+import type { Route } from './route'
 
 export type Awaitable<Value> = PromiseLike<Value> | Value
 
@@ -15,33 +14,17 @@ export type RouteMetadata<
   readonly path: Path
 }
 
-type StringKey<Value> = Extract<keyof Value, string>
+type MetadataForCompiledRoute<CompiledRoute> = CompiledRoute extends {
+  readonly key: infer Key extends readonly string[]
+  readonly method: infer Method extends Route['method']
+  readonly path: infer Path extends string
+}
+  ? RouteMetadata<Key, Method, Path>
+  : never
 
-type RouterRouteMetadata<
-  BasePath extends string,
-  RouterKey extends string,
-  RouterPath extends string,
-  Routes extends RouteMap,
-> = {
-  readonly [RouteKey in StringKey<Routes>]: Routes[RouteKey] extends Route<infer Method, infer RoutePath>
-    ? RouteMetadata<readonly [RouterKey, RouteKey], Method, JoinRoutePaths<readonly [BasePath, RouterPath, RoutePath]>>
-    : never
-}[StringKey<Routes>]
-
-type MetadataForDefinition<BasePath extends string, Key extends string, Definition extends ContractRoute> =
-  Definition extends Route<infer Method, infer RoutePath>
-    ? RouteMetadata<readonly [Key], Method, JoinRoutePaths<readonly [BasePath, RoutePath]>>
-    : Definition extends Router<infer RouterPath, infer Routes>
-      ? RouterRouteMetadata<BasePath, Key, RouterPath, Routes>
-      : never
-
-export type ContractRouteMetadata<ContractType extends Contract = Contract> = {
-  readonly [Key in StringKey<ContractType['routes']>]: MetadataForDefinition<
-    ContractType['basePath'],
-    Key,
-    ContractType['routes'][Key]
-  >
-}[StringKey<ContractType['routes']>]
+export type ContractRouteMetadata<ContractType extends Contract = Contract> = MetadataForCompiledRoute<
+  CompiledContractRouteFor<ContractType>
+>
 
 export type ContextInput<ContractType extends Contract = Contract> = {
   readonly request: Request

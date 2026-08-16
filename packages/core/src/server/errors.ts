@@ -1,48 +1,77 @@
-import type { SchemaIssue } from '../validation'
+import {
+  annotateAPIErrorIssues,
+  type APIError,
+  type APIErrorIssue,
+  type APIErrorLocation,
+  type ServerImplementationErrorCode,
+  type ServerRuntimeErrorCode,
+} from '../errors'
+import { SchemaValidationError, type SchemaIssue } from '../validation'
 
-export type ServerImplementationErrorCode =
-  | 'duplicate-handler'
-  | 'invalid-fragment'
-  | 'invalid-handler'
-  | 'missing-handler'
-  | 'unknown-handler'
+export type { APIProblem, APIProblemIssue, ServerImplementationErrorCode, ServerRuntimeErrorCode } from '../errors'
+export type ContractLocation = Extract<APIErrorLocation, 'body' | 'headers' | 'params' | 'query' | 'response'>
 
-export type ContractLocation = 'body' | 'headers' | 'params' | 'query' | 'response'
-
-export type ApiProblemIssue = {
-  readonly location: ContractLocation
-  readonly message: string
-  readonly path: readonly (string | number)[]
-}
-
-export type ApiProblem = {
-  readonly type: string
-  readonly title: string
-  readonly status: number
-  readonly code: string
-  readonly issues?: readonly ApiProblemIssue[]
-}
-
-export class ContractError extends Error {
-  readonly location: ContractLocation
-  readonly issues: readonly SchemaIssue[]
+/** A location-annotated schema failure at an HTTP contract boundary. */
+export class ContractError extends SchemaValidationError {
+  declare readonly location: ContractLocation
 
   constructor(location: ContractLocation, issues: readonly SchemaIssue[], options?: ErrorOptions) {
-    super(`Contract validation failed for ${location}`, options)
+    super(issues, { ...options, location })
     this.name = 'ContractError'
     this.location = location
-    this.issues = issues
   }
 }
 
-export class ServerImplementationError extends TypeError {
+export type ServerImplementationIssue = APIErrorIssue & {
+  readonly code: ServerImplementationErrorCode
+  readonly handlerKey?: string
+}
+
+export class ServerImplementationError
+  extends TypeError
+  implements APIError<ServerImplementationErrorCode, ServerImplementationIssue>
+{
   readonly code: ServerImplementationErrorCode
   readonly handlerKeys: readonly string[]
+  readonly issues: readonly ServerImplementationIssue[]
 
   constructor(code: ServerImplementationErrorCode, handlerKeys: readonly string[], message: string) {
     super(message)
     this.name = 'ServerImplementationError'
     this.code = code
     this.handlerKeys = Object.freeze([...handlerKeys])
+    this.issues = annotateAPIErrorIssues(
+      handlerKeys.length === 0
+        ? [{ message }]
+        : handlerKeys.map((handlerKey) => ({ message, handlerKey, path: [handlerKey] })),
+      { code }
+    ) as readonly ServerImplementationIssue[]
+  }
+}
+
+export type ServerRuntimeIssue = APIErrorIssue & {
+  readonly code: ServerRuntimeErrorCode
+}
+
+/** A structured failure raised while executing the Fetch server runtime. */
+export class ServerRuntimeError extends TypeError implements APIError<ServerRuntimeErrorCode, ServerRuntimeIssue> {
+  readonly code: ServerRuntimeErrorCode
+  readonly issues: readonly ServerRuntimeIssue[]
+  readonly status: number
+
+  constructor(
+    code: ServerRuntimeErrorCode,
+    status: number,
+    message: string,
+    options: ErrorOptions & { readonly location?: APIErrorLocation } = {}
+  ) {
+    super(message, options)
+    this.name = 'ServerRuntimeError'
+    this.code = code
+    this.status = status
+    this.issues = annotateAPIErrorIssues([{ message }], {
+      code,
+      ...(options.location === undefined ? {} : { location: options.location }),
+    }) as readonly ServerRuntimeIssue[]
   }
 }

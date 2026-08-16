@@ -13,9 +13,14 @@ export type {
   ClientMiddlewareInput,
   ClientMiddlewareNextResult,
 } from './middleware'
-export type { ClientHeaders, ClientRequestOptions, ClientTransportOptions } from './request'
+export type { ClientFetch, ClientHeaders, ClientRequestOptions, ClientTransportOptions } from './request'
 export { ClientResponseError } from './response'
-export type { ClientResponseErrorCode, ClientResponseResult, ClientResponseResultFor } from './response'
+export type {
+  ClientResponseErrorCode,
+  ClientResponseIssue,
+  ClientResponseResult,
+  ClientResponseResultFor,
+} from './response'
 export type {
   Client,
   ClientDefinition,

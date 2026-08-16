@@ -149,6 +149,20 @@ describe('defineClient', () => {
     expect(() => use(() => undefined, 'invalid')).toThrowError('Client middleware must be a function')
   })
 
+  test('rejects middleware that calls next more than once', async () => {
+    const fetcher = vi.fn(async () => new Response('ok', { headers: { 'content-type': 'text/plain' } }))
+    const base = defineClient(contract, { baseUrl: 'https://api.example.com', fetch: fetcher })
+    const duplicate = base.middleware(async (actions) => {
+      await actions.next()
+      return actions.next()
+    })
+
+    await expect(base.use(duplicate).build().health()).rejects.toThrowError(
+      'Client middleware called next() more than once'
+    )
+    expect(fetcher).toHaveBeenCalledOnce()
+  })
+
   test('rejects invalid context factory results at the JavaScript boundary', async () => {
     const client = defineClient(contract, {
       baseUrl: 'https://api.example.com',
@@ -276,6 +290,20 @@ describe('defineClient', () => {
 
     await expect(client.health()).rejects.toMatchObject({
       code: 'content-type-mismatch',
+      issues: [{ code: 'content-type-mismatch', location: 'response' }],
+    })
+  })
+
+  test('locates response schema failures without replacing validator issue codes', async () => {
+    const client = defineClient(contract, {
+      baseUrl: 'https://api.example.com',
+      fetch: async () => new Response('unhealthy', { headers: { 'content-type': 'text/plain' } }),
+    }).build()
+
+    await expect(client.health()).rejects.toMatchObject({
+      code: 'schema-validation',
+      location: 'response',
+      issues: [{ code: 'invalid_value', location: 'response' }],
     })
   })
 

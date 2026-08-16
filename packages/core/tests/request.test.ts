@@ -60,6 +60,11 @@ describe('request declarations', () => {
     await expect(
       decodeRequestBody(body, { createdAt: '2026-08-06T10:00:00.000Z' }, 'application/json; charset=utf-8')
     ).resolves.toEqual(application)
+    await expect(decodeRequestBody(body, { createdAt: 'invalid' }, 'application/json')).rejects.toMatchObject({
+      code: 'schema-validation',
+      location: 'body',
+      issues: [{ location: 'body', path: ['createdAt'] }],
+    })
     await expect(decodeRequestBody(body, {}, 'text/plain')).rejects.toThrow('Expected request content type')
   })
 

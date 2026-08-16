@@ -1,7 +1,10 @@
+import { annotateAPIErrorIssues, type APIError, type APIErrorIssue, type ClientResponseErrorCode } from '../errors'
 import { mimeEssence } from '../request'
 import type { AnyRouteResponse, ResponseBodyValue, ResponseHeaders, RouteResponses } from '../response'
 import type { StreamFormat } from '../stream'
-import { decodeSchema, type AnySchema, type SchemaOutput } from '../validation'
+import { decodeSchemaValue, type AnySchema, type SchemaOutput } from '../validation'
+
+export type { ClientResponseErrorCode } from '../errors'
 
 type ClientResponseBodyFields<ResponseDefinition extends AnyRouteResponse> = ResponseDefinition['body'] extends {
   readonly kind: 'empty'
@@ -23,16 +26,24 @@ export type ClientResponseResult<Responses extends RouteResponses> = {
   readonly [Status in Extract<keyof Responses, number>]: ClientResponseResultFor<Status, Responses[Status]>
 }[Extract<keyof Responses, number>]
 
-export type ClientResponseErrorCode = 'content-type-mismatch' | 'missing-body' | 'unexpected-status'
-
-export class ClientResponseError extends Error {
+export type ClientResponseIssue = APIErrorIssue & {
+  readonly location: 'response'
   readonly code: ClientResponseErrorCode
+}
+
+export class ClientResponseError extends Error implements APIError<ClientResponseErrorCode, ClientResponseIssue> {
+  readonly code: ClientResponseErrorCode
+  readonly issues: readonly ClientResponseIssue[]
   readonly response: Response
 
-  constructor(code: ClientResponseErrorCode, response: Response, message: string) {
-    super(message)
+  constructor(code: ClientResponseErrorCode, response: Response, message: string, options?: ErrorOptions) {
+    super(message, options)
     this.name = 'ClientResponseError'
     this.code = code
+    this.issues = annotateAPIErrorIssues([{ message }], {
+      code,
+      location: 'response',
+    }) as readonly ClientResponseIssue[]
     this.response = response
   }
 }
@@ -66,7 +77,7 @@ function responseBytes(response: Response): AsyncIterable<Uint8Array> {
 function decodedStream(response: Response, definition: DecodableStreamDefinition): AsyncIterable<unknown> {
   async function* decode(): AsyncIterable<unknown> {
     for await (const value of definition.format.decode(responseBytes(response))) {
-      yield decodeSchema(definition.schema, value)
+      yield await decodeSchemaValue(definition.schema, value, { location: 'response' })
     }
   }
 
@@ -95,13 +106,13 @@ async function decodeResponseBody(response: Response, definition: AnyRouteRespon
     case 'raw':
       return response
     case 'json':
-      return decodeSchema(body.schema, await response.json())
+      return decodeSchemaValue(body.schema, await response.json(), { location: 'response' })
     case 'text':
-      return decodeSchema(body.schema, await response.text())
+      return decodeSchemaValue(body.schema, await response.text(), { location: 'response' })
     case 'bytes':
-      return decodeSchema(body.schema, new Uint8Array(await response.arrayBuffer()))
+      return decodeSchemaValue(body.schema, new Uint8Array(await response.arrayBuffer()), { location: 'response' })
     case 'form-data':
-      return decodeSchema(body.schema, await response.formData())
+      return decodeSchemaValue(body.schema, await response.formData(), { location: 'response' })
     case 'stream':
       return 'schema' in body
         ? decodedStream(response, {
@@ -114,17 +125,22 @@ async function decodeResponseBody(response: Response, definition: AnyRouteRespon
 
 async function decodeResponseHeaders(response: Response, schema: ResponseHeaders | undefined): Promise<unknown> {
   if (schema === undefined) return response.headers
-  return decodeSchema(schema, Object.fromEntries(response.headers.entries()))
+  return decodeSchemaValue(schema, Object.fromEntries(response.headers.entries()), { location: 'headers' })
 }
 
 export async function decodeClientResponse(response: Response, definition: AnyRouteResponse): Promise<unknown> {
   assertContentType(response, definition)
-  const headers = await decodeResponseHeaders(response, definition.headers)
-  const body = await decodeResponseBody(response, definition)
+  const [headers, body] =
+    definition.headers === undefined
+      ? [response.headers, await decodeResponseBody(response, definition)]
+      : await Promise.all([
+          decodeResponseHeaders(response, definition.headers),
+          decodeResponseBody(response, definition),
+        ])
 
-  return Object.freeze({
+  return {
     status: response.status,
     headers,
     ...(definition.body.kind === 'empty' ? {} : { body }),
-  })
+  }
 }

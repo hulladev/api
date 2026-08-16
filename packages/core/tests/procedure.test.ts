@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { defineProcedures, procedure } from '../src/procedure'
 import { response, type RouteResponseBody } from '../src/response'
 import { route } from '../src/route'
+import { validation } from '../src/validation'
 import { routeInput, routeOutput } from '../src/zod'
 
 const dateTime = z.codec(z.iso.datetime(), z.date(), {
@@ -23,7 +24,7 @@ const createUserRoute = route.post('/users', {
 })
 
 describe('procedure', () => {
-  test('creates one-off callable procedures from schemas derived from a route', async () => {
+  test('creates synchronous one-off callable procedures from schemas derived from a route', () => {
     const createUser = procedure
       .input(routeInput(createUserRoute))
       .output(routeOutput(createUserRoute, 201))
@@ -44,7 +45,7 @@ describe('procedure', () => {
         },
       ]
     >()
-    expectTypeOf<Awaited<ReturnType<typeof createUser>>>().toEqualTypeOf<{
+    expectTypeOf<ReturnType<typeof createUser>>().toEqualTypeOf<{
       id: string
       createdAt: Date
     }>()
@@ -52,7 +53,7 @@ describe('procedure', () => {
       id: string
       createdAt: Date
     }>()
-    await expect(createUser({ body: { createdAt } })).resolves.toEqual({ id: 'user-1', createdAt })
+    expect(createUser({ body: { createdAt } })).toEqual({ id: 'user-1', createdAt })
     expect('$meta' in createUser).toBe(false)
     expect(Object.getOwnPropertySymbols(createUser)).toEqual([])
 
@@ -64,18 +65,57 @@ describe('procedure', () => {
     }
     expectTypeOf(rejectHttpDescriptorsAtCompileTime).toBeFunction()
 
-    await expect(
-      (createUser as (input: unknown) => Promise<unknown>)({ body: { createdAt: 'invalid' } })
-    ).rejects.toThrow()
+    let validationError: unknown
+    try {
+      ;(createUser as unknown as (input: unknown) => unknown)({ body: { createdAt: 'invalid' } })
+    } catch (error) {
+      validationError = error
+    }
+    expect(validationError).toMatchObject({
+      code: 'schema-validation',
+      location: 'input',
+      issues: [{ location: 'input' }],
+    })
   })
 
-  test('supports inferred outputs when no output descriptor is declared', async () => {
+  test('supports inferred synchronous outputs when no output descriptor is declared', () => {
     const displayName = procedure.input(z.object({ first: z.string(), last: z.string() })).handler(({ input }) => {
       return `${input.first} ${input.last}`
     })
 
-    expectTypeOf<Awaited<ReturnType<typeof displayName>>>().toEqualTypeOf<string>()
-    await expect(displayName({ first: 'Samuel', last: 'Hulla' })).resolves.toBe('Samuel Hulla')
+    expectTypeOf<ReturnType<typeof displayName>>().toEqualTypeOf<string>()
+    expect(displayName({ first: 'Samuel', last: 'Hulla' })).toBe('Samuel Hulla')
+  })
+
+  test('exposes exact asynchronous types for async handlers, contexts, and validators', async () => {
+    const asyncHandler = procedure.handler(async () => 'handler')
+    expectTypeOf<ReturnType<typeof asyncHandler>>().toEqualTypeOf<Promise<string>>()
+    await expect(asyncHandler()).resolves.toBe('handler')
+
+    const withAsyncContext = defineProcedures({ context: async () => ({ prefix: 'async' }) }).handler(
+      ({ context }) => context.prefix
+    )
+    expectTypeOf<ReturnType<typeof withAsyncContext>>().toEqualTypeOf<Promise<string>>()
+    await expect(withAsyncContext()).resolves.toBe('async')
+
+    const asyncString = validation.async(
+      z.string().refine(async (value) => value.length > 0, { message: 'Expected a non-empty string' })
+    )
+    const withAsyncValidation = procedure
+      .input(asyncString)
+      .output(asyncString)
+      .handler(({ input }) => input)
+    expectTypeOf<ReturnType<typeof withAsyncValidation>>().toEqualTypeOf<Promise<string>>()
+    await expect(withAsyncValidation('value')).resolves.toBe('value')
+  })
+
+  test('keeps synchronous context factories synchronous', () => {
+    const withContext = defineProcedures({ context: () => ({ prefix: 'sync' }) }).handler(
+      ({ context }) => context.prefix
+    )
+
+    expectTypeOf<ReturnType<typeof withContext>>().toEqualTypeOf<string>()
+    expect(withContext()).toBe('sync')
   })
 
   test('builds nested callable trees with structural identities', async () => {
@@ -123,6 +163,21 @@ describe('procedure', () => {
     await expect(read({ id: 'user-1' })).resolves.toBe('user-1')
   })
 
+  test('rejects middleware that calls next more than once', async () => {
+    let handlerCalls = 0
+    const duplicate = procedure.middleware(async (actions) => {
+      await actions.next()
+      return actions.next()
+    })
+    const operation = procedure.use(duplicate).handler(() => {
+      handlerCalls += 1
+      return 'ok'
+    })
+
+    await expect(operation()).rejects.toThrowError('Procedure middleware called next() more than once')
+    expect(handlerCalls).toBe(1)
+  })
+
   test('rejects foreign, duplicate, cyclic, and malformed tree members', () => {
     const first = defineProcedures()
     const second = defineProcedures()
@@ -144,7 +199,7 @@ describe('procedure', () => {
     expect(() => first.build(cyclic as never)).toThrowError('Procedure tree "nested" is already registered at "<root>"')
   })
 
-  test('preserves prototype-like structural keys safely', async () => {
+  test('preserves prototype-like structural keys safely', () => {
     const base = defineProcedures()
     const operation = base.handler(() => 'safe')
     const api = base.build({ ['__proto__']: { ['constructor']: operation } })
@@ -153,7 +208,7 @@ describe('procedure', () => {
     expect(Object.keys(api.__proto__)).toEqual(['constructor'])
     expect(Object.getPrototypeOf(api)).toBe(Object.prototype)
     expect(api.__proto__.constructor.$meta.key).toEqual(['__proto__', 'constructor'])
-    await expect(api.__proto__.constructor()).resolves.toBe('safe')
+    expect(api.__proto__.constructor()).toBe('safe')
   })
 
   test('rejects invalid JavaScript authoring values', () => {

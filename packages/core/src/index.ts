@@ -5,6 +5,7 @@ export type {
   ClientContextInput,
   ClientContractRouteMetadata,
   ClientDefinition,
+  ClientFetch,
   ClientHeaders,
   ClientMiddleware,
   ClientMiddlewareActions,
@@ -14,6 +15,7 @@ export type {
   ClientRouteCall,
   ClientRequestOptions,
   ClientResponseErrorCode,
+  ClientResponseIssue,
   ClientResponseResult,
   ClientResponseResultFor,
   ClientRouteInput,
@@ -23,9 +25,33 @@ export type {
   ClientTransportOptions,
   DefineClientOptions,
 } from './client/index'
+export { compileContract } from './compiler'
+export type {
+  CompiledContract,
+  CompiledContractRoute,
+  CompiledContractRouteFor,
+  CompiledPathParameters,
+} from './compiler'
 export { defineContract } from './contract'
 export type { Contract, ContractOptions, ContractRoute, ContractRoutes } from './contract'
+export { annotateAPIErrorIssues, isAPIError, toAPIProblem } from './errors'
+export type {
+  APIError,
+  APIErrorCode,
+  APIErrorIssue,
+  APIErrorIssueAnnotations,
+  APIErrorLocation,
+  APIProblem,
+  APIProblemIssue,
+  APIProblemOptions,
+  QueryTransportErrorCode,
+  SchemaValidationErrorCode,
+  ServerImplementationErrorCode,
+  ServerRuntimeErrorCode,
+} from './errors'
 export type { HttpMethod } from './http'
+export { validation } from './validation'
+export type { AsyncSchema } from './validation'
 export { request } from './request'
 export type {
   AnyRequestBody,

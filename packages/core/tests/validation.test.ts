@@ -3,12 +3,15 @@ import * as v from 'valibot'
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
 import {
+  asyncSchema,
   codec,
   decodeSchema,
   defineSchema,
   encodeSchema,
   isSchema,
   SchemaValidationError,
+  validation,
+  type AsyncSchema,
   type SchemaInput,
   type SchemaOutput,
 } from '../src/validation'
@@ -28,6 +31,24 @@ function transformSchema<Input, Output>(
 }
 
 describe('Standard Schema validation', () => {
+  test('marks asynchronous schemas without mutating validator-owned objects', async () => {
+    const schema: StandardSchemaV1<string> = {
+      '~standard': {
+        version: 1,
+        vendor: 'async-test',
+        validate: async (value) =>
+          typeof value === 'string' ? { value } : { issues: [{ message: 'Expected a string' }] },
+      },
+    }
+    const marked = validation.async(schema)
+
+    expect(marked).not.toBe(schema)
+    expect(Object.keys(marked)).toEqual(['~standard'])
+    expect(asyncSchema(marked)).toBe(marked)
+    await expect(decodeSchema(marked, 'hello')).resolves.toBe('hello')
+    expectTypeOf(marked).toEqualTypeOf<AsyncSchema<typeof schema>>()
+  })
+
   test('recognizes schemas structurally', () => {
     const local = defineSchema({
       name: 'a string',
@@ -149,5 +170,15 @@ describe('Standard Schema validation', () => {
 
     await expect(decodeSchema(upperCase, 'hello')).resolves.toBe('HELLO')
     await expect(encodeSchema(upperCase, 'hello')).resolves.toBe('HELLO')
+  })
+
+  test('adds optional boundary locations without replacing validator issue metadata', async () => {
+    const schema = z.object({ id: z.string() })
+
+    await expect(decodeSchema(schema, { id: 1 }, { location: 'response' })).rejects.toMatchObject({
+      code: 'schema-validation',
+      location: 'response',
+      issues: [{ code: 'invalid_type', location: 'response', path: ['id'] }],
+    })
   })
 })

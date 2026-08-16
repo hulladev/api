@@ -1,8 +1,8 @@
+import { compileContract, type CompiledContractRoute } from '../compiler'
 import type { ContextFrom } from '../context'
-import type { Contract, ContractRoutes } from '../contract'
+import type { Contract } from '../contract'
 import { assertMiddleware, assertMiddlewares } from '../middleware'
 import { freezeRecordTree, hasOwn, isRecord, setOwn } from '../object'
-import { isRouter, routerRoutes } from '../router'
 import type { ServerContextInput } from './context'
 import { ServerImplementationError } from './errors'
 import type { ServerMiddleware, ServerMiddlewareCandidate, ServerMiddlewareErrorStatuses } from './middleware'
@@ -20,35 +20,60 @@ type FragmentMetadata = {
 
 const fragmentMetadata = new WeakMap<object, FragmentMetadata>()
 
-function qualifiedKey(prefix: string, key: string): string {
-  return prefix === '' ? key : `${prefix}.${key}`
+type RouteTopology = {
+  readonly branches: ReadonlySet<string>
+  readonly routes: readonly CompiledContractRoute[]
+  readonly routeKeys: ReadonlySet<string>
 }
 
-function copyFragmentTree(routes: ContractRoutes, handlers: unknown, prefix = ''): Readonly<Record<string, unknown>> {
+function keyId(key: readonly string[]): string {
+  return JSON.stringify(key)
+}
+
+function displayKey(key: readonly string[]): string {
+  return key.join('.')
+}
+
+function createRouteTopology(contract: Contract): RouteTopology {
+  const routes = compileContract(contract).routes as readonly CompiledContractRoute[]
+  const routeKeys = new Set<string>()
+  const branches = new Set<string>()
+
+  for (const route of routes) {
+    routeKeys.add(keyId(route.key))
+    for (let length = 1; length < route.key.length; length++) branches.add(keyId(route.key.slice(0, length)))
+  }
+
+  return Object.freeze({ routes, routeKeys, branches })
+}
+
+function copyFragmentTree(
+  topology: RouteTopology,
+  handlers: unknown,
+  prefix: readonly string[] = []
+): Readonly<Record<string, unknown>> {
+  const location = displayKey(prefix)
   if (!isRecord(handlers)) {
     throw new ServerImplementationError(
       'invalid-fragment',
-      prefix === '' ? [] : [prefix],
-      prefix === '' ? 'Server handler fragment must be an object' : `Handlers for "${prefix}" must be an object`
+      location === '' ? [] : [location],
+      location === '' ? 'Server handler fragment must be an object' : `Handlers for "${location}" must be an object`
     )
   }
 
   const copy: Record<string, unknown> = {}
 
   for (const [key, handler] of Object.entries(handlers)) {
-    const fullKey = qualifiedKey(prefix, key)
+    const fullKey = [...prefix, key]
+    const id = keyId(fullKey)
+    const displayed = displayKey(fullKey)
 
-    if (!hasOwn(routes, key)) {
-      throw new ServerImplementationError('unknown-handler', [fullKey], `Unknown server handler "${fullKey}"`)
-    }
-    const definition = routes[key]!
-
-    if (!isRouter(definition)) {
+    if (topology.routeKeys.has(id)) {
       if (typeof handler !== 'function') {
         throw new ServerImplementationError(
           'invalid-handler',
-          [fullKey],
-          `Server handler "${fullKey}" must be a function`
+          [displayed],
+          `Server handler "${displayed}" must be a function`
         )
       }
 
@@ -56,68 +81,64 @@ function copyFragmentTree(routes: ContractRoutes, handlers: unknown, prefix = ''
       continue
     }
 
-    setOwn(copy, key, copyFragmentTree(routerRoutes(definition), handler, fullKey))
+    if (!topology.branches.has(id)) {
+      throw new ServerImplementationError('unknown-handler', [displayed], `Unknown server handler "${displayed}"`)
+    }
+
+    setOwn(copy, key, copyFragmentTree(topology, handler, fullKey))
   }
 
   return Object.freeze(copy)
 }
 
-function routeKeys(routes: ContractRoutes, prefix = ''): readonly string[] {
-  const keys: string[] = []
-
-  for (const [key, definition] of Object.entries(routes)) {
-    const fullKey = qualifiedKey(prefix, key)
-
-    if (!isRouter(definition)) keys.push(fullKey)
-    else keys.push(...routeKeys(routerRoutes(definition), fullKey))
+function setTreeValue(target: Record<string, unknown>, key: readonly string[], value: unknown): void {
+  let parent = target
+  for (const segment of key.slice(0, -1)) {
+    const existing = hasOwn(parent, segment) ? parent[segment] : undefined
+    if (existing !== undefined && !isRecord(existing)) {
+      throw new TypeError(`Server implementation key "${displayKey(key)}" collides with a route`)
+    }
+    const nested = (existing ?? {}) as Record<string, unknown>
+    if (existing === undefined) setOwn(parent, segment, nested)
+    parent = nested
   }
 
-  return keys
+  const leaf = key.at(-1)
+  if (leaf === undefined) throw new TypeError('Server implementation route key must not be empty')
+  setOwn(parent, leaf, value)
 }
 
 function mergeFragmentTree(
-  routes: ContractRoutes,
   target: Record<string, unknown>,
   middlewareTarget: Record<string, unknown>,
   fragment: Readonly<Record<string, unknown>>,
   middlewares: readonly ServerMiddleware<object, Contract>[],
   seen: Set<string>,
-  prefix = ''
+  prefix: readonly string[] = []
 ): void {
   for (const [key, handler] of Object.entries(fragment)) {
-    const fullKey = qualifiedKey(prefix, key)
+    const fullKey = [...prefix, key]
 
-    if (!hasOwn(routes, key)) {
-      throw new ServerImplementationError('unknown-handler', [fullKey], `Unknown server handler "${fullKey}"`)
-    }
-    const definition = routes[key]!
-
-    if (!isRouter(definition)) {
-      if (seen.has(fullKey)) {
+    if (typeof handler === 'function') {
+      const id = keyId(fullKey)
+      const displayed = displayKey(fullKey)
+      if (seen.has(id)) {
         throw new ServerImplementationError(
           'duplicate-handler',
-          [fullKey],
-          `Server handler "${fullKey}" is implemented more than once`
+          [displayed],
+          `Server handler "${displayed}" is implemented more than once`
         )
       }
 
-      seen.add(fullKey)
-      setOwn(target, key, handler)
-      setOwn(middlewareTarget, key, middlewares)
+      seen.add(id)
+      setTreeValue(target, fullKey, handler)
+      setTreeValue(middlewareTarget, fullKey, middlewares)
       continue
     }
 
-    const nestedTarget = hasOwn(target, key) && isRecord(target[key]) ? (target[key] as Record<string, unknown>) : {}
-    const nestedMiddlewareTarget =
-      hasOwn(middlewareTarget, key) && isRecord(middlewareTarget[key])
-        ? (middlewareTarget[key] as Record<string, unknown>)
-        : {}
-    setOwn(target, key, nestedTarget)
-    setOwn(middlewareTarget, key, nestedMiddlewareTarget)
     mergeFragmentTree(
-      routerRoutes(definition),
-      nestedTarget,
-      nestedMiddlewareTarget,
+      target,
+      middlewareTarget,
       handler as Readonly<Record<string, unknown>>,
       middlewares,
       seen,
@@ -134,7 +155,8 @@ function createDefinition<
   contract: ContractType,
   options: DefineServerOptions<Context, ContractType>,
   middlewares: readonly ServerMiddleware<Context, ContractType>[] = [],
-  owner: object = Object.freeze({})
+  owner: object = Object.freeze({}),
+  topology: RouteTopology = createRouteTopology(contract)
 ): ServerDefinition<ContractType, Context, MiddlewareStatuses> {
   const frozenMiddlewares = Object.freeze([...middlewares])
 
@@ -156,12 +178,13 @@ function createDefinition<
       contract,
       options,
       [...frozenMiddlewares, ...(applied as readonly ServerMiddleware<Context, ContractType>[])],
-      owner
+      owner,
+      topology
     )
   }) as ServerDefinition<ContractType, Context, MiddlewareStatuses>['use']
 
   const implement = ((fragment: object) => {
-    const value = copyFragmentTree(contract.routes, fragment)
+    const value = copyFragmentTree(topology, fragment)
     fragmentMetadata.set(value, {
       owner,
       middlewares: frozenMiddlewares as readonly ServerMiddleware<object, Contract>[],
@@ -186,7 +209,6 @@ function createDefinition<
       }
 
       mergeFragmentTree(
-        contract.routes,
         merged,
         mergedMiddlewares,
         fragment as Readonly<Record<string, unknown>>,
@@ -195,7 +217,7 @@ function createDefinition<
       )
     }
 
-    const missing = routeKeys(contract.routes).filter((key) => !seen.has(key))
+    const missing = topology.routes.filter((route) => !seen.has(keyId(route.key))).map((route) => displayKey(route.key))
     if (missing.length > 0) {
       throw new ServerImplementationError(
         'missing-handler',
