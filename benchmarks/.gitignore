@@ -1,0 +1,4 @@
+results/*.md
+results/*.json
+node-runner.mjs
+.size-output/

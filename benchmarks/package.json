@@ -1,15 +1,17 @@
 {
   "name": "@hulla/api-benchmarks",
-  "version": "0.0.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "bench": "bun fetch-roundtrip.ts",
+    "bench": "bun package-size.ts && bun fetch-roundtrip.ts",
+    "bench:node": "bun package-size.ts && bun build fetch-roundtrip.ts --target=node --packages=external --outfile=node-runner.mjs && node node-runner.mjs",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@hono/zod-validator": "^0.9.0",
     "@hulla/api": "workspace:*",
+    "@hulla/api-zod": "workspace:*",
     "@orpc/client": "^1.15.0",
     "@orpc/server": "^1.15.0",
     "@trpc/client": "^11.18.0",

@@ -1,11 +1,21 @@
 import { readFile } from 'node:fs/promises'
-import { directFetchBenchmark } from './direct-fetch'
-import { benchmarkOptions, printResults, runBenchmarks, type Benchmark } from './harness'
-import { honoBenchmark } from './hono'
-import { hullaBenchmark } from './hulla'
-import { orpcBenchmark } from './orpc'
-import { trpcBenchmark } from './trpc'
-import { tsRestBenchmark } from './ts-rest'
+import { coldStartBenchmarks } from './cold-start'
+import { directFetchBenchmarks, directFetchNativeBenchmarks } from './direct-fetch'
+import {
+  benchmarkOptions,
+  printPackageSizes,
+  printResults,
+  runBenchmarks,
+  writeBenchmarkReport,
+  type Benchmark,
+  type PackageSizeResult,
+} from './harness'
+import { honoBenchmarks, honoNativeBenchmarks } from './hono'
+import { hullaApiBenchmarks, hullaApiNativeBenchmarks } from './hulla-api'
+import { hullaApiBreakdownBenchmarks } from './hulla-api-breakdown'
+import { orpcBenchmarks, orpcNativeBenchmarks } from './orpc'
+import { trpcBenchmarks, trpcNativeBenchmarks } from './trpc'
+import { tsRestBenchmarks, tsRestNativeBenchmarks } from './ts-rest'
 
 async function packageVersion(path: string): Promise<string> {
   const contents = JSON.parse(await readFile(new URL(path, import.meta.url), 'utf8')) as { version?: unknown }
@@ -13,19 +23,46 @@ async function packageVersion(path: string): Promise<string> {
   return contents.version
 }
 
-async function versioned(benchmark: Benchmark, packagePath: string): Promise<Benchmark> {
-  return { ...benchmark, name: `${benchmark.name} ${await packageVersion(packagePath)}` }
+const options = benchmarkOptions()
+const versions = new Map([
+  ['@hulla/api', await packageVersion('./node_modules/@hulla/api/package.json')],
+  ['tRPC', await packageVersion('./node_modules/@trpc/server/package.json')],
+  ['oRPC', await packageVersion('./node_modules/@orpc/server/package.json')],
+  ['ts-rest', await packageVersion('./node_modules/@ts-rest/core/package.json')],
+  ['Hono RPC', await packageVersion('./node_modules/hono/package.json')],
+])
+
+function versionedRuntime(runtime: string): string {
+  const runtimeName = [...versions.keys()].find((name) => runtime.startsWith(name))
+  const version = runtimeName === undefined ? undefined : versions.get(runtimeName)
+  if (runtimeName === undefined || version === undefined) return runtime
+  const suffix = runtime.slice(runtimeName.length).trim()
+  return suffix === '' ? `${runtimeName} ${version}` : `${runtimeName} ${version} - ${suffix}`
 }
 
-const options = benchmarkOptions()
-const benchmarks = [
-  directFetchBenchmark,
-  await versioned(hullaBenchmark, './node_modules/@hulla/api/package.json'),
-  await versioned(trpcBenchmark, './node_modules/@trpc/server/package.json'),
-  await versioned(orpcBenchmark, './node_modules/@orpc/server/package.json'),
-  await versioned(tsRestBenchmark, './node_modules/@ts-rest/core/package.json'),
-  await versioned(honoBenchmark, './node_modules/hono/package.json'),
-]
+const packageSizes = (
+  JSON.parse(await readFile(new URL('./results/package-size.json', import.meta.url), 'utf8')) as PackageSizeResult[]
+).map((result) => ({ ...result, runtime: versionedRuntime(result.runtime) }))
+const benchmarks: readonly Benchmark[] = [
+  ...directFetchNativeBenchmarks,
+  ...hullaApiNativeBenchmarks,
+  ...trpcNativeBenchmarks,
+  ...orpcNativeBenchmarks,
+  ...tsRestNativeBenchmarks,
+  ...honoNativeBenchmarks,
+  ...directFetchBenchmarks,
+  ...hullaApiBenchmarks,
+  ...trpcBenchmarks,
+  ...orpcBenchmarks,
+  ...tsRestBenchmarks,
+  ...honoBenchmarks,
+  ...coldStartBenchmarks,
+  ...hullaApiBreakdownBenchmarks,
+].map((benchmark) => ({ ...benchmark, runtime: versionedRuntime(benchmark.runtime) }))
 const results = await runBenchmarks(benchmarks, options)
 
 printResults(results, options)
+printPackageSizes(packageSizes)
+const reportPath = process.env['BENCH_REPORT'] ?? new URL('./results/latest.md', import.meta.url).pathname
+await writeBenchmarkReport(results, packageSizes, options, reportPath)
+console.log(`\nDetailed report: ${reportPath}`)
