@@ -5,6 +5,7 @@ import { z } from 'zod'
 import {
   asyncSchema,
   codec,
+  compileSchemaExecution,
   decodeSchema,
   defineSchema,
   encodeSchema,
@@ -15,6 +16,7 @@ import {
   type SchemaInput,
   type SchemaOutput,
 } from '../src/validation'
+import { zodCodecFixture } from './zod-fixture'
 
 function transformSchema<Input, Output>(
   transform: (value: Input) => Output,
@@ -30,7 +32,54 @@ function transformSchema<Input, Output>(
   }
 }
 
+const zodIdentity = z.object({ id: z.string(), active: z.boolean() })
+const valibotIdentity = v.object({ id: v.string(), active: v.boolean() })
+const identitySchemas = [
+  { name: 'Zod', schema: zodIdentity },
+  { name: 'Valibot', schema: valibotIdentity },
+] as const
+
+const zodDateCodec = zodCodecFixture(
+  z.object({
+    createdAt: z.codec(z.iso.datetime(), z.date(), {
+      decode: (value) => new Date(value),
+      encode: (value) => value.toISOString(),
+    }),
+  })
+)
+const valibotDateCodec = codec({
+  decode: v.object({
+    createdAt: v.pipe(
+      v.string(),
+      v.isoTimestamp(),
+      v.transform((value) => new Date(value))
+    ),
+  }),
+  encode: v.object({
+    createdAt: v.pipe(
+      v.date(),
+      v.transform((value) => value.toISOString())
+    ),
+  }),
+})
+const directionalSchemas = [
+  { name: 'Zod', schema: zodDateCodec },
+  { name: 'Valibot', schema: valibotDateCodec },
+] as const
+
 describe('Standard Schema validation', () => {
+  test.each([
+    { name: 'Zod', schema: z.string() },
+    { name: 'Valibot', schema: v.string() },
+  ])('caches compiled $name schema execution by schema and boundary', ({ schema }) => {
+    const body = compileSchemaExecution(schema, { location: 'body' })
+
+    expect(compileSchemaExecution(schema, { location: 'body' })).toBe(body)
+    expect(compileSchemaExecution(schema, { location: 'response' })).not.toBe(body)
+    expect(body.decode('value')).toBe('value')
+    expect(body.encode('value')).toBe('value')
+  })
+
   test('marks asynchronous schemas without mutating validator-owned objects', async () => {
     const schema: StandardSchemaV1<string> = {
       '~standard': {
@@ -57,6 +106,7 @@ describe('Standard Schema validation', () => {
 
     expect(isSchema(local)).toBe(true)
     expect(isSchema(z.string())).toBe(true)
+    expect(isSchema(v.string())).toBe(true)
     expect(isSchema({ '~standard': { version: 2, vendor: 'future', validate: () => ({ value: true }) } })).toBe(false)
     expect(isSchema({})).toBe(false)
   })
@@ -99,66 +149,36 @@ describe('Standard Schema validation', () => {
     expectTypeOf<SchemaOutput<typeof numberString>>().toEqualTypeOf<number>()
   })
 
-  test('uses public Zod instance methods for codecs without a Zod adapter', async () => {
-    const schema = z.object({
-      createdAt: z.codec(z.iso.datetime(), z.date(), {
-        decode: (value) => new Date(value),
-        encode: (value) => value.toISOString(),
-      }),
-    })
-    const application = { createdAt: new Date('2026-08-05T10:00:00.000Z') }
-    const wire = { createdAt: '2026-08-05T10:00:00.000Z' }
-
-    await expect(decodeSchema(schema, wire)).resolves.toEqual(application)
-    await expect(encodeSchema(schema, application)).resolves.toEqual(wire)
-    await expect(decodeSchema(schema, { createdAt: 'invalid' })).rejects.toBeInstanceOf(SchemaValidationError)
-  })
-
-  test('uses Valibot schemas directly for identity contracts', async () => {
-    const schema = v.object({
-      id: v.string(),
-      active: v.boolean(),
-    })
+  test.each(identitySchemas)('uses $name schemas directly for identity contracts', async ({ schema }) => {
     const value = { id: 'user-1', active: true }
 
     expect(isSchema(schema)).toBe(true)
     await expect(decodeSchema(schema, value)).resolves.toEqual(value)
     await expect(encodeSchema(schema, value)).resolves.toEqual(value)
     await expect(decodeSchema(schema, { id: 1, active: true })).rejects.toBeInstanceOf(SchemaValidationError)
-    expectTypeOf<SchemaInput<typeof schema>>().toEqualTypeOf<{
-      id: string
-      active: boolean
-    }>()
-    expectTypeOf<SchemaOutput<typeof schema>>().toEqualTypeOf<{
-      id: string
-      active: boolean
-    }>()
   })
 
-  test('builds directional contracts from paired Valibot schemas', async () => {
-    const schema = codec({
-      decode: v.object({
-        createdAt: v.pipe(
-          v.string(),
-          v.isoTimestamp(),
-          v.transform((value) => new Date(value))
-        ),
-      }),
-      encode: v.object({
-        createdAt: v.pipe(
-          v.date(),
-          v.transform((value) => value.toISOString())
-        ),
-      }),
-    })
+  test('preserves identity types from both validators', () => {
+    expectTypeOf<SchemaInput<typeof zodIdentity>>().toEqualTypeOf<{ id: string; active: boolean }>()
+    expectTypeOf<SchemaOutput<typeof zodIdentity>>().toEqualTypeOf<{ id: string; active: boolean }>()
+    expectTypeOf<SchemaInput<typeof valibotIdentity>>().toEqualTypeOf<{ id: string; active: boolean }>()
+    expectTypeOf<SchemaOutput<typeof valibotIdentity>>().toEqualTypeOf<{ id: string; active: boolean }>()
+  })
+
+  test.each(directionalSchemas)('builds directional contracts from paired $name schemas', async ({ schema }) => {
     const application = { createdAt: new Date('2026-08-05T10:00:00.000Z') }
     const wire = { createdAt: '2026-08-05T10:00:00.000Z' }
 
     await expect(decodeSchema(schema, wire)).resolves.toEqual(application)
     await expect(encodeSchema(schema, application)).resolves.toEqual(wire)
     await expect(decodeSchema(schema, { createdAt: 'invalid' })).rejects.toBeInstanceOf(SchemaValidationError)
-    expectTypeOf<SchemaInput<typeof schema>>().toEqualTypeOf<{ createdAt: string }>()
-    expectTypeOf<SchemaOutput<typeof schema>>().toEqualTypeOf<{ createdAt: Date }>()
+  })
+
+  test('preserves directional types from both validators', () => {
+    expectTypeOf<SchemaInput<typeof zodDateCodec>>().toEqualTypeOf<{ createdAt: string }>()
+    expectTypeOf<SchemaOutput<typeof zodDateCodec>>().toEqualTypeOf<{ createdAt: Date }>()
+    expectTypeOf<SchemaInput<typeof valibotDateCodec>>().toEqualTypeOf<{ createdAt: string }>()
+    expectTypeOf<SchemaOutput<typeof valibotDateCodec>>().toEqualTypeOf<{ createdAt: Date }>()
   })
 
   test('uses forward validation for plain identity Standard Schemas', async () => {
@@ -172,13 +192,11 @@ describe('Standard Schema validation', () => {
     await expect(encodeSchema(upperCase, 'hello')).resolves.toBe('HELLO')
   })
 
-  test('adds optional boundary locations without replacing validator issue metadata', async () => {
-    const schema = z.object({ id: z.string() })
-
-    await expect(decodeSchema(schema, { id: 1 }, { location: 'response' })).rejects.toMatchObject({
+  test.each(identitySchemas)('adds locations to $name issues without replacing their metadata', async ({ schema }) => {
+    await expect(decodeSchema(schema, { id: 1, active: true }, { location: 'response' })).rejects.toMatchObject({
       code: 'schema-validation',
       location: 'response',
-      issues: [{ code: 'invalid_type', location: 'response', path: ['id'] }],
+      issues: [{ location: 'response' }],
     })
   })
 })

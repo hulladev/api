@@ -1,6 +1,5 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { describe, expect, expectTypeOf, test } from 'vitest'
-import { ClientResponseError } from '../src/client'
 import { annotateAPIErrorIssues, isAPIError, toAPIProblem, type APIError, type APIErrorIssue } from '../src/errors'
 import { QueryTransportError } from '../src/query'
 import { ContractError, ServerImplementationError } from '../src/server'
@@ -12,14 +11,9 @@ describe('structured API errors', () => {
       location: 'body',
     })
     const query = new QueryTransportError('duplicate-query-value', 'Query field must occur once', 'search')
-    const client = new ClientResponseError(
-      'unexpected-status',
-      new Response(null, { status: 418 }),
-      'Unexpected response status'
-    )
     const server = new ServerImplementationError('missing-handler', ['organizations.list'], 'Missing handler')
 
-    for (const error of [schema, query, client, server]) {
+    for (const error of [schema, query, server]) {
       expect(isAPIError(error)).toBe(true)
       expect(error.code).toBeTypeOf('string')
       expect(error.issues.length).toBeGreaterThan(0)
@@ -37,7 +31,6 @@ describe('structured API errors', () => {
       key: 'search',
       issues: [{ code: 'duplicate-query-value', location: 'query', path: ['search'] }],
     })
-    expect(client.issues).toMatchObject([{ code: 'unexpected-status', location: 'response' }])
     expect(server.issues).toMatchObject([{ code: 'missing-handler', handlerKey: 'organizations.list' }])
 
     expectTypeOf<StandardSchemaV1.Issue>().toExtend<APIErrorIssue>()

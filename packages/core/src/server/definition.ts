@@ -92,6 +92,11 @@ function copyFragmentTree(
 }
 
 function setTreeValue(target: Record<string, unknown>, key: readonly string[], value: unknown): void {
+  if (key.length === 1) {
+    setOwn(target, key[0]!, value)
+    return
+  }
+
   let parent = target
   for (const segment of key.slice(0, -1)) {
     const existing = hasOwn(parent, segment) ? parent[segment] : undefined
@@ -109,7 +114,7 @@ function setTreeValue(target: Record<string, unknown>, key: readonly string[], v
 }
 
 function mergeFragmentTree(
-  target: Record<string, unknown>,
+  target: Record<string, unknown> | undefined,
   middlewareTarget: Record<string, unknown>,
   fragment: Readonly<Record<string, unknown>>,
   middlewares: readonly ServerMiddleware<object, Contract>[],
@@ -131,7 +136,7 @@ function mergeFragmentTree(
       }
 
       seen.add(id)
-      setTreeValue(target, fullKey, handler)
+      if (target !== undefined) setTreeValue(target, fullKey, handler)
       setTreeValue(middlewareTarget, fullKey, middlewares)
       continue
     }
@@ -193,7 +198,8 @@ function createDefinition<
   }) as ServerDefinition<ContractType, Context, MiddlewareStatuses>['implement']
 
   const build = ((...fragments: readonly object[]) => {
-    const merged: Record<string, unknown> = {}
+    const reuseHandlerTree = fragments.length === 1
+    const merged = reuseHandlerTree ? undefined : {}
     const mergedMiddlewares: Record<string, unknown> = {}
     const seen = new Set<string>()
 
@@ -228,7 +234,7 @@ function createDefinition<
 
     return Object.freeze({
       contract,
-      handlers: freezeRecordTree(merged, false),
+      handlers: reuseHandlerTree ? fragments[0] : freezeRecordTree(merged!, false),
       context: options.context,
       middlewares: freezeRecordTree(mergedMiddlewares, false),
     })

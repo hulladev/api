@@ -1,25 +1,26 @@
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
+import { defineContract, request, response, route, router } from '../src'
 import { defineClient } from '../src/client'
-import { defineContract } from '../src/contract'
-import { request } from '../src/request'
-import { response } from '../src/response'
-import { route } from '../src/route'
-import { router } from '../src/router'
-import { createFetchHandler, defineServer, ServerRuntimeError, type FetchHandler } from '../src/server'
+import { defineServer, ServerRuntimeError } from '../src/server'
+import { createFetchHandler, type FetchHandler } from '../src/server'
 import { ndjson } from '../src/stream'
-import { text } from '../src/zod'
+import { zodCodecFixture } from './zod-fixture'
 
-const dateTime = z.codec(z.iso.datetime(), z.date(), {
-  decode: (value) => new Date(value),
-  encode: (value) => value.toISOString(),
-})
+const dateTime = zodCodecFixture(
+  z.codec(z.iso.datetime(), z.date(), {
+    decode: (value) => new Date(value),
+    encode: (value) => value.toISOString(),
+  })
+)
 
-const user = z.object({
-  id: z.string(),
-  organizationId: z.string(),
-  createdAt: dateTime,
-})
+const user = zodCodecFixture(
+  z.object({
+    id: z.string(),
+    organizationId: z.string(),
+    createdAt: dateTime,
+  })
+)
 
 const contract = defineContract({
   basePath: '/api',
@@ -35,9 +36,19 @@ const contract = defineContract({
       routes: {
         createUser: route.post('/users/:userId', {
           params: z.object({ userId: z.string().min(1) }),
-          query: z.object({ notify: text.boolean() }),
+          query: request.query(
+            zodCodecFixture(
+              z.object({
+                notify: z.codec(z.enum(['true', 'false']), z.boolean(), {
+                  decode: (value) => value === 'true',
+                  encode: (value) => (value ? 'true' : 'false'),
+                }),
+              })
+            ),
+            { repeated: [] }
+          ),
           headers: z.object({ 'x-actor-id': z.string().min(1) }),
-          body: z.object({ createdAt: dateTime }),
+          body: zodCodecFixture(z.object({ createdAt: dateTime })),
           responses: {
             201: response.json(user, { headers: z.object({ etag: z.string() }) }),
           },
@@ -400,5 +411,86 @@ describe('createFetchHandler', () => {
     const raw = await handler(new Request('https://api.example.com/raw'))
     expect(raw.status).toBe(202)
     expect(await raw.text()).toBe('raw')
+  })
+
+  test('parses FormData requests with the Fetch body reader', async () => {
+    const formContract = defineContract({
+      routes: {
+        submit: route.post('/submit', {
+          body: request.formData(),
+          responses: { 200: response.text() },
+        }),
+      },
+    })
+    const server = defineServer(formContract)
+    const implementation = server.build(
+      server.implement({
+        submit: (actions, input) => actions.respond({ status: 200, body: String(input.body.get('name')) }),
+      })
+    )
+    const body = new FormData()
+    body.set('name', 'Ada')
+
+    const result = await createFetchHandler(implementation)(
+      new Request('https://api.example.com/submit', { method: 'POST', body })
+    )
+
+    expect(result.status).toBe(200)
+    expect(await result.text()).toBe('Ada')
+  })
+
+  test('lets the Fetch error hook replace the protocol-safe response', async () => {
+    const base = defineServer(contract)
+    const implementation = base.build(
+      base.implement({
+        health: (() => ({ status: 200, body: 'not produced' })) as never,
+        organizations: {
+          createUser: (actions, input) =>
+            actions.respond({
+              status: 201,
+              headers: { etag: input.params.userId },
+              body: {
+                id: input.params.userId,
+                organizationId: input.params.organizationId,
+                createdAt: input.body.createdAt,
+              },
+            }),
+        },
+        events: (actions) => actions.respond({ status: 200, body: [] }),
+      })
+    )
+    const handler = createFetchHandler(implementation, {
+      onError: ({ defaultResponse, phase, request: failedRequest }) => {
+        expect(defaultResponse.status).toBe(500)
+        expect(phase).toBe('response')
+        expect(failedRequest).toBeInstanceOf(Request)
+        return new Response('custom failure', { status: 418 })
+      },
+    })
+
+    const result = await handler(new Request('https://api.example.com/api/health'))
+    expect(result.status).toBe(418)
+    expect(await result.text()).toBe('custom failure')
+  })
+
+  test('rejects non-Request inputs and raw responses with mismatched statuses', async () => {
+    const handler = createFetchHandler(buildServer().implementation)
+    await expect((handler as unknown as (value: unknown) => Promise<Response>)({})).rejects.toThrowError(
+      'Fetch handler input must be a Request'
+    )
+
+    const rawContract = defineContract({
+      routes: { raw: route.get('/raw', { responses: { 202: response.raw() } }) },
+    })
+    const server = defineServer(rawContract)
+    const mismatched = server.build(
+      server.implement({
+        raw: (actions) => actions.respond({ status: 202, body: new Response('wrong', { status: 200 }) }),
+      })
+    )
+
+    await expect(createFetchHandler(mismatched)(new Request('https://api.example.com/raw'))).rejects.toThrowError(
+      'Raw Fetch response status must match its declared contract status'
+    )
   })
 })

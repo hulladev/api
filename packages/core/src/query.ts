@@ -1,6 +1,7 @@
 import { annotateAPIErrorIssues, type APIError, type APIErrorIssue, type QueryTransportErrorCode } from './errors'
+import { type ExecutionStep, mapExecutionStep } from './execution'
 import { isRequestQueryDefinition, type AnyRequestQuery, type RequestQueryDefinition } from './request'
-import { decodeSchema, encodeSchema, isSchema, type ObjectSchema, type SchemaOutput } from './validation'
+import { compileSchemaExecution, isSchema, type ObjectSchema, type SchemaOutput } from './validation'
 
 export type { QueryTransportErrorCode } from './errors'
 
@@ -45,123 +46,6 @@ export class QueryTransportError extends TypeError implements APIError<QueryTran
   }
 }
 
-type ZodDefinition = Readonly<Record<string, unknown>> & { readonly type: string }
-type ZodSchema = {
-  readonly _zod: {
-    readonly def: ZodDefinition
-  }
-}
-
-const zodPlans = new WeakMap<object, QueryTransportPlan>()
-
-function isObject(value: unknown): value is Record<PropertyKey, unknown> {
-  return typeof value === 'object' && value !== null
-}
-
-function isZodSchema(value: unknown): value is ZodSchema {
-  if (!isObject(value)) return false
-  const zod = value['_zod']
-  return isObject(zod) && isObject(zod['def']) && typeof zod['def']['type'] === 'string'
-}
-
-function childSchema(definition: ZodDefinition, key: string): ZodSchema | undefined {
-  const value = definition[key]
-  return isZodSchema(value) ? value : undefined
-}
-
-function inputSchema(schema: ZodSchema, seen: Set<object>): ZodSchema {
-  if (seen.has(schema)) return schema
-  seen.add(schema)
-
-  const definition = schema._zod.def
-
-  if (definition.type === 'pipe') {
-    const input = childSchema(definition, 'in')
-    return input ? inputSchema(input, seen) : schema
-  }
-
-  if (
-    definition.type === 'optional' ||
-    definition.type === 'exact_optional' ||
-    definition.type === 'default' ||
-    definition.type === 'prefault' ||
-    definition.type === 'nullable' ||
-    definition.type === 'readonly' ||
-    definition.type === 'catch' ||
-    definition.type === 'nonoptional' ||
-    definition.type === 'success'
-  ) {
-    const inner = childSchema(definition, 'innerType')
-    return inner ? inputSchema(inner, seen) : schema
-  }
-
-  if (definition.type === 'lazy' && typeof definition['getter'] === 'function') {
-    const lazy = definition['getter']()
-    return isZodSchema(lazy) ? inputSchema(lazy, seen) : schema
-  }
-
-  return schema
-}
-
-function zodCardinality(schema: ZodSchema, field: string, seen = new Set<object>()): QueryCardinality {
-  const input = inputSchema(schema, seen)
-  const definition = input._zod.def
-
-  if (definition.type === 'array' || definition.type === 'tuple') return 'repeated'
-
-  if (definition.type === 'union') {
-    const options = definition['options']
-    if (!Array.isArray(options) || options.length === 0 || !options.every(isZodSchema)) return 'single'
-
-    const cardinalities = new Set(options.map((option) => zodCardinality(option, field, new Set(seen))))
-    if (cardinalities.size === 1) return cardinalities.values().next().value ?? 'single'
-
-    throw new QueryTransportError(
-      'mixed-query-cardinality',
-      `Query field "${field}" mixes scalar and repeated Zod inputs`,
-      field
-    )
-  }
-
-  return 'single'
-}
-
-function zodObjectShape(schema: ZodSchema): Readonly<Record<string, ZodSchema>> {
-  const input = inputSchema(schema, new Set())
-  const definition = input._zod.def
-
-  if (definition.type !== 'object' || !isObject(definition['shape'])) {
-    throw new QueryTransportError('unsupported-query-schema', 'Zod query schemas must have an object input shape')
-  }
-
-  const shape: Record<string, ZodSchema> = {}
-  for (const [key, value] of Object.entries(definition['shape'])) {
-    if (!isZodSchema(value)) {
-      throw new QueryTransportError(
-        'unsupported-query-schema',
-        `Zod query field "${key}" does not expose a supported input schema`,
-        key
-      )
-    }
-    shape[key] = value
-  }
-  return shape
-}
-
-function inferZodPlan(schema: ZodSchema): QueryTransportPlan {
-  const cached = zodPlans.get(schema)
-  if (cached) return cached
-
-  const fields: Record<string, QueryCardinality> = {}
-  for (const [key, fieldSchema] of Object.entries(zodObjectShape(schema))) {
-    fields[key] = zodCardinality(fieldSchema, key)
-  }
-
-  const plan = Object.freeze({ fields: Object.freeze(fields) })
-  zodPlans.set(schema, plan)
-  return plan
-}
-
 function explicitPlan(repeated: readonly string[]): QueryTransportPlan {
   const fields: Record<string, QueryCardinality> = {}
   for (const key of repeated) fields[key] = 'repeated'
@@ -180,12 +64,8 @@ export function normalizeRequestQuery<const Schema extends ObjectSchema>(
 
   if (!isSchema(declaration)) throw new TypeError('Request query must be declared with an object Standard Schema')
 
-  const transport = isZodSchema(declaration) ? inferZodPlan(declaration) : explicitPlan([])
-  const repeated = Object.freeze(
-    Object.entries(transport.fields)
-      .filter(([, cardinality]) => cardinality === 'repeated')
-      .map(([key]) => key)
-  )
+  const transport = explicitPlan([])
+  const repeated = Object.freeze([])
   return Object.freeze({
     kind: 'request-query',
     schema: declaration,
@@ -198,11 +78,15 @@ function recordValue(value: unknown): value is Readonly<Record<string, unknown>>
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-export async function encodeQuery<const Query extends AnyRequestQuery & { readonly transport: QueryTransportPlan }>(
-  query: Query,
+export type QueryEncoder<Query extends AnyRequestQuery & { readonly transport: QueryTransportPlan }> = (
   value: SchemaOutput<Query['schema']>
-): Promise<URLSearchParams> {
-  const encoded = await encodeSchema(query.schema, value, { location: 'query' })
+) => ExecutionStep<URLSearchParams>
+
+export type QueryDecoder<Query extends AnyRequestQuery & { readonly transport: QueryTransportPlan }> = (
+  parameters: URLSearchParams
+) => ExecutionStep<SchemaOutput<Query['schema']>>
+
+function encodedQuery(query: AnyRequestQuery & { readonly transport: QueryTransportPlan }, encoded: unknown) {
   if (!recordValue(encoded)) {
     throw new QueryTransportError('invalid-query-value', 'Encoded query must be an object')
   }
@@ -240,10 +124,7 @@ export async function encodeQuery<const Query extends AnyRequestQuery & { readon
   return parameters
 }
 
-export async function decodeQuery<const Query extends AnyRequestQuery & { readonly transport: QueryTransportPlan }>(
-  query: Query,
-  parameters: URLSearchParams
-): Promise<SchemaOutput<Query['schema']>> {
+function queryInput(query: AnyRequestQuery & { readonly transport: QueryTransportPlan }, parameters: URLSearchParams) {
   const input: Record<string, string | readonly string[]> = {}
   const keys = new Set(parameters.keys())
 
@@ -268,5 +149,33 @@ export async function decodeQuery<const Query extends AnyRequestQuery & { readon
     if (value !== undefined) input[key] = value
   }
 
-  return decodeSchema(query.schema, input, { location: 'query' })
+  return input
+}
+
+export function compileQueryEncoder<const Query extends AnyRequestQuery & { readonly transport: QueryTransportPlan }>(
+  query: Query
+): QueryEncoder<Query> {
+  const encode = compileSchemaExecution(query.schema, { location: 'query' }).encode
+  return (value) => mapExecutionStep(encode(value), (encoded) => encodedQuery(query, encoded))
+}
+
+export function compileQueryDecoder<const Query extends AnyRequestQuery & { readonly transport: QueryTransportPlan }>(
+  query: Query
+): QueryDecoder<Query> {
+  const decode = compileSchemaExecution(query.schema, { location: 'query' }).decode
+  return (parameters) => decode(queryInput(query, parameters))
+}
+
+export async function encodeQuery<const Query extends AnyRequestQuery & { readonly transport: QueryTransportPlan }>(
+  query: Query,
+  value: SchemaOutput<Query['schema']>
+): Promise<URLSearchParams> {
+  return compileQueryEncoder(query)(value)
+}
+
+export async function decodeQuery<const Query extends AnyRequestQuery & { readonly transport: QueryTransportPlan }>(
+  query: Query,
+  parameters: URLSearchParams
+): Promise<SchemaOutput<Query['schema']>> {
+  return compileQueryDecoder(query)(parameters)
 }

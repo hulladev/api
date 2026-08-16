@@ -1,9 +1,16 @@
-import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { hasOwn, isRecord } from './object'
 import { bytesSchema, formDataSchema, jsonValueSchema, stringSchema, type JsonValue } from './representation'
 import type { Route } from './route'
 import { defineStreamResponse, type FormattedStreamResponseBody, type StreamResponseBody } from './stream'
-import { isSchema, type AnySchema, type ObjectSchema, type SchemaOutput } from './validation'
+import {
+  isSchema,
+  type AnySchema,
+  type CodecSchema,
+  type IdentitySchema,
+  type NonSchemaOptions,
+  type ObjectSchema,
+  type SchemaOutput,
+} from './validation'
 
 export type { JsonValue } from './representation'
 
@@ -121,7 +128,7 @@ export type RouteResponseBody<RouteType, Status extends RouteResponseStatus<Rout
     : never
   : never
 
-type ResponseOptions<Headers extends ResponseHeaders | undefined, ContentType extends string> = {
+type ResponseOptions<Headers extends ResponseHeaders | undefined, ContentType extends string> = NonSchemaOptions & {
   readonly headers?: Headers
   readonly contentType?: ContentType
 }
@@ -130,7 +137,7 @@ type EmptyResponseOptions<Headers extends ResponseHeaders | undefined> = {
   readonly headers?: Headers
 }
 
-type WireSchema<Wire> = StandardSchemaV1<Wire, unknown>
+type WireSchema<Wire> = CodecSchema<Wire, unknown> | IdentitySchema<Wire>
 type SchemaResponseBodyKind = Exclude<ResponseBodyKind, 'empty' | 'raw' | 'stream'>
 
 type BodyResponseFactory<

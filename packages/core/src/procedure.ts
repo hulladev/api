@@ -1,5 +1,6 @@
 import type { Awaitable } from './context'
-import { assertMiddleware, assertMiddlewares, dispatchMiddlewares } from './middleware'
+import { type EitherIsAsync, type ValueIsAsync } from './execution'
+import { assertMiddleware, assertMiddlewares, dispatchMiddlewareSteps, type NextActions } from './middleware'
 import { isPlainRecord, isRecord, setOwn } from './object'
 import {
   encodeSchemaValue,
@@ -40,13 +41,7 @@ export type DefineProceduresOptions<Context extends object> = {
   readonly context?: ProcedureContextFactory<Context>
 }
 
-type ValueIsAsync<Value> = Extract<Value, PromiseLike<unknown>> extends never ? false : true
 type SchemaIsAsync<Schema extends AnySchema> = Schema extends AsyncSchema ? true : false
-type EitherIsAsync<Left extends boolean, Right extends boolean> = Left extends true
-  ? true
-  : Right extends true
-    ? true
-    : false
 type ProcedureReturn<Result, Async extends boolean> = Async extends true ? Promise<Awaited<Result>> : Result
 
 export type ProcedureMiddlewareInput<Context extends object, Input = unknown> = {
@@ -55,14 +50,12 @@ export type ProcedureMiddlewareInput<Context extends object, Input = unknown> = 
   readonly procedure: ProcedureMetadata
 }
 
-export type ProcedureMiddlewareActions<Result> = {
-  readonly next: () => Promise<Result>
-}
+export type ProcedureMiddlewareActions<Result> = NextActions<Result>
 
 export type ProcedureMiddleware<Context extends object, Input = unknown> = <Result>(
   actions: ProcedureMiddlewareActions<Result>,
   args: ProcedureMiddlewareInput<Context, Input>
-) => Awaitable<Result>
+) => Result | PromiseLike<Result>
 
 export type ProcedureHandlerInput<Context extends object, Input extends AnySchema | undefined> = {
   readonly context: Readonly<Context>
@@ -113,6 +106,13 @@ type MiddlewareValue<Input extends AnySchema | undefined> = Input extends AnySch
   ? ProcedureInputValue<Input>
   : unknown
 
+type MiddlewareIsAsync<Middleware> = Middleware extends (...args: never[]) => infer Result
+  ? ValueIsAsync<Result>
+  : false
+
+type AnyMiddlewareIsAsync<Middlewares extends readonly unknown[]> =
+  true extends MiddlewareIsAsync<Middlewares[number]> ? true : false
+
 export type ProcedureBuilder<
   Context extends object = EmptyProcedureContext,
   Input extends AnySchema | undefined = undefined,
@@ -143,7 +143,7 @@ export type ProcedureBuilder<
   ) => Middleware
   readonly use: <const Middlewares extends readonly ProcedureMiddleware<NoInfer<Context>, MiddlewareValue<Input>>[]>(
     ...middlewares: Middlewares
-  ) => ProcedureBuilder<Context, Input, Output, true>
+  ) => ProcedureBuilder<Context, Input, Output, EitherIsAsync<Async, AnyMiddlewareIsAsync<Middlewares>>>
   readonly build: <const Tree extends ProcedureTree>(tree: Tree) => BuiltProcedureTree<Tree>
 }
 
@@ -297,7 +297,7 @@ function createBuilder<
           const result =
             frozenMiddlewares.length === 0
               ? implementation(handlerInput)
-              : dispatchMiddlewares(
+              : dispatchMiddlewareSteps(
                   frozenMiddlewares,
                   middlewareInput,
                   () => implementation(handlerInput),

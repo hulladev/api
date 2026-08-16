@@ -1,32 +1,37 @@
+import * as v from 'valibot'
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
 import { defineProcedures, procedure } from '../src/procedure'
-import { response, type RouteResponseBody } from '../src/response'
+import { response, routeOutput, type RouteResponseBody } from '../src/response'
 import { route } from '../src/route'
 import { validation } from '../src/validation'
-import { routeInput, routeOutput } from '../src/zod'
+import { zodCodecFixture } from './zod-fixture'
 
-const dateTime = z.codec(z.iso.datetime(), z.date(), {
-  decode: (value) => new Date(value),
-  encode: (value) => value.toISOString(),
-})
+const dateTime = zodCodecFixture(
+  z.codec(z.iso.datetime(), z.date(), {
+    decode: (value) => new Date(value),
+    encode: (value) => value.toISOString(),
+  })
+)
 
-const user = z.object({
-  id: z.string(),
-  createdAt: dateTime,
-})
+const user = zodCodecFixture(
+  z.object({
+    id: z.string(),
+    createdAt: dateTime,
+  })
+)
 
 const createUserRoute = route.post('/users', {
-  body: z.object({ createdAt: dateTime }),
+  body: zodCodecFixture(z.object({ createdAt: dateTime })),
   responses: {
     201: response.json(user),
   },
 })
 
 describe('procedure', () => {
-  test('creates synchronous one-off callable procedures from schemas derived from a route', () => {
+  test('creates synchronous one-off callable procedures from exact route-shaped schemas', () => {
     const createUser = procedure
-      .input(routeInput(createUserRoute))
+      .input(zodCodecFixture(z.object({ body: z.object({ createdAt: dateTime }) })))
       .output(routeOutput(createUserRoute, 201))
       .handler(({ input, context, procedure: metadata }) => {
         expectTypeOf(input.body.createdAt).toEqualTypeOf<Date>()
@@ -87,7 +92,7 @@ describe('procedure', () => {
     expect(displayName({ first: 'Samuel', last: 'Hulla' })).toBe('Samuel Hulla')
   })
 
-  test('exposes exact asynchronous types for async handlers, contexts, and validators', async () => {
+  test('exposes exact asynchronous types for async handlers and contexts', async () => {
     const asyncHandler = procedure.handler(async () => 'handler')
     expectTypeOf<ReturnType<typeof asyncHandler>>().toEqualTypeOf<Promise<string>>()
     await expect(asyncHandler()).resolves.toBe('handler')
@@ -97,16 +102,46 @@ describe('procedure', () => {
     )
     expectTypeOf<ReturnType<typeof withAsyncContext>>().toEqualTypeOf<Promise<string>>()
     await expect(withAsyncContext()).resolves.toBe('async')
+  })
 
-    const asyncString = validation.async(
-      z.string().refine(async (value) => value.length > 0, { message: 'Expected a non-empty string' })
-    )
+  test.each([
+    {
+      name: 'Zod',
+      schema: validation.async(
+        z.string().refine(async (value) => value.length > 0, { message: 'Expected a non-empty string' })
+      ),
+    },
+    {
+      name: 'Valibot',
+      schema: validation.async(
+        v.pipeAsync(
+          v.string(),
+          v.checkAsync(async (value) => value.length > 0, 'Expected a non-empty string')
+        )
+      ),
+    },
+  ])('preserves asynchronous execution for $name validators', async ({ schema: asyncString }) => {
     const withAsyncValidation = procedure
       .input(asyncString)
       .output(asyncString)
       .handler(({ input }) => input)
     expectTypeOf<ReturnType<typeof withAsyncValidation>>().toEqualTypeOf<Promise<string>>()
     await expect(withAsyncValidation('value')).resolves.toBe('value')
+    await expect((withAsyncValidation as (value: string) => Promise<string>)('')).rejects.toMatchObject({
+      code: 'schema-validation',
+      location: 'input',
+    })
+  })
+
+  test.each([
+    { name: 'Zod', schema: z.object({ id: z.string() }) },
+    { name: 'Valibot', schema: v.object({ id: v.string() }) },
+  ])('annotates $name input validation failures', ({ schema }) => {
+    const read = procedure.input(schema).handler(({ input }) => input)
+
+    expect(() => (read as unknown as (input: unknown) => unknown)({ id: 1 })).toThrowError(
+      expect.objectContaining({ code: 'schema-validation', location: 'input' })
+    )
   })
 
   test('keeps synchronous context factories synchronous', () => {
@@ -161,6 +196,21 @@ describe('procedure', () => {
     const read = shaped.use(observe).handler(({ input }) => input.id)
 
     await expect(read({ id: 'user-1' })).resolves.toBe('user-1')
+  })
+
+  test('preserves synchronous execution through synchronous middleware', () => {
+    const calls: string[] = []
+    const observe = procedure.middleware((actions) => {
+      calls.push('before')
+      const result = actions.next()
+      calls.push('after')
+      return result
+    })
+    const operation = procedure.use(observe).handler(() => 'ok')
+
+    expectTypeOf<ReturnType<typeof operation>>().toEqualTypeOf<string>()
+    expect(operation()).toBe('ok')
+    expect(calls).toEqual(['before', 'after'])
   })
 
   test('rejects middleware that calls next more than once', async () => {

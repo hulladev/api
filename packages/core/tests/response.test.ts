@@ -1,3 +1,4 @@
+import * as v from 'valibot'
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
 import {
@@ -14,7 +15,8 @@ import {
   type JsonValue,
 } from '../src/response'
 import { route } from '../src/route'
-import { decodeSchema, encodeSchema, type SchemaInput, type SchemaOutput } from '../src/validation'
+import { codec, decodeSchema, encodeSchema, type SchemaInput, type SchemaOutput } from '../src/validation'
+import { zodCodecFixture } from './zod-fixture'
 
 describe('response declaration', () => {
   test('exposes individually importable factories and the ergonomic namespace', () => {
@@ -156,81 +158,108 @@ describe('response declaration', () => {
     expectTypeOf(binary.contentType).toEqualTypeOf<'application/octet-stream'>()
   })
 
-  test('supports directional codecs for every schema-backed body representation', async () => {
-    const dateCodec = z.codec(z.iso.datetime(), z.date(), {
-      decode: (value) => new Date(value),
-      encode: (value) => value.toISOString(),
-    })
-    const bytesCodec = z.codec(z.instanceof(Uint8Array), z.string(), {
-      decode: (value) => new TextDecoder().decode(value),
-      encode: (value) => new TextEncoder().encode(value),
-    })
-    const formDataCodec = z.codec(z.instanceof(FormData), z.object({ name: z.string() }), {
-      decode: (value) => ({ name: z.string().parse(value.get('name')) }),
-      encode: (value) => {
-        const result = new FormData()
-        result.set('name', value.name)
-        return result
-      },
-    })
-    const json = response.json(dateCodec)
-    const text = response.text(dateCodec)
-    const bytes = response.bytes(bytesCodec)
-    const formData = response.formData(formDataCodec)
-    const date = new Date('2026-08-04T10:00:00.000Z')
-    const encodedFormData = new FormData()
-    encodedFormData.set('name', 'Ada')
-
-    await expect(encodeSchema(json.body.schema, date)).resolves.toBe('2026-08-04T10:00:00.000Z')
-    await expect(decodeSchema(json.body.schema, '2026-08-04T10:00:00.000Z')).resolves.toEqual(date)
-    await expect(encodeSchema(text.body.schema, date)).resolves.toBe('2026-08-04T10:00:00.000Z')
-    await expect(decodeSchema(text.body.schema, '2026-08-04T10:00:00.000Z')).resolves.toEqual(date)
-    await expect(encodeSchema(bytes.body.schema, 'hello')).resolves.toEqual(new TextEncoder().encode('hello'))
-    await expect(decodeSchema(bytes.body.schema, new TextEncoder().encode('hello'))).resolves.toBe('hello')
-    await expect(encodeSchema(formData.body.schema, { name: 'Ada' })).resolves.toEqual(encodedFormData)
-    await expect(decodeSchema(formData.body.schema, encodedFormData)).resolves.toEqual({ name: 'Ada' })
-
-    expectTypeOf<z.input<typeof json.body.schema>>().toEqualTypeOf<string>()
-    expectTypeOf<z.output<typeof json.body.schema>>().toEqualTypeOf<Date>()
-    expectTypeOf<z.input<typeof text.body.schema>>().toEqualTypeOf<string>()
-    expectTypeOf<z.output<typeof text.body.schema>>().toEqualTypeOf<Date>()
-    expectTypeOf<z.input<typeof bytes.body.schema>>().toExtend<Uint8Array>()
-    expectTypeOf<z.output<typeof bytes.body.schema>>().toEqualTypeOf<string>()
-    expectTypeOf<z.input<typeof formData.body.schema>>().toEqualTypeOf<FormData>()
-    expectTypeOf<z.output<typeof formData.body.schema>>().toEqualTypeOf<{ name: string }>()
-  })
-
-  test('supports codecs nested inside structured JSON responses', () => {
-    const schema = z.object({
-      id: z.string(),
-      createdAt: z.codec(z.iso.datetime(), z.date(), {
-        decode: (value) => new Date(value),
-        encode: (value) => value.toISOString(),
+  test.each([
+    {
+      name: 'Zod',
+      dateCodec: zodCodecFixture(
+        z.codec(z.iso.datetime(), z.date(), {
+          decode: (value) => new Date(value),
+          encode: (value) => value.toISOString(),
+        })
+      ),
+      bytesCodec: zodCodecFixture(
+        z.codec(z.instanceof(Uint8Array), z.string(), {
+          decode: (value) => new TextDecoder().decode(value),
+          encode: (value) => new TextEncoder().encode(value),
+        })
+      ),
+      formDataCodec: zodCodecFixture(
+        z.codec(z.instanceof(FormData), z.object({ name: z.string() }), {
+          decode: (value) => ({ name: z.string().parse(value.get('name')) }),
+          encode: (value) => {
+            const result = new FormData()
+            result.set('name', value.name)
+            return result
+          },
+        })
+      ),
+    },
+    {
+      name: 'Valibot',
+      dateCodec: codec({
+        decode: v.pipe(
+          v.string(),
+          v.isoTimestamp(),
+          v.transform((value) => new Date(value))
+        ),
+        encode: v.pipe(
+          v.date(),
+          v.transform((value) => value.toISOString())
+        ),
       }),
-    })
+      bytesCodec: codec({
+        decode: v.pipe(
+          v.instance(Uint8Array),
+          v.transform((value) => new TextDecoder().decode(value))
+        ),
+        encode: v.pipe(
+          v.string(),
+          v.transform((value) => new TextEncoder().encode(value))
+        ),
+      }),
+      formDataCodec: codec({
+        decode: v.pipe(
+          v.instance(FormData),
+          v.transform((value) => ({ name: v.parse(v.string(), value.get('name')) }))
+        ),
+        encode: v.pipe(
+          v.object({ name: v.string() }),
+          v.transform((value) => {
+            const result = new FormData()
+            result.set('name', value.name)
+            return result
+          })
+        ),
+      }),
+    },
+  ])(
+    'supports $name directional codecs for every schema-backed body representation',
+    async ({ dateCodec, bytesCodec, formDataCodec }) => {
+      const json = response.json(dateCodec)
+      const text = response.text(dateCodec)
+      const bytes = response.bytes(bytesCodec)
+      const formData = response.formData(formDataCodec)
+      const date = new Date('2026-08-04T10:00:00.000Z')
+      const encodedFormData = new FormData()
+      encodedFormData.set('name', 'Ada')
+
+      await expect(encodeSchema(json.body.schema, date)).resolves.toBe('2026-08-04T10:00:00.000Z')
+      await expect(decodeSchema(json.body.schema, '2026-08-04T10:00:00.000Z')).resolves.toEqual(date)
+      await expect(encodeSchema(text.body.schema, date)).resolves.toBe('2026-08-04T10:00:00.000Z')
+      await expect(decodeSchema(text.body.schema, '2026-08-04T10:00:00.000Z')).resolves.toEqual(date)
+      await expect(encodeSchema(bytes.body.schema, 'hello')).resolves.toEqual(new TextEncoder().encode('hello'))
+      await expect(decodeSchema(bytes.body.schema, new TextEncoder().encode('hello'))).resolves.toBe('hello')
+      await expect(encodeSchema(formData.body.schema, { name: 'Ada' })).resolves.toEqual(encodedFormData)
+      await expect(decodeSchema(formData.body.schema, encodedFormData)).resolves.toEqual({ name: 'Ada' })
+
+      expectTypeOf<SchemaInput<typeof json.body.schema>>().toEqualTypeOf<string>()
+      expectTypeOf<SchemaOutput<typeof json.body.schema>>().toEqualTypeOf<Date>()
+      expectTypeOf<SchemaInput<typeof text.body.schema>>().toEqualTypeOf<string>()
+      expectTypeOf<SchemaOutput<typeof text.body.schema>>().toEqualTypeOf<Date>()
+      expectTypeOf<SchemaInput<typeof bytes.body.schema>>().toExtend<Uint8Array>()
+      expectTypeOf<SchemaOutput<typeof bytes.body.schema>>().toEqualTypeOf<string>()
+      expectTypeOf<SchemaInput<typeof formData.body.schema>>().toEqualTypeOf<FormData>()
+      expectTypeOf<SchemaOutput<typeof formData.body.schema>>().toEqualTypeOf<{ name: string }>()
+    }
+  )
+
+  test.each([
+    { name: 'Zod', schema: z.object({ message: z.string(), detail: z.string().optional() }) },
+    { name: 'Valibot', schema: v.object({ message: v.string(), detail: v.optional(v.string()) }) },
+  ])('allows optional $name JSON properties to be omitted on the wire', async ({ schema }) => {
     const declaration = response.json(schema)
 
-    expect(
-      z.encode(declaration.body.schema, {
-        id: 'user-1',
-        createdAt: new Date('2026-08-04T10:00:00.000Z'),
-      })
-    ).toEqual({ id: 'user-1', createdAt: '2026-08-04T10:00:00.000Z' })
-    expectTypeOf<z.input<typeof declaration.body.schema>>().toEqualTypeOf<{
-      id: string
-      createdAt: string
-    }>()
-    expectTypeOf<z.output<typeof declaration.body.schema>>().toEqualTypeOf<{
-      id: string
-      createdAt: Date
-    }>()
-  })
-
-  test('allows optional JSON object properties that are omitted on the wire', () => {
-    const schema = z.object({ message: z.string(), detail: z.string().optional() })
-    const declaration = response.json(schema)
-
-    expect(z.encode(declaration.body.schema, { message: 'hello' })).toEqual({ message: 'hello' })
+    await expect(encodeSchema(declaration.body.schema, { message: 'hello' })).resolves.toEqual({ message: 'hello' })
   })
 
   test('supports explicit schemas and media types for every body representation', () => {
@@ -286,6 +315,21 @@ describe('response declaration', () => {
 
     // @ts-expect-error Form-data responses must encode to FormData.
     response.formData(z.string())
+
+    // @ts-expect-error Valibot text responses must encode to strings.
+    response.text(v.number())
+
+    // @ts-expect-error Valibot JSON responses cannot encode bigint values.
+    response.json(v.bigint())
+
+    // @ts-expect-error Valibot dates require a JSON-compatible codec.
+    response.json(v.object({ createdAt: v.date() }))
+
+    // @ts-expect-error Valibot byte responses use Uint8Array on the wire.
+    response.bytes(v.instance(Blob))
+
+    // @ts-expect-error Valibot form-data responses must encode to FormData.
+    response.formData(v.string())
   })
 
   test('requires response headers to be an object Standard Schema', () => {
@@ -297,6 +341,11 @@ describe('response declaration', () => {
     response.text({
       // @ts-expect-error Response headers describe named fields and must produce an object.
       headers: z.string(),
+    })
+
+    response.json(v.string(), {
+      // @ts-expect-error Valibot response headers must also produce an object.
+      headers: v.string(),
     })
   })
 

@@ -1,6 +1,7 @@
 import type { CompiledPathParameters } from './compiler'
+import { type ExecutionStep, isPromiseLike, mapExecutionStep } from './execution'
 import { isRecord, setOwn } from './object'
-import { decodeSchema, encodeSchema } from './validation'
+import { compileSchemaExecution } from './validation'
 
 function parameterGroup(
   declaration: CompiledPathParameters,
@@ -11,27 +12,12 @@ function parameterGroup(
   return group
 }
 
-/** Encodes application path parameters and substitutes them into a compiled route path. */
-export async function encodePathParameters(
-  path: string,
-  declarations: readonly CompiledPathParameters[],
-  value: Readonly<Record<string, unknown>>
-): Promise<string> {
-  const encodedValues: Record<string, unknown> = {}
+export type PathParameterEncoder = (value: Readonly<Record<string, unknown>>) => ExecutionStep<string>
+export type PathParameterDecoder = (
+  value: Readonly<Record<string, string>>
+) => ExecutionStep<Readonly<Record<string, unknown>>>
 
-  for (const declaration of declarations) {
-    const encoded = await encodeSchema(declaration.schema, parameterGroup(declaration, value), {
-      location: 'params',
-    })
-    if (!isRecord(encoded)) throw new TypeError('Encoded route parameters must be an object')
-
-    for (const name of declaration.names) {
-      const parameter = encoded[name]
-      if (typeof parameter !== 'string') throw new TypeError(`Route parameter "${name}" must encode to a string`)
-      setOwn(encodedValues, name, parameter)
-    }
-  }
-
+function substituteParameters(path: string, encodedValues: Readonly<Record<string, unknown>>): string {
   return path
     .split('/')
     .map((segment) =>
@@ -42,20 +28,88 @@ export async function encodePathParameters(
     .join('/')
 }
 
+/** Compiles application path parameter encoding for a route. */
+export function compilePathParameterEncoder(
+  path: string,
+  declarations: readonly CompiledPathParameters[]
+): PathParameterEncoder {
+  const plans = declarations.map((declaration) => ({
+    declaration,
+    encode: compileSchemaExecution(declaration.schema, { location: 'params' }).encode,
+  }))
+
+  return (value) => {
+    type EncodedGroup = {
+      readonly declaration: CompiledPathParameters
+      readonly encoded: Readonly<Record<string, unknown>>
+    }
+    const steps = plans.map(({ declaration, encode }) => {
+      return mapExecutionStep(encode(parameterGroup(declaration, value)), (encoded) => {
+        if (!isRecord(encoded)) throw new TypeError('Encoded route parameters must be an object')
+        return { declaration, encoded }
+      })
+    })
+    const resolved = (steps.some(isPromiseLike) ? Promise.all(steps) : steps) as ExecutionStep<readonly EncodedGroup[]>
+
+    return mapExecutionStep(resolved, (groups) => {
+      const encodedValues: Record<string, unknown> = {}
+      for (const { declaration, encoded } of groups) {
+        for (const name of declaration.names) {
+          const parameter = encoded[name]
+          if (typeof parameter !== 'string') {
+            throw new TypeError(`Route parameter "${name}" must encode to a string`)
+          }
+          setOwn(encodedValues, name, parameter)
+        }
+      }
+      return substituteParameters(path, encodedValues)
+    })
+  }
+}
+
+/** Encodes application path parameters and substitutes them into a compiled route path. */
+export async function encodePathParameters(
+  path: string,
+  declarations: readonly CompiledPathParameters[],
+  value: Readonly<Record<string, unknown>>
+): Promise<string> {
+  return compilePathParameterEncoder(path, declarations)(value)
+}
+
+/** Compiles captured wire path parameter decoding for a route. */
+export function compilePathParameterDecoder(declarations: readonly CompiledPathParameters[]): PathParameterDecoder {
+  const plans = declarations.map((declaration) => ({
+    declaration,
+    decode: compileSchemaExecution(declaration.schema, { location: 'params' }).decode,
+  }))
+
+  return (value) => {
+    type DecodedGroup = {
+      readonly declaration: CompiledPathParameters
+      readonly decoded: Readonly<Record<string, unknown>>
+    }
+    const steps = plans.map(({ declaration, decode }) => {
+      return mapExecutionStep(decode(parameterGroup(declaration, value)), (decoded) => {
+        if (!isRecord(decoded)) throw new TypeError('Decoded route parameters must be an object')
+        return { declaration, decoded }
+      })
+    })
+    const resolved = (steps.some(isPromiseLike) ? Promise.all(steps) : steps) as ExecutionStep<readonly DecodedGroup[]>
+
+    return mapExecutionStep(resolved, (groups) => {
+      const decodedValues: Record<string, unknown> = {}
+      for (const { declaration, decoded } of groups) {
+        for (const name of declaration.names) setOwn(decodedValues, name, decoded[name])
+      }
+      return Object.freeze(decodedValues)
+    })
+  }
+}
+
 /** Decodes captured wire path parameters into their combined application representation. */
 export async function decodePathParameters(
   declarations: readonly CompiledPathParameters[],
   value: Readonly<Record<string, string>>
 ): Promise<Readonly<Record<string, unknown>>> {
-  const decodedValues: Record<string, unknown> = {}
-
-  for (const declaration of declarations) {
-    const decoded = await decodeSchema(declaration.schema, parameterGroup(declaration, value), {
-      location: 'params',
-    })
-    if (!isRecord(decoded)) throw new TypeError('Decoded route parameters must be an object')
-    for (const name of declaration.names) setOwn(decodedValues, name, decoded[name])
-  }
-
-  return Object.freeze(decodedValues)
+  return compilePathParameterDecoder(declarations)(value)
 }

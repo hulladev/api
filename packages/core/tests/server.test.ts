@@ -1,6 +1,7 @@
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
 import { defineContract, type Contract } from '../src/contract'
+import { request } from '../src/request'
 import { response } from '../src/response'
 import { route } from '../src/route'
 import { router } from '../src/router'
@@ -14,18 +15,22 @@ import {
   type ServerResponseResult,
   type ServerRouteMetadata,
 } from '../src/server'
-import { text } from '../src/zod'
+import { zodCodecFixture } from './zod-fixture'
 
-const dateTime = z.codec(z.iso.datetime(), z.date(), {
-  decode: (value) => new Date(value),
-  encode: (value) => value.toISOString(),
-})
+const dateTime = zodCodecFixture(
+  z.codec(z.iso.datetime(), z.date(), {
+    decode: (value) => new Date(value),
+    encode: (value) => value.toISOString(),
+  })
+)
 
-const user = z.object({
-  id: z.string(),
-  organizationId: z.string(),
-  createdAt: dateTime,
-})
+const user = zodCodecFixture(
+  z.object({
+    id: z.string(),
+    organizationId: z.string(),
+    createdAt: dateTime,
+  })
+)
 
 const apiError = response.json(
   z.object({
@@ -45,14 +50,34 @@ const contract = defineContract({
       params: z.object({ organizationId: z.string() }),
       routes: {
         listUsers: route.get('/users', {
-          query: z.object({ limit: text.integer() }),
-          responses: { 200: response.json(z.array(user)) },
+          query: request.query(
+            zodCodecFixture(
+              z.object({
+                limit: z.codec(z.string(), z.number().int(), {
+                  decode: Number,
+                  encode: String,
+                }),
+              })
+            ),
+            { repeated: [] }
+          ),
+          responses: { 200: response.json(zodCodecFixture(z.array(user))) },
         }),
         createUser: route.post('/users/:userId', {
           params: z.object({ userId: z.string() }),
-          query: z.object({ notify: text.boolean() }),
+          query: request.query(
+            zodCodecFixture(
+              z.object({
+                notify: z.codec(z.enum(['true', 'false']), z.boolean(), {
+                  decode: (value) => value === 'true',
+                  encode: (value) => (value ? 'true' : 'false'),
+                }),
+              })
+            ),
+            { repeated: [] }
+          ),
           headers: z.object({ 'x-actor-id': z.string() }),
-          body: z.object({ createdAt: dateTime }),
+          body: zodCodecFixture(z.object({ createdAt: dateTime })),
           responses: {
             201: response.json(user, {
               headers: z.object({ etag: z.string() }),

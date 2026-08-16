@@ -41,9 +41,7 @@ type CheckedQuery<Declaration> = Declaration extends RouteQueryInput
       ? Declaration
       : AnyRepeatedQueryKeys<QuerySchema<Declaration>> extends never
         ? Declaration
-        : Declaration extends { readonly _zod: unknown }
-          ? Declaration
-          : never
+        : never
     : never
   : never
 

@@ -3,11 +3,11 @@ import type { StandardSchemaV1 } from '@standard-schema/spec'
 export type APIErrorLocation = 'body' | 'headers' | 'input' | 'output' | 'params' | 'query' | 'response'
 
 /**
- * The shared issue shape for every structured Hulla error. It is directly
+ * The shared issue shape for every structured @hulla/api error. It is directly
  * compatible with Standard Schema issues and adds optional boundary metadata.
  */
 export type APIErrorIssue = StandardSchemaV1.Issue & {
-  /** Vendor-defined when supplied by Standard Schema; Hulla-created issues use strings. */
+  /** Vendor-defined when supplied by Standard Schema; @hulla/api-created issues use strings. */
   readonly code?: unknown
   readonly location?: APIErrorLocation
 }
@@ -44,7 +44,7 @@ export type APIErrorCode =
   | ServerImplementationErrorCode
   | ServerRuntimeErrorCode
 
-/** A common discriminated shape implemented by all structured Hulla errors. */
+/** A common discriminated shape implemented by all structured @hulla/api errors. */
 export type APIError<Code extends string = string, Issue extends APIErrorIssue = APIErrorIssue> = Error & {
   readonly code: Code
   readonly issues: readonly Issue[]
@@ -113,7 +113,7 @@ function pathKey(segment: PropertyKey | StandardSchemaV1.PathSegment): string | 
   return typeof key === 'symbol' ? String(key) : key
 }
 
-/** Converts any structured Hulla error into its JSON-safe protocol representation. */
+/** Converts any structured @hulla/api error into its JSON-safe protocol representation. */
 export function toAPIProblem(error: APIError, options: APIProblemOptions): APIProblem {
   const issues = error.issues.map((issue): APIProblemIssue => {
     const path = issue.path?.map(pathKey)

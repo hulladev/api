@@ -1,8 +1,9 @@
 import type { CompiledContractRouteFor } from './compiler'
 import type { Contract } from './contract'
+import type { ExecutionStep } from './execution'
 import type { Route } from './route'
 
-export type Awaitable<Value> = PromiseLike<Value> | Value
+export type Awaitable<Value> = ExecutionStep<Value>
 
 export type RouteMetadata<
   Key extends readonly string[] = readonly string[],

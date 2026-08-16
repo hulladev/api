@@ -11,6 +11,9 @@
       "inputs": ["$TURBO_DEFAULT$", "../../tsconfig.base.json"],
       "outputs": ["dist/**"]
     },
+    "check:package": {
+      "dependsOn": ["build"]
+    },
     "dev": {
       "cache": false,
       "persistent": true
@@ -19,12 +22,17 @@
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", "../../tsconfig.base.json"]
     },
+    "test:coverage": {
+      "cache": false,
+      "dependsOn": ["^build"],
+      "outputs": ["coverage/**"]
+    },
     "test:watch": {
       "cache": false,
       "persistent": true
     },
     "typecheck": {
-      "dependsOn": ["^typecheck"],
+      "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", "../../tsconfig.base.json"]
     },
     "clean": {

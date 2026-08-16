@@ -1,6 +1,9 @@
+import type { Route } from '@hulla/api'
+import type { RouterParamsForRoute } from '@hulla/api'
+import { routerParamsForRouteValue } from '@hulla/api/integration'
+import type { CodecSchema } from '@hulla/api/validation'
 import * as z from 'zod/v4'
-import type { Route } from '../route'
-import { routerParamsForRouteValue, type RouterParamsForRoute } from '../router'
+import { codec } from './codec'
 
 type RouteProperty<RouteType, Key extends PropertyKey> = RouteType extends {
   readonly [Property in Key]: infer Value
@@ -10,8 +13,14 @@ type RouteProperty<RouteType, Key extends PropertyKey> = RouteType extends {
 
 type MergeShapes<Left extends z.core.$ZodShape, Right extends z.core.$ZodShape> = Omit<Left, keyof Right> & Right
 
-type ZodParamsSchema<RouteType extends Route> =
-  RouterParamsForRoute<RouteType> extends infer RouterParams extends z.core.$ZodType
+type DefinedRouterParams<RouteType extends Route> = Exclude<RouterParamsForRoute<RouteType>, undefined>
+
+type RouteParamsSchema<RouteType extends Route> =
+  RouteProperty<RouteType, 'params'> extends infer RouteParams extends z.core.$ZodType ? RouteParams : undefined
+
+type ZodParamsSchema<RouteType extends Route> = [DefinedRouterParams<RouteType>] extends [never]
+  ? RouteParamsSchema<RouteType>
+  : DefinedRouterParams<RouteType> extends infer RouterParams extends z.core.$ZodType
     ? RouteProperty<RouteType, 'params'> extends infer RouteParams extends z.core.$ZodType
       ? RouterParams extends z.ZodObject<infer RouterShape>
         ? RouteParams extends z.ZodObject<infer RouteShape>
@@ -19,13 +28,9 @@ type ZodParamsSchema<RouteType extends Route> =
           : z.ZodIntersection<RouterParams, RouteParams>
         : z.ZodIntersection<RouterParams, RouteParams>
       : RouterParams
-    : RouteProperty<RouteType, 'params'> extends infer RouteParams extends z.core.$ZodType
-      ? RouteParams
-      : undefined
+    : RouteParamsSchema<RouteType>
 
-type ZodDescriptorSchema<Value> = Value extends {
-  readonly schema: infer Schema extends z.core.$ZodType
-}
+type ZodDescriptorSchema<Value> = Value extends { readonly schema: infer Schema extends z.core.$ZodType }
   ? Schema
   : undefined
 
@@ -45,7 +50,7 @@ type ZodRouteInputShape<RouteType extends Route> = {
 }
 
 type ZodCompatibleRoute<RouteType extends Route> =
-  RouterParamsForRoute<RouteType> extends z.core.$ZodType | undefined
+  DefinedRouterParams<RouteType> extends z.core.$ZodType | never
     ? RouteProperty<RouteType, 'params'> extends z.core.$ZodType | undefined
       ? RouteProperty<RouteType, 'query'> extends { readonly schema: z.core.$ZodType } | undefined
         ? RouteProperty<RouteType, 'headers'> extends z.core.$ZodType | undefined
@@ -57,7 +62,13 @@ type ZodCompatibleRoute<RouteType extends Route> =
       : never
     : never
 
-export type ZodRouteInputSchema<RouteType extends Route> = z.ZodObject<ZodRouteInputShape<RouteType>>
+type NativeZodRouteInputSchema<RouteType extends Route> = z.ZodObject<ZodRouteInputShape<RouteType>>
+
+export type ZodRouteInputSchema<RouteType extends Route> = CodecSchema<
+  z.input<NativeZodRouteInputSchema<RouteType>>,
+  z.output<NativeZodRouteInputSchema<RouteType>>,
+  NativeZodRouteInputSchema<RouteType>
+>
 
 function assertZodSchema(value: unknown, field: string): asserts value is z.core.$ZodType {
   if (!(value instanceof z.ZodType)) throw new TypeError(`Route ${field} must use a Zod schema`)
@@ -99,5 +110,5 @@ export function routeInput<const RouteType extends Route>(
     shape['body'] = route.body.schema
   }
 
-  return z.object(shape) as ZodRouteInputSchema<RouteType>
+  return codec(z.object(shape)) as ZodRouteInputSchema<RouteType>
 }

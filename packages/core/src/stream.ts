@@ -1,9 +1,8 @@
-import type { StandardSchemaV1 } from '@standard-schema/spec'
 import type { JsonValue, ResponseBody, ResponseHeaders, RouteResponse } from './response'
-import type { AnySchema } from './validation'
+import type { AnySchema, CodecSchema, IdentitySchema, NonSchemaOptions } from './validation'
 
 export type StreamSource<Value> = AsyncIterable<Value> | Iterable<Value>
-export type StreamWireSchema<Wire> = StandardSchemaV1<Wire, unknown>
+export type StreamWireSchema<Wire> = CodecSchema<Wire, unknown> | IdentitySchema<Wire>
 
 export type StreamFormatMetadata<Id extends string = string, ContentType extends string = string> = {
   readonly kind: 'stream-format'
@@ -35,7 +34,10 @@ export type FormattedStreamResponseBody<
   }
 >
 
-type StreamResponseOptions<Headers extends ResponseHeaders | undefined, ContentType extends string> = {
+type StreamResponseOptions<
+  Headers extends ResponseHeaders | undefined,
+  ContentType extends string,
+> = NonSchemaOptions & {
   readonly headers?: Headers
   readonly contentType?: ContentType
 }

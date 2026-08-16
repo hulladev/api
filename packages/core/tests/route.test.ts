@@ -4,8 +4,7 @@ import { z } from 'zod'
 import { request } from '../src/request'
 import { response } from '../src/response'
 import { route, type Route, type RouteParams, type RouteQuery } from '../src/route'
-import type { SchemaInput, SchemaOutput } from '../src/validation'
-import { text } from '../src/zod'
+import { codec, type SchemaInput, type SchemaOutput } from '../src/validation'
 
 const responses = {
   200: response.json(
@@ -163,10 +162,59 @@ describe('route declaration', () => {
       headers: z.object({ enabled: z.boolean() }),
     })
 
+    route.get('/:id', {
+      responses,
+      // @ts-expect-error Valibot path parameters must also accept text on the wire.
+      params: v.object({ id: v.number() }),
+    })
+
+    route.get('/users', {
+      responses,
+      // @ts-expect-error Valibot query fields must also accept text on the wire.
+      query: v.object({ page: v.number() }),
+    })
+
+    route.get('/users', {
+      responses,
+      // @ts-expect-error Valibot headers must also accept text on the wire.
+      headers: v.object({ enabled: v.boolean() }),
+    })
+
     const declaration = route.get('/:id', {
       responses,
-      params: z.object({ id: text.integer() }),
-      query: z.object({ page: text.integer(), tags: z.array(z.string()) }),
+      params: codec({
+        decode: v.object({
+          id: v.pipe(
+            v.string(),
+            v.transform((value) => Number(value))
+          ),
+        }),
+        encode: v.object({
+          id: v.pipe(
+            v.number(),
+            v.transform((value) => String(value))
+          ),
+        }),
+      }),
+      query: request.query(
+        codec({
+          decode: v.object({
+            page: v.pipe(
+              v.string(),
+              v.transform((value) => Number(value))
+            ),
+            tags: v.array(v.string()),
+          }),
+          encode: v.object({
+            page: v.pipe(
+              v.number(),
+              v.transform((value) => String(value))
+            ),
+            tags: v.array(v.string()),
+          }),
+        }),
+        { repeated: ['tags'] }
+      ),
     })
 
     expectTypeOf<SchemaOutput<typeof declaration.params>>().toEqualTypeOf<{ id: number }>()

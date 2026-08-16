@@ -1,7 +1,9 @@
+import * as v from 'valibot'
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
 import { response } from '../src/response'
 import { defineStreamFormat, ndjson, sseJson, type StreamSource } from '../src/stream'
+import { codec, type SchemaInput, type SchemaOutput } from '../src/validation'
 
 async function collect<Value>(source: AsyncIterable<Value>): Promise<Value[]> {
   const values: Value[] = []
@@ -25,11 +27,23 @@ function chunks(value: string, offsets: readonly number[]): Uint8Array[] {
 
 describe('stream formats', () => {
   test('adds typed format and item schema metadata to stream responses', () => {
-    const dateCodec = z.codec(z.iso.datetime(), z.date(), {
-      decode: (value) => new Date(value),
-      encode: (value) => value.toISOString(),
+    const schema = codec({
+      decode: v.object({
+        id: v.string(),
+        createdAt: v.pipe(
+          v.string(),
+          v.isoTimestamp(),
+          v.transform((value) => new Date(value))
+        ),
+      }),
+      encode: v.object({
+        id: v.string(),
+        createdAt: v.pipe(
+          v.date(),
+          v.transform((value) => value.toISOString())
+        ),
+      }),
     })
-    const schema = z.object({ id: z.string(), createdAt: dateCodec })
     const headers = z.object({ etag: z.string() })
     const definition = ndjson(schema)
     const declaration = response.stream(definition, { headers })
@@ -49,11 +63,11 @@ describe('stream formats', () => {
     expectTypeOf(declaration.body.format).toEqualTypeOf<typeof ndjson>()
     expectTypeOf(declaration.headers).toEqualTypeOf<typeof headers>()
     expectTypeOf(declaration.contentType).toEqualTypeOf<'application/x-ndjson'>()
-    expectTypeOf<z.input<typeof declaration.body.schema>>().toEqualTypeOf<{
+    expectTypeOf<SchemaInput<typeof declaration.body.schema>>().toEqualTypeOf<{
       id: string
       createdAt: string
     }>()
-    expectTypeOf<z.output<typeof declaration.body.schema>>().toEqualTypeOf<{
+    expectTypeOf<SchemaOutput<typeof declaration.body.schema>>().toEqualTypeOf<{
       id: string
       createdAt: Date
     }>()
@@ -140,15 +154,23 @@ describe('stream formats', () => {
     textLines(z.number())
   })
 
-  test('rejects schemas that cannot encode to JSON wire values', () => {
+  test('accepts and rejects JSON wire schemas consistently across validators', () => {
     ndjson(z.object({ message: z.string() }))
     sseJson(z.string())
+    ndjson(v.object({ message: v.string() }))
+    sseJson(v.string())
 
     // @ts-expect-error Bigints are not JSON wire values.
     ndjson(z.bigint())
 
     // @ts-expect-error Dates require a JSON-compatible directional codec.
     sseJson(z.date())
+
+    // @ts-expect-error Valibot bigints are not JSON wire values.
+    ndjson(v.bigint())
+
+    // @ts-expect-error Valibot dates require a JSON-compatible directional codec.
+    sseJson(v.date())
 
     // @ts-expect-error A format must first be bound to an item schema.
     response.stream(ndjson)

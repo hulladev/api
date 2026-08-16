@@ -1,7 +1,6 @@
 {
   "name": "@hulla/api",
-  "version": "0.0.0",
-  "private": true,
+  "version": "2.0.0",
   "description": "Directional Standard Schema contracts with typed client and server bindings",
   "license": "MIT",
   "files": [
@@ -26,6 +25,10 @@
       "types": "./dist/errors.d.ts",
       "import": "./dist/errors.js"
     },
+    "./integration": {
+      "types": "./dist/integration.d.ts",
+      "import": "./dist/integration.js"
+    },
     "./server": {
       "types": "./dist/server/index.d.ts",
       "import": "./dist/server/index.js"
@@ -38,9 +41,9 @@
       "types": "./dist/validation.d.ts",
       "import": "./dist/validation.js"
     },
-    "./zod": {
-      "types": "./dist/zod.d.ts",
-      "import": "./dist/zod.js"
+    "./wire": {
+      "types": "./dist/wire.d.ts",
+      "import": "./dist/wire.js"
     }
   },
   "scripts": {
@@ -49,6 +52,7 @@
     "clean": "rm -rf dist coverage",
     "dev": "tsdown --watch",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
@@ -58,13 +62,5 @@
   "devDependencies": {
     "valibot": "^1.4.2",
     "zod": "^4.4.3"
-  },
-  "peerDependencies": {
-    "zod": "^4.1.0"
-  },
-  "peerDependenciesMeta": {
-    "zod": {
-      "optional": true
-    }
   }
 }

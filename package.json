@@ -1,6 +1,6 @@
 {
   "name": "@hulla/api-workspace",
-  "version": "0.0.0",
+  "version": "2.0.0",
   "private": true,
   "description": "Greenfield workspace for the directional @hulla/api contract runtime",
   "license": "MIT",
@@ -18,10 +18,10 @@
     "benchmarks"
   ],
   "scripts": {
-    "bench": "bun run --cwd packages/core build && bun run --cwd benchmarks bench",
+    "bench": "bun run build && bun run --cwd benchmarks bench",
     "build": "turbo run build",
     "check": "bun run fmt && bun run lint && bun run typecheck && bun run test && bun run build && bun run check:package",
-    "check:package": "bun run --cwd packages/core check:package",
+    "check:package": "turbo run check:package --filter=@hulla/api --filter=@hulla/api-zod",
     "clean": "turbo run clean && rm -rf .turbo",
     "dev": "turbo run dev",
     "fmt": "oxfmt --check .",
@@ -30,12 +30,14 @@
     "lint:fix": "oxlint . --fix",
     "prepare": "husky",
     "test": "turbo run test",
+    "test:coverage": "turbo run test:coverage",
     "test:watch": "turbo run test:watch",
     "typecheck": "turbo run typecheck"
   },
   "devDependencies": {
     "@commitlint/cli": "^20.4.3",
     "@types/node": "^20.14.12",
+    "@vitest/coverage-v8": "4.0.18",
     "commitizen": "^4.3.1",
     "cz-emoji": "1.3.2-canary.2",
     "husky": "^9.1.7",

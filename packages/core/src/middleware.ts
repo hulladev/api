@@ -1,4 +1,5 @@
 import type { Awaitable } from './context'
+import type { ExecutionStep } from './execution'
 
 export type MiddlewareInput<Context extends object, RequestType, Route> = {
   readonly context: Readonly<Context>
@@ -12,9 +13,11 @@ export type MiddlewareNextResult<Value> = Value & {
   readonly [middlewareNextResultType]: Value
 }
 
-export type MiddlewareActions<Result> = {
-  readonly next: () => Promise<MiddlewareNextResult<Result>>
+export type NextActions<NextResult> = {
+  readonly next: () => NextResult
 }
+
+export type MiddlewareActions<Result> = NextActions<Promise<MiddlewareNextResult<Result>>>
 
 export type NextMiddleware<Context extends object, RequestType, Route> = <Result>(
   actions: MiddlewareActions<Result>,
@@ -37,6 +40,33 @@ export type MiddlewareDispatchErrors = {
   readonly multipleNext: () => Error
 }
 
+/** Executes middleware without introducing a promise when every layer is synchronous. */
+export function dispatchMiddlewareSteps<Input, Result, Actions extends object>(
+  middlewares: readonly unknown[],
+  input: Input,
+  terminal: () => ExecutionStep<Result>,
+  createActions: (next: () => ExecutionStep<Result>) => Actions,
+  errors: MiddlewareDispatchErrors
+): ExecutionStep<Result> {
+  const dispatch = (index: number): ExecutionStep<Result> => {
+    if (index === middlewares.length) return terminal()
+
+    const middleware = middlewares[index]
+    if (typeof middleware !== 'function') throw errors.invalidMiddleware()
+
+    let called = false
+    const next = (): ExecutionStep<Result> => {
+      if (called) throw errors.multipleNext()
+      called = true
+      return dispatch(index + 1)
+    }
+
+    return middleware(Object.freeze(createActions(next)), input) as ExecutionStep<Result>
+  }
+
+  return dispatch(0)
+}
+
 /** Executes a middleware stack with a single-use next action at every layer. */
 export async function dispatchMiddlewares<Input, Result, Actions extends object>(
   middlewares: readonly unknown[],
@@ -45,21 +75,12 @@ export async function dispatchMiddlewares<Input, Result, Actions extends object>
   createActions: (next: () => Promise<Result>) => Actions,
   errors: MiddlewareDispatchErrors
 ): Promise<Result> {
-  const dispatch = async (index: number): Promise<Result> => {
-    if (index === middlewares.length) return terminal()
-
-    const middleware = middlewares[index]
-    if (typeof middleware !== 'function') throw errors.invalidMiddleware()
-
-    let called = false
-    const next = async (): Promise<Result> => {
-      if (called) throw errors.multipleNext()
-      called = true
-      return dispatch(index + 1)
-    }
-
-    return middleware(Object.freeze(createActions(next)), input) as Promise<Result>
-  }
-
-  return dispatch(0)
+  const result = dispatchMiddlewareSteps(
+    middlewares,
+    input,
+    async () => terminal(),
+    (next) => createActions(async () => next()),
+    errors
+  )
+  return result
 }

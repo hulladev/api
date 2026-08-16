@@ -27,8 +27,8 @@ export type {
   ServerMiddlewareInput,
 } from './middleware'
 export { defineServer } from './definition'
-export { createFetchHandler } from './runtime'
-export type { FetchHandler, FetchServerErrorInput, FetchServerOptions, FetchServerPhase } from './runtime'
+export { createFetchHandler } from './fetch'
+export type { FetchHandler, FetchServerErrorInput, FetchServerOptions, FetchServerPhase } from './fetch'
 export type {
   ProducedServerResponse,
   ProducedServerResponseValue,

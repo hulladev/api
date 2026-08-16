@@ -8,6 +8,9 @@ import {
   isSchema,
   mapSchemaStep,
   type AnySchema,
+  type CodecSchema,
+  type IdentitySchema,
+  type NonSchemaOptions,
   type ObjectSchema,
   type SchemaInput,
   type SchemaStep,
@@ -106,11 +109,11 @@ type UnambiguousRepeatedKeys<Schema extends AnySchema> = [AmbiguousQueryKeys<Sch
       readonly 'query fields cannot mix scalar and repeated inputs': AmbiguousQueryKeys<Schema>
     }
 
-type RequestBodyOptions<ContentType extends string> = {
+type RequestBodyOptions<ContentType extends string> = NonSchemaOptions & {
   readonly contentType?: ContentType
 }
 
-type WireSchema<Wire> = StandardSchemaV1<Wire, unknown>
+type WireSchema<Wire> = CodecSchema<Wire, unknown> | IdentitySchema<Wire>
 
 type RequestBodyFactory<
   Kind extends RequestBodyKind,

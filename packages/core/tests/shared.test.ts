@@ -1,4 +1,5 @@
 import { expectTypeOf, test } from 'vitest'
+import { defineContract, response, route } from '../src'
 import type {
   ClientContextFactory,
   ClientContextInput,
@@ -6,9 +7,6 @@ import type {
   ClientMiddlewareInput,
   ClientMiddlewareNextResult,
 } from '../src/client'
-import { defineContract } from '../src/contract'
-import { response } from '../src/response'
-import { route } from '../src/route'
 import type {
   MiddlewareNextResult,
   ServerContextFactory,

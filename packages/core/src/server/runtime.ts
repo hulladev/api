@@ -4,38 +4,62 @@ import type { Contract } from '../contract'
 import { isAPIError, toAPIProblem, type APIProblem } from '../errors'
 import { dispatchMiddlewares } from '../middleware'
 import { copyRecord, hasOwn, isRecord, setOwn } from '../object'
-import { decodePathParameters } from '../parameters'
-import { decodeQuery } from '../query'
-import { matchesContentType, mimeEssence, textWireObject, type AnyRequestBody } from '../request'
+import { compilePathParameterDecoder } from '../parameters'
+import { compileQueryDecoder, type QueryTransportPlan } from '../query'
+import { mimeEssence, textWireObject, type AnyRequestBody, type AnyRequestQuery } from '../request'
 import type { AnyRouteResponse } from '../response'
 import type { StreamFormat, StreamSource } from '../stream'
-import {
-  decodeSchemaValue,
-  encodeSchemaValue,
-  isSchemaStepAsync,
-  mapSchemaStep,
-  type AnySchema,
-  type SchemaStep,
-} from '../validation'
+import { compileSchemaExecution, isSchemaStepAsync, mapSchemaStep, type SchemaStep } from '../validation'
 import { ServerRuntimeError } from './errors'
 import type { ServerImplementation } from './types'
 
-export type FetchServerPhase = 'context' | 'handler' | 'request' | 'response' | 'routing'
+export type WireServerPhase = 'context' | 'handler' | 'request' | 'response' | 'routing'
 
-export type FetchServerErrorInput = {
-  readonly defaultResponse: Response
+export type WireServerResponseBody = {
+  readonly kind: 'bytes' | 'empty' | 'form-data' | 'json' | 'raw' | 'stream' | 'text'
+  readonly value: unknown
+}
+
+export type WireServerResponse = {
+  readonly status: number
+  readonly headers: Readonly<Record<string, string>>
+  readonly body: WireServerResponseBody
+}
+
+export type WireServerErrorInput = {
+  readonly defaultResponse: WireServerResponse
   readonly error: unknown
-  readonly phase: FetchServerPhase
-  readonly request: Request
+  readonly phase: WireServerPhase
+  readonly request: unknown
   readonly route?: RouteMetadata
 }
 
-export type FetchServerOptions = {
+export type WireServerOptions = {
   /** Optionally replace the runtime's protocol-safe error response. */
-  readonly onError?: (input: FetchServerErrorInput) => Awaitable<Response | undefined | void>
+  readonly onError?: (input: WireServerErrorInput) => Awaitable<WireServerResponse | undefined | void>
 }
 
-export type FetchHandler = (request: Request) => Promise<Response>
+export type WireServerBody = {
+  /** The already-extracted wire value: parsed JSON, text, bytes, or FormData. */
+  readonly value: unknown
+  /** Defaults to the content-type header on `request`. */
+  readonly contentType?: string
+}
+
+export type WireServerInput = {
+  /** Original host request exposed to context, middleware, and handlers. */
+  readonly request: unknown
+  readonly method: string
+  readonly pathname: string
+  readonly headers?: Readonly<Record<string, string>>
+  /** Lazily extracts headers when the matched route declares headers or a body. */
+  readonly readHeaders?: () => Readonly<Record<string, string>>
+  readonly query?: URLSearchParams
+  readonly body?: WireServerBody
+  readonly readBody?: (representation: AnyRequestBody['representation'], preserveRequest: boolean) => Promise<unknown>
+}
+
+export type WireServerHandler = (input: WireServerInput) => Promise<WireServerResponse>
 
 type MatchedRoute = {
   readonly runtime: RuntimeRoute
@@ -43,25 +67,35 @@ type MatchedRoute = {
 }
 
 type ProducedResponseMetadata = {
-  readonly definition: AnyRouteResponse
+  readonly serialize: ResponseSerializer
 }
 
 type RuntimeServer = {
-  readonly context?: (input: { readonly request: Request; readonly route: RouteMetadata }) => Awaitable<object>
+  readonly context?: (input: { readonly request: unknown; readonly route: RouteMetadata }) => Awaitable<object>
   readonly contract: Contract
   readonly handlers: unknown
   readonly middlewares: unknown
 }
 
 type RuntimeHandler = (actions: object, input: object) => Awaitable<unknown>
+type ResponseSerializer = (value: Readonly<Record<string, unknown>>) => Promise<WireServerResponse>
+type RuntimeInputDecoder = (
+  parameters: Readonly<Record<string, string>>,
+  input: WireServerInput,
+  query: URLSearchParams | undefined,
+  preserveRequest: boolean
+) => Promise<Record<string, unknown>>
 
 type RuntimeRoute = {
   readonly compiled: CompiledContractRoute
+  readonly decodeInput: RuntimeInputDecoder
   readonly handler: RuntimeHandler
   readonly handlerActions: Readonly<{ readonly respond: (value: unknown) => unknown }>
   readonly metadata: RouteMetadata
   readonly middlewares: readonly unknown[]
   readonly pattern: readonly string[]
+  readonly readsBody: boolean
+  readonly readsQuery: boolean
 }
 
 type RuntimeRoutingNode = {
@@ -72,7 +106,8 @@ type RuntimeRoutingNode = {
 
 type RuntimeRoutingTable = {
   readonly exact: Map<string, readonly RuntimeRoute[]>
-  readonly root: RuntimeRoutingNode
+  root?: RuntimeRoutingNode
+  readonly routes: readonly RuntimeRoute[]
 }
 
 type RouteSelection =
@@ -81,7 +116,12 @@ type RouteSelection =
 
 const emptyParameters = Object.freeze({})
 const emptyContext = Object.freeze({})
+const emptyHeaders = Object.freeze({})
 const producedResponses = new WeakMap<object, ProducedResponseMetadata>()
+
+function wireHeaders(input: WireServerInput): Readonly<Record<string, string>> {
+  return input.headers ?? input.readHeaders?.() ?? emptyHeaders
+}
 
 function pathSegments(path: string): readonly string[] {
   if (path === '' || path === '/') return []
@@ -158,6 +198,10 @@ function selectRoute(table: RuntimeRoutingTable, pathname: string, method: strin
     if (exact !== undefined) return selectCandidates(exact, method)
   }
 
+  if (table.root === undefined) {
+    if (!pathname.includes('%')) return { kind: 'miss', allowed: [] }
+    table.root = compileRoutingTree(table.routes)
+  }
   const segments = decodePathname(pathname)
   const candidates: RuntimeRoute[] = []
   matchingRuntimeRoutes(table.root, segments, 0, candidates)
@@ -174,39 +218,11 @@ function treeValue(tree: unknown, key: readonly string[]): unknown {
   return value
 }
 
-function compileRuntimeRoutes(server: RuntimeServer): RuntimeRoutingTable {
+function compileRoutingTree(routes: readonly RuntimeRoute[]): RuntimeRoutingNode {
   const root = routingNode()
-  const exact = new Map<string, RuntimeRoute[]>()
-
-  for (const compiled of compileContract(server.contract).routes as readonly CompiledContractRoute[]) {
-    const handler = treeValue(server.handlers, compiled.key)
-    const middlewares = treeValue(server.middlewares, compiled.key)
-    if (typeof handler !== 'function' || !Array.isArray(middlewares)) {
-      throw new ServerRuntimeError(
-        'invalid-server-response',
-        500,
-        'Compiled route is missing its server implementation'
-      )
-    }
-
-    const pattern = Object.freeze(pathSegments(compiled.path))
-    const runtime = Object.freeze({
-      compiled,
-      handler: handler as RuntimeHandler,
-      handlerActions: Object.freeze({ respond: responseProducer(compiled.route.responses) }),
-      metadata: Object.freeze({ key: compiled.key, method: compiled.method, path: compiled.path }),
-      middlewares: Object.freeze([...middlewares]),
-      pattern,
-    })
-
-    if (compiled.pathParameters.length === 0) {
-      const candidates = exact.get(compiled.path)
-      if (candidates === undefined) exact.set(compiled.path, [runtime])
-      else candidates.push(runtime)
-    }
-
+  for (const runtime of routes) {
     let node = root
-    for (const segment of pattern) {
+    for (const segment of runtime.pattern) {
       if (segment.startsWith(':')) {
         node.parameter ??= routingNode()
         node = node.parameter
@@ -223,31 +239,66 @@ function compileRuntimeRoutes(server: RuntimeServer): RuntimeRoutingTable {
     node.routes.push(runtime)
   }
 
-  return { exact, root }
+  return root
 }
 
-function requestPathname(url: string): string {
-  const authority = url.indexOf('://')
-  const start = authority === -1 ? 0 : url.indexOf('/', authority + 3)
-  if (start === -1) return '/'
+function compileRuntimeRoutes(server: RuntimeServer): RuntimeRoutingTable {
+  const exact = new Map<string, RuntimeRoute[]>()
+  const routes: RuntimeRoute[] = []
+  let hasParameters = false
 
-  const query = url.indexOf('?', start)
-  const hash = url.indexOf('#', start)
-  const end = query === -1 ? (hash === -1 ? url.length : hash) : hash === -1 ? query : Math.min(query, hash)
-  return url.slice(start, end) || '/'
+  for (const compiled of compileContract(server.contract).routes as readonly CompiledContractRoute[]) {
+    const handler = treeValue(server.handlers, compiled.key)
+    const middlewares = treeValue(server.middlewares, compiled.key)
+    if (typeof handler !== 'function' || !Array.isArray(middlewares)) {
+      throw new ServerRuntimeError(
+        'invalid-server-response',
+        500,
+        'Compiled route is missing its server implementation'
+      )
+    }
+
+    const runtime = {
+      compiled,
+      decodeInput: compileRouteInput(compiled),
+      handler: handler as RuntimeHandler,
+      handlerActions: Object.freeze({ respond: responseProducer(compiled.route.responses) }),
+      metadata: Object.freeze({ key: compiled.key, method: compiled.method, path: compiled.path }),
+      middlewares,
+      pattern: pathSegments(compiled.path),
+      readsBody: 'body' in compiled.route,
+      readsQuery: 'query' in compiled.route,
+    }
+    routes.push(runtime)
+
+    if (compiled.pathParameters.length === 0) {
+      const candidates = exact.get(compiled.path)
+      if (candidates === undefined) exact.set(compiled.path, [runtime])
+      else candidates.push(runtime)
+    } else hasParameters = true
+  }
+
+  return { exact, ...(hasParameters ? { root: compileRoutingTree(routes) } : {}), routes }
 }
 
-function problemResponse(problem: APIProblem, headers?: HeadersInit): Response {
-  const responseHeaders = new Headers(headers)
-  responseHeaders.set('content-type', 'application/problem+json; charset=utf-8')
-  return new Response(JSON.stringify(problem), { status: problem.status, headers: responseHeaders })
+function problemResponse(problem: APIProblem, headers: Readonly<Record<string, string>> = {}): WireServerResponse {
+  return Object.freeze({
+    status: problem.status,
+    headers: Object.freeze({ ...headers, 'content-type': 'application/problem+json; charset=utf-8' }),
+    body: Object.freeze({ kind: 'json' as const, value: problem }),
+  })
 }
 
-function simpleProblem(status: number, code: string, title: string, headers?: HeadersInit): Response {
+function simpleProblem(
+  status: number,
+  code: string,
+  title: string,
+  headers?: Readonly<Record<string, string>>
+): WireServerResponse {
   return problemResponse(Object.freeze({ type: 'about:blank', title, status, code }), headers)
 }
 
-function errorResponse(error: unknown, phase: FetchServerPhase): Response {
+function errorResponse(error: unknown, phase: WireServerPhase): WireServerResponse {
   if (phase === 'request' || phase === 'routing') {
     if (error instanceof ServerRuntimeError) {
       return problemResponse(toAPIProblem(error, { status: error.status, title: error.message }))
@@ -258,92 +309,113 @@ function errorResponse(error: unknown, phase: FetchServerPhase): Response {
   return simpleProblem(500, 'internal-server-error', 'Internal server error')
 }
 
-async function parseRequestBody(request: Request, declaration: AnyRequestBody): Promise<unknown> {
-  const contentType = request.headers.get('content-type') ?? ''
-  if (!matchesContentType(declaration, contentType)) {
-    throw new ServerRuntimeError(
-      'unsupported-media-type',
-      415,
-      `Expected request content type ${mimeEssence(declaration.contentType)}, received ${mimeEssence(contentType) || 'none'}`,
-      { location: 'body' }
-    )
-  }
+function compileBodyDecoder(
+  declaration: AnyRequestBody
+): (input: WireServerInput, preserveRequest: boolean) => Promise<unknown> {
+  const expected = mimeEssence(declaration.contentType)
+  const decode = compileSchemaExecution(declaration.schema, { location: 'body' }).decode
 
-  let wire: unknown
-  try {
-    switch (declaration.representation) {
-      case 'json':
-        wire = await request.json()
-        break
-      case 'text':
-        wire = await request.text()
-        break
-      case 'bytes':
-        wire = new Uint8Array(await request.arrayBuffer())
-        break
-      case 'form-data':
-        wire = await request.formData()
-        break
+  return async (input, preserveRequest) => {
+    const provided = input.body
+    const contentType = provided?.contentType ?? wireHeaders(input)['content-type'] ?? ''
+    const received = mimeEssence(contentType)
+    if (received !== expected) {
+      throw new ServerRuntimeError(
+        'unsupported-media-type',
+        415,
+        `Expected request content type ${expected}, received ${received || 'none'}`,
+        { location: 'body' }
+      )
     }
-  } catch (cause) {
-    throw new ServerRuntimeError('invalid-request-body', 400, 'Request body could not be decoded', {
-      cause,
-      location: 'body',
-    })
-  }
 
-  return decodeSchemaValue(declaration.schema, wire, { location: 'body' })
+    let wire: unknown
+    try {
+      if (provided !== undefined) wire = provided.value
+      else if (input.readBody !== undefined) wire = await input.readBody(declaration.representation, preserveRequest)
+      else throw new TypeError('Wire server input does not provide a request body reader')
+    } catch (cause) {
+      throw new ServerRuntimeError('invalid-request-body', 400, 'Request body could not be decoded', {
+        cause,
+        location: 'body',
+      })
+    }
+    return decode(wire)
+  }
 }
 
-async function decodeRouteInput(
-  match: MatchedRoute,
-  request: Request,
-  url: URL | undefined
-): Promise<Record<string, unknown>> {
-  const compiled = match.runtime.compiled
+function compileRouteInput(compiled: CompiledContractRoute): RuntimeInputDecoder {
   const route = compiled.route
-  const input: Record<string, unknown> = {}
-  const hasParams = compiled.pathParameters.length > 0
-  const hasQuery = 'query' in route
-  const hasHeaders = 'headers' in route
-  const hasBody = 'body' in route
+  const decodeParams =
+    compiled.pathParameters.length === 0 ? undefined : compilePathParameterDecoder(compiled.pathParameters)
+  const decodeQuery =
+    'query' in route
+      ? compileQueryDecoder(route.query as AnyRequestQuery & { readonly transport: QueryTransportPlan })
+      : undefined
+  const decodeHeaders =
+    'headers' in route ? compileSchemaExecution(route.headers, { location: 'headers' }).decode : undefined
+  const decodeBody = 'body' in route ? compileBodyDecoder(route.body) : undefined
+  const fieldCount =
+    Number(decodeParams !== undefined) +
+    Number(decodeQuery !== undefined) +
+    Number(decodeHeaders !== undefined) +
+    Number(decodeBody !== undefined)
 
-  const fieldCount = Number(hasParams) + Number(hasQuery) + Number(hasHeaders) + Number(hasBody)
-  let params: unknown
-  let query: unknown
-  let headers: unknown
-  let body: unknown
+  if (fieldCount === 0) return async () => ({})
 
-  if (fieldCount === 1) {
-    if (hasParams) params = await decodePathParameters(compiled.pathParameters, match.parameters)
-    else if (hasQuery) query = await decodeQuery(route.query, url!.searchParams)
-    else if (hasHeaders) {
-      headers = await decodeSchemaValue(route.headers, Object.fromEntries(request.headers.entries()), {
-        location: 'headers',
-      })
-    } else if (hasBody) body = await parseRequestBody(request, route.body)
-  } else if (fieldCount > 1) {
-    ;[params, query, headers, body] = await Promise.all([
-      hasParams ? decodePathParameters(compiled.pathParameters, match.parameters) : undefined,
-      hasQuery ? decodeQuery(route.query, url!.searchParams) : undefined,
-      hasHeaders
-        ? decodeSchemaValue(route.headers, Object.fromEntries(request.headers.entries()), { location: 'headers' })
-        : undefined,
-      hasBody ? parseRequestBody(request, route.body) : undefined,
+  return async (parameters, request, query, preserveRequest) => {
+    const input: Record<string, unknown> = {}
+    if (fieldCount === 1) {
+      if (decodeParams !== undefined) input['params'] = await decodeParams(parameters)
+      else if (decodeQuery !== undefined) input['query'] = await decodeQuery(query ?? new URLSearchParams())
+      else if (decodeHeaders !== undefined) {
+        input['headers'] = await decodeHeaders(wireHeaders(request))
+      } else input['body'] = await decodeBody!(request, preserveRequest)
+      return input
+    }
+
+    const [params, queryValue, headers, bodyValue] = await Promise.all([
+      decodeParams?.(parameters),
+      decodeQuery?.(query ?? new URLSearchParams()),
+      decodeHeaders?.(wireHeaders(request)),
+      decodeBody?.(request, preserveRequest),
     ])
+    if (decodeParams !== undefined) input['params'] = params
+    if (decodeQuery !== undefined) input['query'] = queryValue
+    if (decodeHeaders !== undefined) input['headers'] = headers
+    if (decodeBody !== undefined) input['body'] = bodyValue
+    return input
   }
-
-  if (hasParams) input['params'] = params
-  if (hasQuery) input['query'] = query
-  if (hasHeaders) input['headers'] = headers
-  if (hasBody) input['body'] = body
-
-  return input
 }
 
 function responseProducer(responses: Readonly<Record<number, AnyRouteResponse>>) {
+  const entries = Object.entries(responses)
+  if (entries.length === 1) {
+    const [statusKey, definition] = entries[0]!
+    const status = Number(statusKey)
+    const serialize = compileResponseSerializer(definition, status)
+    return (value: unknown): unknown => {
+      if (!isRecord(value) || value['status'] !== status) {
+        throw new ServerRuntimeError(
+          'invalid-server-response',
+          500,
+          'Server response must use a status declared by the selected responder'
+        )
+      }
+
+      const produced = copyRecord(value)
+      producedResponses.set(produced, { serialize })
+      return produced
+    }
+  }
+
+  const serializers = new Map<number, ResponseSerializer>()
+  for (const [status, definition] of entries)
+    serializers.set(Number(status), compileResponseSerializer(definition, Number(status)))
+
   return (value: unknown): unknown => {
-    if (!isRecord(value) || typeof value['status'] !== 'number' || !hasOwn(responses, value['status'])) {
+    const serialize =
+      isRecord(value) && typeof value['status'] === 'number' ? serializers.get(value['status']) : undefined
+    if (!isRecord(value) || serialize === undefined) {
       throw new ServerRuntimeError(
         'invalid-server-response',
         500,
@@ -352,7 +424,7 @@ function responseProducer(responses: Readonly<Record<number, AnyRouteResponse>>)
     }
 
     const produced = copyRecord(value)
-    producedResponses.set(produced, { definition: responses[value['status']]! })
+    producedResponses.set(produced, { serialize })
     return produced
   }
 }
@@ -369,8 +441,11 @@ function errorProducer(errors: Readonly<Record<number, AnyRouteResponse>>) {
   }
 }
 
-async function* encodedStream(source: StreamSource<unknown>, schema: AnySchema): AsyncIterable<unknown> {
-  for await (const value of source) yield await encodeSchemaValue(schema, value, { location: 'response' })
+async function* encodedStream(
+  source: StreamSource<unknown>,
+  encode: (value: never) => SchemaStep<unknown>
+): AsyncIterable<unknown> {
+  for await (const value of source) yield await encode(value as never)
 }
 
 function byteStream(source: StreamSource<unknown>): ReadableStream<Uint8Array> {
@@ -396,72 +471,134 @@ function byteStream(source: StreamSource<unknown>): ReadableStream<Uint8Array> {
   })
 }
 
-function responseHeaders(definition: AnyRouteResponse, value: unknown): SchemaStep<HeadersInit | undefined> {
-  if (definition.headers === undefined) return value as HeadersInit | undefined
-  return mapSchemaStep(
-    encodeSchemaValue(definition.headers, value as never, { location: 'headers' }),
-    (encodedValue) => {
+function compileResponseHeaders(
+  definition: AnyRouteResponse
+): (value: unknown) => SchemaStep<Readonly<Record<string, string>> | undefined> {
+  if (definition.headers === undefined) {
+    return (value) => value as Readonly<Record<string, string>> | undefined
+  }
+  const encode = compileSchemaExecution(definition.headers, { location: 'headers' }).encode
+  return (value) =>
+    mapSchemaStep(encode(value as never), (encodedValue) => {
       const encoded = textWireObject(encodedValue, 'headers')
-      const headers = new Headers()
+      const headers: Record<string, string> = {}
       for (const [key, field] of Object.entries(encoded)) {
-        if (field !== undefined) headers.set(key, field)
+        if (field !== undefined) headers[key] = field
       }
-      return headers
-    }
-  )
+      return Object.freeze(headers)
+    })
 }
 
 type SerializedResponseBody = {
-  readonly body: BodyInit | null
-  readonly formData: boolean
+  readonly kind: WireServerResponseBody['kind']
+  readonly value: unknown
 }
 
-function serializeResponseBody(definition: AnyRouteResponse, value: unknown): SchemaStep<SerializedResponseBody> {
+function compileResponseBody(definition: AnyRouteResponse): (value: unknown) => SchemaStep<SerializedResponseBody> {
   const body = definition.body
 
   switch (body.kind) {
     case 'empty':
-      return { body: null, formData: false }
+      return () => ({ kind: 'empty', value: undefined })
     case 'json': {
-      return mapSchemaStep(encodeSchemaValue(body.schema, value as never, { location: 'response' }), (encoded) => {
-        const json = JSON.stringify(encoded)
-        if (json === undefined) throw new TypeError('JSON response body cannot encode to undefined')
-        return { body: json, formData: false }
-      })
+      const encode = compileSchemaExecution(body.schema, { location: 'response' }).encode
+      return (value) =>
+        mapSchemaStep(encode(value as never), (encoded) => {
+          if (encoded === undefined) throw new TypeError('JSON response body cannot encode to undefined')
+          return { kind: 'json', value: encoded }
+        })
     }
     case 'text': {
-      return mapSchemaStep(encodeSchemaValue(body.schema, value as never, { location: 'response' }), (encoded) => {
-        if (typeof encoded !== 'string') throw new TypeError('Text response body must encode to a string')
-        return { body: encoded, formData: false }
-      })
+      const encode = compileSchemaExecution(body.schema, { location: 'response' }).encode
+      return (value) =>
+        mapSchemaStep(encode(value as never), (encoded) => {
+          if (typeof encoded !== 'string') throw new TypeError('Text response body must encode to a string')
+          return { kind: 'text', value: encoded }
+        })
     }
     case 'bytes': {
-      return mapSchemaStep(encodeSchemaValue(body.schema, value as never, { location: 'response' }), (encoded) => {
-        if (!(encoded instanceof Uint8Array)) throw new TypeError('Byte response body must encode to Uint8Array')
-        return { body: encoded as BodyInit, formData: false }
-      })
+      const encode = compileSchemaExecution(body.schema, { location: 'response' }).encode
+      return (value) =>
+        mapSchemaStep(encode(value as never), (encoded) => {
+          if (!(encoded instanceof Uint8Array)) throw new TypeError('Byte response body must encode to Uint8Array')
+          return { kind: 'bytes', value: encoded }
+        })
     }
     case 'form-data': {
-      return mapSchemaStep(encodeSchemaValue(body.schema, value as never, { location: 'response' }), (encoded) => {
-        if (!(encoded instanceof FormData)) throw new TypeError('Form data response body must encode to FormData')
-        return { body: encoded, formData: true }
-      })
+      const encode = compileSchemaExecution(body.schema, { location: 'response' }).encode
+      return (value) =>
+        mapSchemaStep(encode(value as never), (encoded) => {
+          if (!(encoded instanceof FormData)) throw new TypeError('Form data response body must encode to FormData')
+          return { kind: 'form-data', value: encoded }
+        })
     }
     case 'stream': {
-      const source = value as StreamSource<unknown>
-      if (source === null || (typeof source !== 'object' && typeof source !== 'function')) {
-        throw new TypeError('Stream response body must be iterable')
+      const streamEncoder =
+        'schema' in body ? compileSchemaExecution(body.schema, { location: 'response' }).encode : undefined
+      const format = 'format' in body ? (body.format as StreamFormat<unknown>) : undefined
+      return (value) => {
+        const source = value as StreamSource<unknown>
+        if (source === null || (typeof source !== 'object' && typeof source !== 'function')) {
+          throw new TypeError('Stream response body must be iterable')
+        }
+        const wire =
+          streamEncoder === undefined || format === undefined
+            ? source
+            : format.encode(encodedStream(source, streamEncoder))
+        return { kind: 'stream', value: byteStream(wire) }
       }
-      const wire =
-        'schema' in body ? (body.format as StreamFormat<unknown>).encode(encodedStream(source, body.schema)) : source
-      return { body: byteStream(wire) as unknown as BodyInit, formData: false }
     }
     case 'raw':
-      throw new TypeError('Raw response bodies are serialized directly')
+      return () => {
+        throw new TypeError('Raw response bodies are serialized directly')
+      }
   }
 }
 
-async function serializeResponse(value: unknown): Promise<Response> {
+function compileResponseSerializer(definition: AnyRouteResponse, status: number): ResponseSerializer {
+  const body = definition.body
+  if (body.kind === 'raw') {
+    return async (value) => {
+      return {
+        status,
+        headers: Object.freeze({}),
+        body: Object.freeze({ kind: 'raw' as const, value: value['body'] }),
+      }
+    }
+  }
+
+  const serializeHeaders = compileResponseHeaders(definition)
+  const serializeBody = compileResponseBody(definition)
+  const contentType = definition.contentType
+  return async (value) => {
+    const headersStep = serializeHeaders(value['headers'])
+    const bodyStep = serializeBody(value['body'])
+    let headers: Readonly<Record<string, string>> | undefined
+    let serializedBody: SerializedResponseBody
+    if (isSchemaStepAsync(headersStep) && isSchemaStepAsync(bodyStep)) {
+      ;[headers, serializedBody] = await Promise.all([headersStep, bodyStep])
+    } else {
+      headers = isSchemaStepAsync(headersStep) ? await headersStep : headersStep
+      serializedBody = isSchemaStepAsync(bodyStep) ? await bodyStep : bodyStep
+    }
+    if (serializedBody.kind === 'form-data') {
+      if (headers !== undefined && 'content-type' in headers) {
+        const { ['content-type']: _contentType, ...remaining } = headers
+        headers = remaining
+      }
+    } else if (contentType !== undefined) {
+      if (headers === undefined) headers = { 'content-type': contentType }
+      else headers = { ...headers, 'content-type': contentType }
+    }
+    return {
+      status,
+      headers: Object.freeze(headers ?? {}),
+      body: Object.freeze(serializedBody),
+    }
+  }
+}
+
+function serializeResponse(value: unknown): Promise<WireServerResponse> {
   if (!isRecord(value)) {
     throw new ServerRuntimeError('invalid-server-response', 500, 'Server handler did not return a produced response')
   }
@@ -473,74 +610,34 @@ async function serializeResponse(value: unknown): Promise<Response> {
       'Server responses must be created with actions.respond(), actions.error(), or actions.next()'
     )
   }
-
-  const status = value['status'] as number
-  const definition = produced.definition
-  const body = definition.body
-  if (body.kind === 'raw') {
-    if (!(value['body'] instanceof Response) || value['body'].status !== status) {
-      throw new ServerRuntimeError(
-        'invalid-server-response',
-        500,
-        'Raw server response status must match its declared result status'
-      )
-    }
-    return value['body']
-  }
-
-  const headersStep = responseHeaders(definition, value['headers'])
-  const bodyStep = serializeResponseBody(definition, value['body'])
-  let headers: HeadersInit | undefined
-  let serializedBody: SerializedResponseBody
-  if (isSchemaStepAsync(headersStep) && isSchemaStepAsync(bodyStep)) {
-    ;[headers, serializedBody] = await Promise.all([headersStep, bodyStep])
-  } else {
-    headers = isSchemaStepAsync(headersStep) ? await headersStep : headersStep
-    serializedBody = isSchemaStepAsync(bodyStep) ? await bodyStep : bodyStep
-  }
-  if (serializedBody.formData) {
-    if (headers !== undefined) {
-      const resolved = headers instanceof Headers ? headers : new Headers(headers)
-      resolved.delete('content-type')
-      headers = resolved
-    }
-  } else if (definition.contentType !== undefined) {
-    if (headers === undefined) headers = { 'content-type': definition.contentType }
-    else {
-      const resolved = headers instanceof Headers ? headers : new Headers(headers)
-      resolved.set('content-type', definition.contentType)
-      headers = resolved
-    }
-  }
-  return new Response(serializedBody.body, {
-    status,
-    ...(headers === undefined ? {} : { headers }),
-  })
+  return produced.serialize(value)
 }
 
 async function executeRoute(
   server: RuntimeServer,
   match: MatchedRoute,
-  request: Request,
-  url: URL | undefined,
-  phase: { value: FetchServerPhase }
-): Promise<Response> {
+  request: WireServerInput,
+  query: URLSearchParams | undefined,
+  error: (status: number, value: unknown) => unknown,
+  phase: { value: WireServerPhase }
+): Promise<WireServerResponse> {
   phase.value = 'request'
-  const route = match.runtime.compiled.route
-  const decodingRequest =
-    'body' in route && (server.context !== undefined || match.runtime.middlewares.length > 0)
-      ? request.clone()
-      : request
-  const routeInput = await decodeRouteInput(match, decodingRequest, url)
+  const preserveRequest =
+    match.runtime.readsBody &&
+    request.body === undefined &&
+    (server.context !== undefined || match.runtime.middlewares.length > 0)
+  const routeInput = await match.runtime.decodeInput(match.parameters, request, query, preserveRequest)
 
   phase.value = 'context'
   const context =
-    server.context === undefined ? emptyContext : await server.context({ request, route: match.runtime.metadata })
+    server.context === undefined
+      ? emptyContext
+      : await server.context({ request: request.request, route: match.runtime.metadata })
   if (!isRecord(context)) {
     throw new ServerRuntimeError('invalid-context', 500, 'Server context factory must return an object')
   }
 
-  const sharedInput = { context, request, route: match.runtime.metadata }
+  const sharedInput = { context, request: request.request, route: match.runtime.metadata }
   const handlerInput = { ...sharedInput, ...routeInput }
 
   phase.value = 'handler'
@@ -551,7 +648,7 @@ async function executeRoute(
           match.runtime.middlewares,
           sharedInput,
           () => match.runtime.handler(match.runtime.handlerActions, handlerInput),
-          (next) => ({ next, error: errorProducer(server.contract.errors) }),
+          (next) => ({ next, error }),
           {
             invalidMiddleware: () =>
               new ServerRuntimeError('invalid-server-response', 500, 'Server middleware must be a function'),
@@ -563,26 +660,29 @@ async function executeRoute(
   return serializeResponse(result)
 }
 
-/** Creates a runtime-neutral Web Fetch handler from a built server implementation. */
-export function createFetchHandler<
+/** Creates the compiled wire dispatcher used by Fetch and framework adapters. */
+export function createWireHandler<
   const ContractType extends Contract,
   const Context extends object,
   const Fragments extends readonly unknown[],
 >(
   implementation: ServerImplementation<ContractType, Context, Fragments>,
-  options: FetchServerOptions = {}
-): FetchHandler {
+  options: WireServerOptions = {}
+): WireServerHandler {
   const server = implementation as unknown as RuntimeServer
   const routes = compileRuntimeRoutes(server)
+  const error = errorProducer(server.contract.errors)
 
-  return async (request: Request): Promise<Response> => {
+  return async (input: WireServerInput): Promise<WireServerResponse> => {
+    const request = input.request
     let selectedMetadata: RouteMetadata | undefined
-    const phase: { value: FetchServerPhase } = { value: 'routing' }
+    const phase: { value: WireServerPhase } = { value: 'routing' }
 
     try {
-      if (!(request instanceof Request)) throw new TypeError('Fetch handler input must be a Request')
-      const method = request.method.toUpperCase()
-      const selection = selectRoute(routes, requestPathname(request.url), method)
+      if (typeof input.method !== 'string' || typeof input.pathname !== 'string') {
+        throw new TypeError('Wire server input must provide a method and pathname')
+      }
+      const selection = selectRoute(routes, input.pathname, input.method.toUpperCase())
       if (selection.kind === 'miss') {
         if (selection.allowed.length === 0) return simpleProblem(404, 'route-not-found', 'Route not found')
         return simpleProblem(405, 'method-not-allowed', 'Method not allowed', {
@@ -591,8 +691,8 @@ export function createFetchHandler<
       }
 
       selectedMetadata = selection.match.runtime.metadata
-      const url = 'query' in selection.match.runtime.compiled.route ? new URL(request.url) : undefined
-      return await executeRoute(server, selection.match, request, url, phase)
+      const query = selection.match.runtime.readsQuery ? (input.query ?? new URLSearchParams()) : undefined
+      return await executeRoute(server, selection.match, input, query, error, phase)
     } catch (error) {
       const fallback = errorResponse(error, phase.value)
       const replacement = await options.onError?.({
@@ -600,9 +700,9 @@ export function createFetchHandler<
         phase: phase.value,
         request,
         ...(selectedMetadata === undefined ? {} : { route: selectedMetadata }),
-        defaultResponse: fallback.clone(),
+        defaultResponse: fallback,
       })
-      return replacement instanceof Response ? replacement : fallback
+      return replacement ?? fallback
     }
   }
 }

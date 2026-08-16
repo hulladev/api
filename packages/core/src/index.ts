@@ -1,30 +1,3 @@
-export { ClientResponseError, defineClient } from './client/index'
-export type {
-  Client,
-  ClientContextFactory,
-  ClientContextInput,
-  ClientContractRouteMetadata,
-  ClientDefinition,
-  ClientFetch,
-  ClientHeaders,
-  ClientMiddleware,
-  ClientMiddlewareActions,
-  ClientMiddlewareCandidate,
-  ClientMiddlewareInput,
-  ClientMiddlewareNextResult,
-  ClientRouteCall,
-  ClientRequestOptions,
-  ClientResponseErrorCode,
-  ClientResponseIssue,
-  ClientResponseResult,
-  ClientResponseResultFor,
-  ClientRouteInput,
-  ClientRouteMetadata,
-  ClientRouteResult,
-  ClientRoutes,
-  ClientTransportOptions,
-  DefineClientOptions,
-} from './client/index'
 export { compileContract } from './compiler'
 export type {
   CompiledContract,
@@ -44,14 +17,17 @@ export type {
   APIProblem,
   APIProblemIssue,
   APIProblemOptions,
+  ClientResponseErrorCode,
   QueryTransportErrorCode,
   SchemaValidationErrorCode,
   ServerImplementationErrorCode,
   ServerRuntimeErrorCode,
 } from './errors'
 export type { HttpMethod } from './http'
-export { validation } from './validation'
-export type { AsyncSchema } from './validation'
+export { QueryTransportError } from './query'
+export type { QueryCardinality, QueryTransportPlan } from './query'
+export { codec, validation } from './validation'
+export type { AsyncSchema, CodecOptions, CodecSchema, IdentitySchema, ObjectSchema } from './validation'
 export { request } from './request'
 export type {
   AnyRequestBody,
@@ -101,4 +77,12 @@ export type {
 export { route } from './route'
 export type { Route, RouteHeaders, RouteMap, RouteOptions, RouteParams, RouteQuery, RouteShape } from './route'
 export { router } from './router'
-export type { AnyRouter, Router, RouterMetadata, RouterOptions, RouterParams, RouterRoutes } from './router'
+export type {
+  AnyRouter,
+  Router,
+  RouterMetadata,
+  RouterOptions,
+  RouterParams,
+  RouterParamsForRoute,
+  RouterRoutes,
+} from './router'

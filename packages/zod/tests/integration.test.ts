@@ -1,11 +1,9 @@
+import { response, route, router } from '@hulla/api'
+import type { ClientRouteInput } from '@hulla/api/client'
 import * as v from 'valibot'
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
-import type { ClientRouteInput } from '../src/client'
-import { response } from '../src/response'
-import { route } from '../src/route'
-import { router } from '../src/router'
-import { routeInput, routeOutput, text } from '../src/zod'
+import { codec as zodCodec, query as zodQuery, routeInput, routeOutput, text } from '../src'
 
 describe('Zod text codecs', () => {
   test('converts strict safe integers in both directions', () => {
@@ -82,6 +80,12 @@ describe('Zod text codecs', () => {
       name: string
       createdAt: Date
     }>()
+
+    const permissive = text.json(z.any())
+    const cyclic: Record<string, unknown> = {}
+    cyclic['self'] = cyclic
+    expect(z.safeEncode(permissive, cyclic).success).toBe(false)
+    expect(z.safeEncode(permissive, undefined).success).toBe(false)
   })
 })
 
@@ -101,7 +105,7 @@ describe('Zod route input', () => {
     )
     const create = route.post('/members/:memberId', {
       params: z.object({ memberId: text.integer() }),
-      query: z.object({ notify: text.boolean() }),
+      query: zodQuery(z.object({ notify: text.boolean() })),
       headers: z.object({ 'x-requested-at': createdAt }),
       body: z.object({ createdAt }),
       responses: { 201: response.json(z.object({ id: z.string() })) },
@@ -151,6 +155,21 @@ describe('Zod route input', () => {
     }>()
   })
 
+  test('supports routes with only their own parameter schema', () => {
+    const declaration = route.get('/users/:id', {
+      params: z.object({ id: z.string() }),
+      responses: { 200: response.empty() },
+    })
+
+    expect(Object.keys(routeInput(declaration).shape.params.shape)).toEqual(['id'])
+  })
+
+  test('rejects non-route values at the JavaScript boundary', () => {
+    const compose = routeInput as unknown as (value: unknown) => unknown
+    expect(() => compose(null)).toThrowError('Route input must be a route')
+    expect(() => compose({ kind: 'not-a-route' })).toThrowError('Route input must be a route')
+  })
+
   test('keeps router params scoped when a route is reused', () => {
     const read = route.get('/:id', {
       params: z.object({ id: z.string() }),
@@ -194,7 +213,7 @@ describe('Zod route output', () => {
       decode: (value) => new Date(value),
       encode: (value) => value.toISOString(),
     })
-    const created = z.object({ id: z.string(), createdAt })
+    const created = zodCodec(z.object({ id: z.string(), createdAt }))
     const conflict = z.object({ code: z.literal('CONFLICT') })
     const declaration = route.post('/users', {
       responses: {
