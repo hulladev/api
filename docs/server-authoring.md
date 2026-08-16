@@ -61,6 +61,50 @@ export const implementation = server.build(healthHandlers, organizationHandlers)
 - `server.build()` also checks duplicates and completeness at runtime for JavaScript consumers.
 - Framework adapters require the complete implementation type, preserving the full-contract guarantee at the transport boundary.
 
+## Fetch runtime
+
+Core provides a deliberately small Web Fetch runtime for a completed implementation:
+
+```ts
+import { createFetchHandler } from '@hulla/api/server'
+import { implementation } from './implementation'
+
+export const fetchHandler = createFetchHandler(implementation)
+```
+
+The returned value has the exact `(request: Request) => Promise<Response>` surface used by Fetch-native hosts and by the Hulla client transport:
+
+```ts
+// Bun
+Bun.serve({ fetch: fetchHandler })
+
+// Deno
+Deno.serve(fetchHandler)
+
+// In-memory client/server round trip
+const client = defineClient(contract, {
+  baseUrl: 'https://api.example.com',
+  fetch: fetchHandler,
+}).build()
+```
+
+The runtime owns contract semantics: compiled route matching, path/query/header/body decoding, context and middleware execution, response validation and encoding, streams, and protocol-safe 404/405/400/415/500 responses. It uses only Web `Request`, `Response`, `Headers`, `FormData`, and `ReadableStream` primitives.
+
+Node's Fetch globals provide those primitives, but `node:http` uses `IncomingMessage` and `ServerResponse`; translating those host objects is intentionally the job of a thin Node or framework integration. Integrations can add lifecycle hooks, connection information, logging, compression, and framework-specific behavior around the core handler without duplicating contract transport logic.
+
+An optional error hook can observe internal failures or replace the default response:
+
+```ts
+const fetchHandler = createFetchHandler(implementation, {
+  onError({ error, phase, route, defaultResponse }) {
+    logger.error({ error, phase, route })
+    return defaultResponse
+  },
+})
+```
+
+Incoming structured contract failures are returned as `APIProblem` JSON with their Standard Schema-compatible issues. Unexpected context, handler, or response failures default to a generic 500 response and are passed in full only to `onError`, so internal details are not leaked across the HTTP boundary.
+
 ## Module dependencies
 
 Keep the authoring scope separate from the completed server module:

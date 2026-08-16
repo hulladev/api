@@ -17,10 +17,11 @@ bun run check       # CI-equivalent verification
 The first vertical slice includes:
 
 - `defineContract`, `router`, and method-specific route declarations
+- a canonical immutable compiled route manifest for runtimes, adapters, and generators
 - Standard Schema validation with dependency-free defaults and direct Zod 4 codec support
-- a transport-neutral server implementation binding for backend adapters
+- a transport-neutral server implementation binding plus a minimal Web Fetch runtime for backend adapters
 - a Fetch client that mirrors the contract tree after an explicit `build()`
-- optional procedures with their own validation, context, middleware, and structurally identified callable trees
+- optional procedures with exact sync/async return types, validation, context, middleware, and structurally identified callable trees
 - normalized contract problems and a nested `Date` codec round-trip test
 
 See [`docs/architecture.md`](./docs/architecture.md) for the boundary and request call graph, and
@@ -30,6 +31,8 @@ request model, repeated query behavior, and Zod codecs are documented in
 boundary are covered in [`docs/client-authoring.md`](./docs/client-authoring.md).
 Standalone procedure composition and route-derived schema helpers are covered in
 [`docs/procedures.md`](./docs/procedures.md).
+Structured operational errors, Standard Schema issue compatibility, and protocol problem conversion are covered in
+[`docs/errors.md`](./docs/errors.md).
 
 ## Package layout
 
@@ -45,10 +48,13 @@ packages/core/
       types.ts      contract-shaped client and authoring scope
       definition.ts context, middleware, and route assembly
     context.ts      shared context and route metadata primitives
+    compiler.ts     canonical flat contract manifest for runtimes and integrations
     contract.ts     API and route declarations
+    errors.ts       shared structured errors and protocol problem conversion
     input.ts        shared route input type derivation
     middleware.ts   shared middleware primitives and runtime guards
     object.ts       safe record and tree utilities
+    parameters.ts   shared client/server path parameter transport
     query.ts        normalized query cardinality and transport
     request.ts      request representations and MIME matching
     representation.ts shared intrinsic wire schemas
@@ -62,6 +68,7 @@ packages/core/
       types.ts      handler fragments and implementation types
       definition.ts fragment validation and assembly
       errors.ts     internal server and validation errors
+      runtime.ts    minimal Web Fetch routing, execution, and response encoding
     validation.ts   Standard Schema validation and directional codecs
     zod.ts          optional Zod text codecs
   tests/            Contract laws and vertical-slice tests

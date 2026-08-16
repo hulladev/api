@@ -10,7 +10,7 @@ export const fullName = procedure
   .output(z.string())
   .handler(({ input }) => `${input.first} ${input.last}`)
 
-await fullName({ first: 'Samuel', last: 'Hulla' })
+fullName({ first: 'Samuel', last: 'Hulla' })
 ```
 
 One-off procedures are callable immediately and have no structural identity.
@@ -45,6 +45,26 @@ const createUser = procedure
 Standard Schema standardizes validation, not object-schema composition. Other validation libraries can provide equivalent native helpers and retain their own modification APIs.
 
 The output declaration is optional. Without one, the return type is inferred from the handler. Declaring an output adds runtime validation and is useful at a deliberate application boundary.
+
+## Exact synchronous and asynchronous calls
+
+Procedure calls do not expose `Result | Promise<Result>`. A synchronous handler with synchronous input, output, and context returns `Result` directly. An async handler or context returns `Promise<Result>`, as does a procedure with applied middleware. The selected mode is carried through both standalone procedures and built procedure trees.
+
+Standard Schema deliberately does not describe whether a validator runs synchronously. Ordinary validator schemas need no Hulla-specific field and retain their normal developer experience. If a schema intentionally performs async validation, mark it without mutating the validator-owned object:
+
+```ts
+import { procedure, validation } from '@hulla/api'
+
+const availableName = validation.async(
+  z.string().refine(async (name) => isNameAvailable(name))
+)
+
+const registerName = procedure.input(availableName).handler(({ input }) => input)
+
+const pending: Promise<string> = registerName('Ada')
+```
+
+`validation.async(schema)` is a small Hulla wrapper used only to make the execution mode explicit. Validator authors and users do not add a special property to their schemas. HTTP client and server calls remain asynchronous because Fetch itself is asynchronous.
 
 ## Context and middleware
 
