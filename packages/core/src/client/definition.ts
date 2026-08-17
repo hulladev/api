@@ -1,17 +1,12 @@
-import { compileContract, type CompiledContractRoute } from '../compiler'
+import type { CompiledContractRoute } from '../compiler'
 import type { ContextFrom } from '../context'
 import type { Contract } from '../contract'
 import { isPromiseLike } from '../execution'
 import { assertMiddleware, assertMiddlewares, dispatchMiddlewares } from '../middleware'
-import { freezeRecordTree, hasOwn, isRecord, setOwn } from '../object'
+import { hasOwn, isRecord, setOwn } from '../object'
+import { compileCanonicalContract } from '../route-plan'
 import type { ClientContextInput, ClientContractRouteMetadata } from './context'
-import type {
-  ClientMiddleware,
-  ClientMiddlewareActions,
-  ClientMiddlewareCandidate,
-  ClientMiddlewareInput,
-  ClientMiddlewareNextResult,
-} from './middleware'
+import type { ClientMiddleware, ClientMiddlewareCandidate, ClientMiddlewareInput } from './middleware'
 import {
   assertClientBaseUrl,
   compileClientRequest,
@@ -66,21 +61,22 @@ async function executeRoute(
   const fetcher = transport.fetch ?? globalThis.fetch
   const fetchAndDecode = async () => {
     const response = await fetcher(request)
-    return (await responseDecoder(runtime, response)(response)) as ClientMiddlewareNextResult<unknown>
+    return responseDecoder(runtime, response)(response)
   }
 
   if (middlewares.length === 0) return fetchAndDecode()
 
-  const middlewareInput = Object.freeze({ context, request, route: runtime.metadata })
+  const middlewareInput = { context, request, route: runtime.metadata }
 
-  return dispatchMiddlewares<
-    ClientMiddlewareInput<object, Contract>,
-    ClientMiddlewareNextResult<unknown>,
-    ClientMiddlewareActions<unknown>
-  >(middlewares, middlewareInput, fetchAndDecode, (next) => ({ next }), {
-    invalidMiddleware: () => new TypeError('Client middleware must be a function'),
-    multipleNext: () => new TypeError('Client middleware called next() more than once'),
-  })
+  return dispatchMiddlewares<ClientMiddlewareInput<object, Contract>, unknown>(
+    middlewares,
+    middlewareInput,
+    fetchAndDecode,
+    {
+      invalidMiddleware: () => new TypeError('Client middleware must be a function'),
+      multipleNext: () => new TypeError('Client middleware called next() more than once'),
+    }
+  )
 }
 
 function setClientRoute(target: Record<string, unknown>, key: readonly string[], value: unknown): void {
@@ -116,54 +112,48 @@ function buildClientRoutes(
   middlewares: readonly ClientMiddleware<object, Contract>[]
 ): Readonly<Record<string, unknown>> {
   const tree: Record<string, unknown> = {}
-  const errorResponses = new Map<number, ClientResponseDecoder>()
-  for (const [status, definition] of Object.entries(contract.errors)) {
-    errorResponses.set(Number(status), compileClientResponse(definition))
+  const contractPlan = compileCanonicalContract(contract)
+  let errorResponses: ReadonlyMap<number, ClientResponseDecoder> | undefined
+  if (contractPlan.errors.length > 0) {
+    const decoders = new Map<number, ClientResponseDecoder>()
+    for (const [status, response] of contractPlan.errors) decoders.set(status, compileClientResponse(response))
+    errorResponses = decoders
   }
 
-  for (const compiled of compileContract(contract).routes) {
-    const definition = compiled.route
-    const responseEntries = Object.entries(definition.responses)
+  for (const plan of contractPlan.routes) {
+    const compiled = plan.compiled
+    const responseEntries = plan.responses
     let responseStatus: number | undefined
     let responseDecoder: ClientResponseDecoder | undefined
     let responses: ReadonlyMap<number, ClientResponseDecoder> | undefined
-    if (errorResponses.size === 0 && responseEntries.length === 1) {
-      const [status, responseDefinition] = responseEntries[0]!
-      responseStatus = Number(status)
-      responseDecoder = compileClientResponse(responseDefinition)
+    if (errorResponses === undefined && responseEntries.length === 1) {
+      const [status, response] = responseEntries[0]!
+      responseStatus = status
+      responseDecoder = compileClientResponse(response)
     } else {
       const responseMap = new Map(errorResponses)
-      for (const [status, responseDefinition] of responseEntries) {
-        responseMap.set(Number(status), compileClientResponse(responseDefinition))
+      for (const [status, response] of responseEntries) {
+        responseMap.set(status, compileClientResponse(response))
       }
       responses = responseMap
     }
     const runtime: RuntimeRoute = {
       compiled,
-      createRequest: compileClientRequest(compiled, transport),
-      metadata: Object.freeze({
-        key: compiled.key,
-        method: compiled.method,
-        path: compiled.path,
-      }) as ClientContractRouteMetadata,
+      createRequest: compileClientRequest(plan, transport),
+      metadata: plan.metadata as ClientContractRouteMetadata,
       ...(responses === undefined
         ? { responseDecoder: responseDecoder!, responseStatus: responseStatus! }
         : { responses }),
     }
 
     setClientRoute(tree, compiled.key, (...args: readonly unknown[]) => {
-      const hasInput =
-        runtime.compiled.pathParameters.length > 0 ||
-        'query' in definition ||
-        'headers' in definition ||
-        'body' in definition
-      const input = (hasInput ? args[0] : {}) as Readonly<Record<string, unknown>>
-      const requestOptions = (hasInput ? args[1] : args[0]) as ClientRequestOptions | undefined
+      const input = (plan.hasInput ? args[0] : {}) as Readonly<Record<string, unknown>>
+      const requestOptions = (plan.hasInput ? args[1] : args[0]) as ClientRequestOptions | undefined
       return executeRoute(runtime, transport, contextFactory, middlewares, input, requestOptions ?? {})
     })
   }
 
-  return freezeRecordTree(tree)
+  return tree
 }
 
 function createDefinition<ContractType extends Contract, Context extends object>(
@@ -172,12 +162,12 @@ function createDefinition<ContractType extends Contract, Context extends object>
   middlewares: readonly ClientMiddleware<Context, ContractType>[] = []
 ): ClientDefinition<ContractType, Context> {
   assertClientBaseUrl(options.baseUrl)
-  const frozenMiddlewares = Object.freeze([...middlewares])
-  const transport = Object.freeze({
+  const middlewareStack = [...middlewares]
+  const transport = {
     ...(options.baseUrl === undefined ? {} : { baseUrl: options.baseUrl }),
     ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
     ...(options.headers === undefined ? {} : { headers: options.headers }),
-  })
+  }
 
   const middleware = (<const Handler extends ClientMiddlewareCandidate<Context, ContractType>>(handler: Handler) => {
     assertMiddleware('Client', handler)
@@ -190,7 +180,7 @@ function createDefinition<ContractType extends Contract, Context extends object>
     assertMiddlewares('Client', applied)
 
     return createDefinition(contract, options, [
-      ...frozenMiddlewares,
+      ...middlewareStack,
       ...(applied as readonly ClientMiddleware<Context, ContractType>[]),
     ])
   }) as ClientDefinition<ContractType, Context>['use']
@@ -201,19 +191,19 @@ function createDefinition<ContractType extends Contract, Context extends object>
       contract,
       transport,
       options.context as ((input: ClientContextInput) => object | PromiseLike<object>) | undefined,
-      frozenMiddlewares as readonly ClientMiddleware<object, Contract>[]
+      middlewareStack as unknown as readonly ClientMiddleware<object, Contract>[]
     ) as ClientRoutes<ContractType>
     return builtClient
   }) as ClientDefinition<ContractType, Context>['build']
 
-  return Object.freeze({
+  return {
     contract,
     context: options.context,
-    middlewares: frozenMiddlewares,
+    middlewares: middlewareStack,
     middleware,
     use,
     build,
-  })
+  }
 }
 
 export function defineClient<

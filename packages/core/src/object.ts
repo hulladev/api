@@ -26,14 +26,3 @@ export function copyRecord(source: Readonly<Record<string, unknown>>): Record<st
   for (const [key, value] of Object.entries(source)) setOwn(target, key, value)
   return target
 }
-
-export function freezeRecordTree(
-  value: Record<string, unknown>,
-  freezeFunctions = true
-): Readonly<Record<string, unknown>> {
-  for (const [key, nested] of Object.entries(value)) {
-    if (isRecord(nested)) setOwn(value, key, freezeRecordTree(nested as Record<string, unknown>, freezeFunctions))
-    else if (freezeFunctions && typeof nested === 'function') Object.freeze(nested)
-  }
-  return Object.freeze(value)
-}

@@ -8,10 +8,9 @@ export type {
 export { defineClient } from './definition'
 export type {
   ClientMiddleware,
-  ClientMiddlewareActions,
   ClientMiddlewareCandidate,
   ClientMiddlewareInput,
-  ClientMiddlewareNextResult,
+  ClientMiddlewareNext,
 } from './middleware'
 export type { ClientFetch, ClientHeaders, ClientRequestOptions, ClientTransportOptions } from './request'
 export { ClientResponseError } from './response'

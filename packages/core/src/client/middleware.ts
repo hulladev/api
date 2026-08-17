@@ -1,11 +1,8 @@
 import type { Contract } from '../contract'
-import type { MiddlewareInput, NextMiddleware } from '../middleware'
+import type { MiddlewareInput, MiddlewareNext, NextMiddleware } from '../middleware'
 import type { ClientContractRouteMetadata } from './context'
 
-export type {
-  MiddlewareActions as ClientMiddlewareActions,
-  MiddlewareNextResult as ClientMiddlewareNextResult,
-} from '../middleware'
+export type ClientMiddlewareNext<Result> = MiddlewareNext<Promise<Result>>
 
 export type ClientMiddlewareInput<Context extends object, ContractType extends Contract = Contract> = MiddlewareInput<
   Context,

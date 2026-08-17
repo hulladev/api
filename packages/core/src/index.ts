@@ -55,25 +55,6 @@ export type {
   RouteResponses,
   SchemaBackedResponseStatus,
 } from './response'
-export { defineProcedures, procedure } from './procedure'
-export type {
-  AnyProcedure,
-  BoundProcedure,
-  BuiltProcedureTree,
-  DefineProceduresOptions,
-  Procedure,
-  ProcedureBuilder,
-  ProcedureContextFactory,
-  ProcedureContextInput,
-  ProcedureHandlerInput,
-  ProcedureInputValue,
-  ProcedureMetadata,
-  ProcedureMiddleware,
-  ProcedureMiddlewareActions,
-  ProcedureMiddlewareInput,
-  ProcedureOutputValue,
-  ProcedureTree,
-} from './procedure'
 export { route } from './route'
 export type { Route, RouteHeaders, RouteMap, RouteOptions, RouteParams, RouteQuery, RouteShape } from './route'
 export { router } from './router'

@@ -33,8 +33,16 @@ export type ContractOptions<
 type RegisteredRoute = {
   readonly name: string
   readonly method: HttpMethod
-  readonly path: string
+  readonly pathParts: readonly string[]
+  path?: string
 }
+
+type RouteRegistry = {
+  first?: RegisteredRoute
+  routes?: Map<string, RegisteredRoute>
+}
+
+const emptyErrors = Object.freeze({}) as Readonly<RouteResponses>
 
 function assertRoute(value: unknown, name: string): asserts value is Route {
   if (
@@ -54,14 +62,25 @@ function assertRouter(value: unknown, name: string): asserts value is AnyRouter 
   }
 }
 
-function registerRoute(
-  routesBySignature: Map<string, RegisteredRoute>,
-  name: string,
-  path: string,
-  route: Route
-): void {
+function registerRoute(registry: RouteRegistry, name: string, pathParts: readonly string[], route: Route): void {
+  const registered: RegisteredRoute = { name, method: route.method, pathParts }
+  if (registry.first === undefined) {
+    registry.first = registered
+    return
+  }
+
+  let routes = registry.routes
+  if (routes === undefined) {
+    const first = registry.first
+    const firstPath = (first.path ??= joinRoutePaths(...first.pathParts))
+    routes = new Map([[`${first.method} ${routePathShape(firstPath)}`, first]])
+    registry.routes = routes
+  }
+
+  const path = joinRoutePaths(...pathParts)
+  registered.path = path
   const signature = `${route.method} ${routePathShape(path)}`
-  const existing = routesBySignature.get(signature)
+  const existing = routes.get(signature)
 
   if (existing) {
     throw new TypeError(
@@ -69,21 +88,36 @@ function registerRoute(
     )
   }
 
-  routesBySignature.set(signature, { name, method: route.method, path })
+  routes.set(signature, registered)
 }
 
-function validateContract(basePath: string, routes: ContractRoutes): void {
-  const routesBySignature = new Map<string, RegisteredRoute>()
+function validateResponseStatuses(route: Route, name: string, errors: RouteResponses): void {
+  for (const [key, declaration] of Object.entries(route.responses)) {
+    const status = Number(key)
+    const error = errors[status]
+    if (error !== undefined && error !== declaration) {
+      throw new TypeError(
+        `Contract route "${name}" response ${status} conflicts with the contract error declared for the same status`
+      )
+    }
+  }
+}
+
+function validateContract(basePath: string, routes: ContractRoutes, errors: RouteResponses): void {
+  const registry: RouteRegistry = {}
+  const hasErrors = errors !== emptyErrors
   let routeCount = 0
 
   for (const [name, value] of Object.entries(routes)) {
-    if (!isRecord(value) || (!isRouter(value) && value.kind !== 'route')) {
+    const router = isRouter(value)
+    if (!isRecord(value) || (!router && value.kind !== 'route')) {
       throw new TypeError(`Contract route "${name}" must be a route or router definition`)
     }
 
-    if (!isRouter(value)) {
+    if (!router) {
       assertRoute(value, name)
-      registerRoute(routesBySignature, `routes.${name}`, joinRoutePaths(basePath, value.path), value)
+      if (hasErrors) validateResponseStatuses(value, `routes.${name}`, errors)
+      registerRoute(registry, `routes.${name}`, [basePath, value.path], value)
       routeCount += 1
       continue
     }
@@ -92,12 +126,8 @@ function validateContract(basePath: string, routes: ContractRoutes): void {
     for (const [routeName, routeValue] of routerEntries(value)) {
       const qualifiedName = `routes.${name}.${routeName}`
       assertRoute(routeValue, qualifiedName)
-      registerRoute(
-        routesBySignature,
-        qualifiedName,
-        joinRoutePaths(basePath, value.$meta.path, routeValue.path),
-        routeValue
-      )
+      if (hasErrors) validateResponseStatuses(routeValue, qualifiedName, errors)
+      registerRoute(registry, qualifiedName, [basePath, value.$meta.path, routeValue.path], routeValue)
       routeCount += 1
     }
   }
@@ -108,7 +138,7 @@ function validateContract(basePath: string, routes: ContractRoutes): void {
 }
 
 function copyErrors(errors: unknown): Readonly<RouteResponses> {
-  if (errors === undefined) return Object.freeze({})
+  if (errors === undefined) return emptyErrors
   if (!isRecord(errors)) throw new TypeError('Contract errors must be an object')
 
   const copy: RouteResponses = {}
@@ -150,7 +180,7 @@ export function defineContract(options: ContractOptions): Contract {
   const routes = Object.freeze({ ...options.routes }) as ContractRoutes
   const errors = copyErrors(options.errors)
 
-  validateContract(basePath, routes)
+  validateContract(basePath, routes, errors)
 
   return Object.freeze({
     kind: 'contract',

@@ -23,12 +23,7 @@ export type QueryTransportErrorCode =
 
 export type SchemaValidationErrorCode = 'schema-validation'
 
-export type ServerImplementationErrorCode =
-  | 'duplicate-handler'
-  | 'invalid-fragment'
-  | 'invalid-handler'
-  | 'missing-handler'
-  | 'unknown-handler'
+export type ServerImplementationErrorCode = 'invalid-handler' | 'missing-handler' | 'unknown-handler'
 
 export type ServerRuntimeErrorCode =
   | 'invalid-context'

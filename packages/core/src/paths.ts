@@ -77,7 +77,7 @@ function assertSafePath(path: string, label: string, allowParameters: boolean): 
     throw new TypeError(`${label} "${path}" cannot contain backslashes`)
   }
 
-  const parameterNames = new Set<string>()
+  let parameterNames: Set<string> | undefined
   for (const segment of path.split('/').filter(Boolean)) {
     if (segment === '.' || segment === '..') throw new TypeError(`${label} "${path}" contains an unsafe segment`)
     if (!segment.startsWith(':')) continue
@@ -85,10 +85,10 @@ function assertSafePath(path: string, label: string, allowParameters: boolean): 
 
     const name = segment.slice(1)
     if (name.length === 0) throw new TypeError(`${label} "${path}" contains an empty parameter name`)
-    if (parameterNames.has(name)) {
+    if (parameterNames?.has(name)) {
       throw new TypeError(`${label} "${path}" declares parameter "${name}" more than once`)
     }
-    parameterNames.add(name)
+    ;(parameterNames ??= new Set()).add(name)
   }
 }
 

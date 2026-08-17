@@ -1,9 +1,6 @@
-import type { CompiledContractRoute } from '../compiler'
 import { type ExecutionStep, isPromiseLike, mapExecutionStep } from '../execution'
-import { compilePathParameterEncoder } from '../parameters'
-import { compileQueryEncoder, type QueryTransportPlan } from '../query'
-import { textWireObject, type AnyRequestQuery } from '../request'
-import { compileSchemaExecution } from '../validation'
+import { textWireObject } from '../request'
+import type { CanonicalRoutePlan } from '../route-plan'
 
 export type ClientRequestOptions = {
   readonly headers?: HeadersInit
@@ -123,25 +120,20 @@ function requestValue(
 }
 
 export function compileClientRequest(
-  compiled: CompiledContractRoute,
+  plan: CanonicalRoutePlan,
   transport: ClientTransportOptions
 ): ClientRequestCreator {
-  const route = compiled.route
+  const compiled = plan.compiled
   const baseUrl = normalizedBaseUrl(transport.baseUrl)
   const staticUrl = compiled.pathParameters.length === 0 ? appendBaseUrl(baseUrl, compiled.path) : undefined
-  const encodePath =
-    compiled.pathParameters.length === 0
+  const encodePath = plan.encodePath
+  const encodeQuery = plan.encodeQuery
+  const encodeHeaders = plan.headers?.encode
+  const encodeBody = plan.body?.schema.encode
+  const serializeBody =
+    plan.body === undefined
       ? undefined
-      : compilePathParameterEncoder(compiled.path, compiled.pathParameters)
-  const encodeQuery =
-    'query' in route
-      ? compileQueryEncoder(route.query as AnyRequestQuery & { readonly transport: QueryTransportPlan })
-      : undefined
-  const hasHeaders = 'headers' in route
-  const hasBody = 'body' in route
-  const encodeHeaders = hasHeaders ? compileSchemaExecution(route.headers, { location: 'headers' }).encode : undefined
-  const encodeBody = hasBody ? compileSchemaExecution(route.body.schema, { location: 'body' }).encode : undefined
-  const serializeBody = hasBody ? compileBodySerializer(route.body.representation, route.body.contentType) : undefined
+      : compileBodySerializer(plan.body.declaration.representation, plan.body.declaration.contentType)
   const configuredHeaders = transport.headers
 
   if (staticUrl !== undefined && encodeQuery === undefined && encodeHeaders === undefined && encodeBody !== undefined) {
@@ -203,13 +195,4 @@ export function compileClientRequest(
       )
     })
   }
-}
-
-export async function createClientRequest(
-  compiled: CompiledContractRoute,
-  transport: ClientTransportOptions,
-  input: Readonly<Record<string, unknown>>,
-  options: ClientRequestOptions
-): Promise<Request> {
-  return compileClientRequest(compiled, transport)(input, options)
 }

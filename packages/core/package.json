@@ -29,6 +29,10 @@
       "types": "./dist/integration.d.ts",
       "import": "./dist/integration.js"
     },
+    "./procedure": {
+      "types": "./dist/procedure.d.ts",
+      "import": "./dist/procedure.js"
+    },
     "./server": {
       "types": "./dist/server/index.d.ts",
       "import": "./dist/server/index.js"

@@ -101,7 +101,7 @@ export function compilePathParameterDecoder(declarations: readonly CompiledPathP
       for (const { declaration, decoded } of groups) {
         for (const name of declaration.names) setOwn(decodedValues, name, decoded[name])
       }
-      return Object.freeze(decodedValues)
+      return decodedValues
     })
   }
 }

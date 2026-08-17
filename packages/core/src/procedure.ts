@@ -1,6 +1,6 @@
 import type { Awaitable } from './context'
 import { type EitherIsAsync, type ValueIsAsync } from './execution'
-import { assertMiddleware, assertMiddlewares, dispatchMiddlewareSteps, type NextActions } from './middleware'
+import { assertMiddleware, assertMiddlewares, dispatchMiddlewareSteps, type MiddlewareNext } from './middleware'
 import { isPlainRecord, isRecord, setOwn } from './object'
 import {
   encodeSchemaValue,
@@ -16,6 +16,7 @@ import {
 } from './validation'
 
 type EmptyProcedureContext = Record<string, never>
+const emptyProcedureContext = {} as EmptyProcedureContext
 
 type DefinedField<Name extends PropertyKey, Value> = [Value] extends [undefined]
   ? object
@@ -50,11 +51,11 @@ export type ProcedureMiddlewareInput<Context extends object, Input = unknown> = 
   readonly procedure: ProcedureMetadata
 }
 
-export type ProcedureMiddlewareActions<Result> = NextActions<Result>
+export type ProcedureMiddlewareNext<Result> = MiddlewareNext<Result>
 
 export type ProcedureMiddleware<Context extends object, Input = unknown> = <Result>(
-  actions: ProcedureMiddlewareActions<Result>,
-  args: ProcedureMiddlewareInput<Context, Input>
+  input: ProcedureMiddlewareInput<Context, Input>,
+  next: ProcedureMiddlewareNext<Result>
 ) => Result | PromiseLike<Result>
 
 export type ProcedureHandlerInput<Context extends object, Input extends AnySchema | undefined> = {
@@ -244,16 +245,16 @@ function createBuilder<
   inputSchema?: Input,
   outputSchema?: Output
 ): ProcedureBuilder<Context, Input, Output, Async> {
-  const frozenMiddlewares = Object.freeze([...middlewares])
+  const middlewareStack = [...middlewares]
 
   const input = (<const Schema extends AnySchema>(schema: Schema) => {
     if (!isSchema(schema)) throw new TypeError('Procedure input must be a Standard Schema')
-    return createBuilder(owner, contextFactory, frozenMiddlewares, schema, outputSchema)
+    return createBuilder(owner, contextFactory, middlewareStack, schema, outputSchema)
   }) as ProcedureBuilder<Context, Input, Output, Async>['input']
 
   const output = (<const Schema extends AnySchema>(schema: Schema) => {
     if (!isSchema(schema)) throw new TypeError('Procedure output must be a Standard Schema')
-    return createBuilder(owner, contextFactory, frozenMiddlewares, inputSchema, schema)
+    return createBuilder(owner, contextFactory, middlewareStack, inputSchema, schema)
   }) as ProcedureBuilder<Context, Input, Output, Async>['output']
 
   const middleware = (<const Middleware extends ProcedureMiddleware<Context>>(handler: Middleware) => {
@@ -263,7 +264,7 @@ function createBuilder<
 
   const use = (<const Middlewares extends readonly ProcedureMiddleware<Context>[]>(...applied: Middlewares) => {
     assertMiddlewares('Procedure', applied)
-    return createBuilder(owner, contextFactory, [...frozenMiddlewares, ...applied], inputSchema, outputSchema)
+    return createBuilder(owner, contextFactory, [...middlewareStack, ...applied], inputSchema, outputSchema)
   }) as ProcedureBuilder<Context, Input, Output, Async>['use']
 
   const handler = ((implementation: (args: ProcedureHandlerInput<Context, Input>) => Awaitable<unknown>) => {
@@ -280,33 +281,26 @@ function createBuilder<
       return mapSchemaStep(inputStep, () => {
         const contextStep =
           contextFactory === undefined
-            ? (Object.freeze({}) as Context)
+            ? (emptyProcedureContext as Context)
             : contextFactory({ input: inputValue, procedure: metadata })
 
         return mapSchemaStep(contextStep, (context) => {
           if (!isRecord(context)) throw new TypeError('Procedure context factory must return an object')
 
-          const readonlyContext = Object.freeze(context)
-          const middlewareInput = Object.freeze({ context: readonlyContext, input: inputValue, procedure: metadata })
-          const handlerInput = Object.freeze({
-            context: readonlyContext,
+          const middlewareInput = { context, input: inputValue, procedure: metadata }
+          const handlerInput = {
+            context,
             procedure: metadata,
             ...(hasInput ? { input: inputValue } : {}),
-          }) as ProcedureHandlerInput<Context, Input>
+          } as ProcedureHandlerInput<Context, Input>
 
           const result =
-            frozenMiddlewares.length === 0
+            middlewareStack.length === 0
               ? implementation(handlerInput)
-              : dispatchMiddlewareSteps(
-                  frozenMiddlewares,
-                  middlewareInput,
-                  () => implementation(handlerInput),
-                  (next) => ({ next }),
-                  {
-                    invalidMiddleware: () => new TypeError('Procedure middleware must be a function'),
-                    multipleNext: () => new TypeError('Procedure middleware called next() more than once'),
-                  }
-                )
+              : dispatchMiddlewareSteps(middlewareStack, middlewareInput, () => implementation(handlerInput), {
+                  invalidMiddleware: () => new TypeError('Procedure middleware must be a function'),
+                  multipleNext: () => new TypeError('Procedure middleware called next() more than once'),
+                })
           return outputSchema === undefined
             ? result
             : mapSchemaStep(result, (resolved) =>
@@ -342,7 +336,7 @@ export function defineProcedures(
   if (options?.context !== undefined && typeof options.context !== 'function') {
     throw new TypeError('Procedure context must be a function')
   }
-  return createBuilder<object, undefined, undefined, boolean>(Object.freeze({}), options?.context, [])
+  return createBuilder<object, undefined, undefined, boolean>({}, options?.context, [])
 }
 
 export const procedure: ProcedureBuilder<EmptyProcedureContext> = /* @__PURE__ */ defineProcedures()

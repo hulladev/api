@@ -1,9 +1,10 @@
-import type { Contract, ContractRoute, ContractRoutes } from './contract'
+import type { Contract, ContractRoute } from './contract'
+import { compileContractRoutes } from './contract-compiler'
+import { getContractState } from './contract-state'
 import type { HttpMethod } from './http'
-import { isRecord } from './object'
-import { joinRoutePaths, pathParamNames, type JoinRoutePaths } from './paths'
+import type { JoinRoutePaths } from './paths'
 import type { Route } from './route'
-import { isRouter, routerEntries, type AnyRouter, type Router } from './router'
+import type { AnyRouter, Router } from './router'
 import type { ObjectSchema } from './validation'
 
 export type CompiledPathParameters = {
@@ -68,91 +69,32 @@ export type CompiledContract<ContractType extends Contract = Contract> = {
   readonly routes: readonly CompiledContractRouteFor<ContractType>[]
 }
 
-const compiledContracts = new WeakMap<object, object>()
-
-function compilePathParameters(path: string, schema: ObjectSchema | undefined): CompiledPathParameters | undefined {
-  const names = pathParamNames(path)
-  if (names.length === 0) return undefined
-  if (schema === undefined) throw new TypeError(`Contract route path "${path}" is missing a parameter schema`)
-
-  return Object.freeze({
-    path,
-    names: Object.freeze(names),
-    schema,
-  })
-}
-
-function appendCompiledRoute(
-  target: CompiledContractRoute[],
-  key: readonly string[],
-  pathParts: readonly string[],
-  pathParameters: readonly CompiledPathParameters[],
-  route: Route
-): void {
-  const ownParameters = compilePathParameters(route.path, 'params' in route ? route.params : undefined)
-
-  target.push(
-    Object.freeze({
-      key: Object.freeze([...key]),
-      method: route.method,
-      path: joinRoutePaths(...pathParts, route.path),
-      pathParameters: Object.freeze(
-        ownParameters === undefined ? [...pathParameters] : [...pathParameters, ownParameters]
-      ),
-      route,
-    })
-  )
-}
-
-function compileRoutes(
-  target: CompiledContractRoute[],
-  routes: ContractRoutes,
-  pathPrefix: readonly string[],
-  keyPrefix: readonly string[] = [],
-  pathParameters: readonly CompiledPathParameters[] = []
-): void {
-  for (const [key, definition] of Object.entries(routes)) {
-    if (!isRouter(definition)) {
-      appendCompiledRoute(target, [...keyPrefix, key], pathPrefix, pathParameters, definition)
-      continue
+function freezeCompiledRoutes(routes: readonly CompiledContractRoute[]): readonly CompiledContractRoute[] {
+  for (const route of routes) {
+    for (const parameters of route.pathParameters) {
+      Object.freeze(parameters.names)
+      Object.freeze(parameters)
     }
-
-    const metadata = definition.$meta
-    const ownParameters = compilePathParameters(metadata.path, 'params' in metadata ? metadata.params : undefined)
-    const nestedParameters =
-      ownParameters === undefined ? pathParameters : Object.freeze([...pathParameters, ownParameters])
-
-    for (const [routeKey, route] of routerEntries(definition)) {
-      appendCompiledRoute(
-        target,
-        [...keyPrefix, key, routeKey],
-        [...pathPrefix, metadata.path],
-        nestedParameters,
-        route
-      )
-    }
+    Object.freeze(route.key)
+    Object.freeze(route.pathParameters)
+    Object.freeze(route)
   }
+  return Object.freeze(routes)
 }
 
 /** Compiles a contract into the canonical flat route manifest shared by runtimes and integrations. */
 export function compileContract<const ContractType extends Contract>(
   contract: ContractType
 ): CompiledContract<ContractType> {
-  if (!isRecord(contract) || contract.kind !== 'contract' || !isRecord(contract.routes)) {
-    throw new TypeError('Compiled contract input must be a contract definition')
-  }
-
-  const cached = compiledContracts.get(contract)
-  if (cached !== undefined) return cached as CompiledContract<ContractType>
-
-  const routes: CompiledContractRoute[] = []
-  compileRoutes(routes, contract.routes, [contract.basePath])
+  const routes = compileContractRoutes(contract)
+  const state = getContractState(contract)
+  if (state.compiled !== undefined) return state.compiled as CompiledContract<ContractType>
 
   const compiled = Object.freeze({
     kind: 'compiled-contract' as const,
     contract,
-    routes: Object.freeze(routes) as readonly CompiledContractRouteFor<ContractType>[],
-  })
-  compiledContracts.set(contract, compiled)
+    routes: freezeCompiledRoutes(routes),
+  }) as unknown as CompiledContract<ContractType>
+  state.compiled = compiled
   return compiled
 }

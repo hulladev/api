@@ -1,8 +1,9 @@
 import { annotateAPIErrorIssues, type APIError, type APIErrorIssue, type ClientResponseErrorCode } from '../errors'
 import { mimeEssence } from '../request'
 import type { AnyRouteResponse, ResponseBodyValue, ResponseHeaders, RouteResponses } from '../response'
+import type { CanonicalResponsePlan } from '../route-plan'
 import type { StreamFormat } from '../stream'
-import { compileSchemaExecution, type SchemaOutput } from '../validation'
+import type { SchemaOutput } from '../validation'
 
 export type { ClientResponseErrorCode } from '../errors'
 
@@ -98,7 +99,8 @@ function assertContentType(response: Response, expected: string | undefined): vo
   }
 }
 
-function compileBodyDecoder(definition: AnyRouteResponse): (response: Response) => Promise<unknown> {
+function compileBodyDecoder(plan: CanonicalResponsePlan): (response: Response) => Promise<unknown> {
+  const definition = plan.definition
   const body = definition.body
   switch (body.kind) {
     case 'empty':
@@ -106,46 +108,43 @@ function compileBodyDecoder(definition: AnyRouteResponse): (response: Response) 
     case 'raw':
       return async (response) => response
     case 'json': {
-      const decode = compileSchemaExecution(body.schema, { location: 'response' }).decode
+      const decode = plan.body!.decode
       return async (response) => decode(await response.json())
     }
     case 'text': {
-      const decode = compileSchemaExecution(body.schema, { location: 'response' }).decode
+      const decode = plan.body!.decode
       return async (response) => decode(await response.text())
     }
     case 'bytes': {
-      const decode = compileSchemaExecution(body.schema, { location: 'response' }).decode
+      const decode = plan.body!.decode
       return async (response) => decode(new Uint8Array(await response.arrayBuffer()))
     }
     case 'form-data': {
-      const decode = compileSchemaExecution(body.schema, { location: 'response' }).decode
+      const decode = plan.body!.decode
       return async (response) => decode(await response.formData())
     }
     case 'stream': {
       if (!('schema' in body)) return async (response) => responseBytes(response)
-      const decode = compileSchemaExecution(body.schema, { location: 'response' }).decode
-      const plan = { decode, format: body.format as unknown as StreamFormat<unknown> }
-      return async (response) => decodedStream(response, plan)
+      const decode = plan.body!.decode
+      const streamPlan = { decode, format: body.format as unknown as StreamFormat<unknown> }
+      return async (response) => decodedStream(response, streamPlan)
     }
   }
 }
 
-const responseDecoders = new WeakMap<object, ClientResponseDecoder>()
+const responseDecoders = new WeakMap<CanonicalResponsePlan, ClientResponseDecoder>()
 
-export function compileClientResponse(definition: AnyRouteResponse): ClientResponseDecoder {
-  const cached = responseDecoders.get(definition)
+export function compileClientResponse(plan: CanonicalResponsePlan): ClientResponseDecoder {
+  const cached = responseDecoders.get(plan)
   if (cached !== undefined) return cached
 
-  const expectedContentType = definition.contentType === undefined ? undefined : mimeEssence(definition.contentType)
-  const decodeBody = compileBodyDecoder(definition)
-  const decodeHeaders =
-    definition.headers === undefined
-      ? undefined
-      : compileSchemaExecution(definition.headers, { location: 'headers' }).decode
+  const definition = plan.definition
+  const decodeBody = compileBodyDecoder(plan)
+  const decodeHeaders = plan.headers?.decode
   const empty = definition.body.kind === 'empty'
 
   const decode: ClientResponseDecoder = async (response) => {
-    assertContentType(response, expectedContentType)
+    assertContentType(response, plan.expectedContentType)
     const [headers, body] =
       decodeHeaders === undefined
         ? [response.headers, await decodeBody(response)]
@@ -158,10 +157,6 @@ export function compileClientResponse(definition: AnyRouteResponse): ClientRespo
     }
   }
 
-  responseDecoders.set(definition, decode)
+  responseDecoders.set(plan, decode)
   return decode
-}
-
-export function decodeClientResponse(response: Response, definition: AnyRouteResponse): Promise<unknown> {
-  return compileClientResponse(definition)(response)
 }
