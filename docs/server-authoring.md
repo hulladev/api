@@ -18,15 +18,12 @@ The context factory's resolved object is inferred once and exposed as `input.con
 
 ## Middleware
 
-Client and server middleware share the `(input, next)` shape. A server middleware either continues or returns one of `contract.errors` directly:
+Client, server, and procedure middleware receive one options object. A server middleware either continues or returns one of `contract.errors` through its typed response helper:
 
 ```ts
-const requireUser = server.middleware(async (input, next) => {
-  if (!input.context.user) {
-    return {
-      status: 401,
-      body: { code: 'UNAUTHENTICATED' },
-    }
+const requireUser = server.middleware(async ({ context, next, response }) => {
+  if (!context.user) {
+    return response(401, { code: 'UNAUTHENTICATED' })
   }
 
   return next()
@@ -47,24 +44,18 @@ Pass one contract-shaped handler tree to `build()`:
 
 ```ts
 const implementation = authenticated.build({
-  health: () => ({
-    status: 200,
-    body: 'ok',
-  }),
+  health: ({ response }) => response(200, 'ok'),
 
   organizations: {
-    createUser: async ({ params, query, headers, body, context, request, route }) => {
+    createUser: async ({ params, query, headers, body, context, request, response, route }) => {
       const existing = await findUser(params.userId)
       if (existing) {
-        return {
-          status: 409,
-          body: { code: 'CONFLICT' },
-        }
+        return response(409, { code: 'CONFLICT' })
       }
 
-      return {
-        status: 201,
-        body: await createUser({
+      return response(
+        201,
+        await createUser({
           organizationId: params.organizationId,
           userId: params.userId,
           notify: query.notify,
@@ -72,8 +63,8 @@ const implementation = authenticated.build({
           createdAt: body.createdAt,
           requestId: context.requestId,
         }),
-        headers: { etag: `"${params.userId}"` },
-      }
+        { etag: `"${params.userId}"` }
+      )
     },
   },
 })
@@ -84,6 +75,7 @@ Each handler receives only one input object:
 - `params`, `query`, `headers`, and `body` are decoded application values declared by that route.
 - `context` is the inferred context-factory result.
 - `request` is the original Fetch `Request`.
+- `response(status, body, headers?)` creates the status-discriminated result for that route.
 - `route` contains the literal key, method, and fully joined path.
 
 The status discriminates the complete response envelope. An empty response forbids `body`; a raw response requires `Response` and forbids separate headers; schema-backed response headers are required and typed when declared.
@@ -100,7 +92,7 @@ import type { ServerHandlersOf } from '@hulla/api/server'
 type AppHandlers = ServerHandlersOf<typeof server>
 
 export const healthHandlers = {
-  health: () => ({ status: 200, body: 'ok' }),
+  health: ({ response }) => response(200, 'ok'),
 } satisfies Pick<AppHandlers, 'health'>
 
 export const organizationHandlers = {
@@ -144,6 +136,6 @@ import { createFetchHandler } from '@hulla/api/server'
 export const fetch = createFetchHandler(implementation)
 ```
 
-`createFetchHandler()` handles Fetch request extraction and response construction. `createWireHandler()` from `@hulla/api/wire` exposes the lower-level host-neutral dispatcher used by framework adapters.
+`createFetchHandler()` handles Fetch request extraction and response construction. `createWireHandler()` from `@hulla/api/wire` exposes the lower-level dispatcher used by framework adapters. Adapters still provide a standard `Request` so handlers, context, and middleware have one request model; they may supply host-parsed query, headers, and bodies to avoid duplicate extraction.
 
 The shared canonical route plan caches compilation only. Requests, responses, handler results, and application data are never cached.

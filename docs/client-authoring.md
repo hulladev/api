@@ -50,11 +50,11 @@ const base = defineClient(contract, {
 })
 ```
 
-Middleware uses the same `(input, next)` convention as server middleware. `middleware()` defines a reusable middleware value, `use()` returns a derived scope, and `build()` materializes the callable tree:
+Middleware receives one options object, matching server and procedure middleware. `middleware()` defines a reusable middleware value, `use()` returns a derived scope, and `build()` materializes the callable tree:
 
 ```ts
-const authenticate = base.middleware(async (input, next) => {
-  input.request.headers.set('authorization', `Bearer ${input.context.accessToken}`)
+const authenticate = base.middleware(async ({ context, next, request }) => {
+  request.headers.set('authorization', `Bearer ${context.accessToken}`)
   return next()
 })
 
@@ -62,6 +62,8 @@ export const client = base.use(authenticate).build()
 ```
 
 Middleware wraps the complete transport operation, including response decoding. It can prepare the request, perform logging or tracing before and after `next()`, and reject a call. Higher-level result policies belong in application procedures.
+
+Client middleware can also stop every route with a contract-level error through its typed `response(status, body, headers?)` helper. Responses without declared header schemas receive an empty `Headers` instance by default.
 
 ## Transport boundary
 

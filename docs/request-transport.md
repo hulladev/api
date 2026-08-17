@@ -85,4 +85,4 @@ Each helper also has a representation-appropriate identity schema when the schem
 
 ## Adapter boundary
 
-Adapters extract raw text occurrences, headers, path values, and the selected raw body representation. They must not perform numeric, boolean, date, JSON, or collection coercion. Query and body transport helpers in core perform normalization before Standard Schema validation runs once.
+Adapters provide a standard `Request`, then extract raw text occurrences, headers, path values, and the selected raw body representation. They must not perform numeric, boolean, date, JSON, or collection coercion. Query and body transport helpers in core perform normalization before Standard Schema validation runs once. This keeps handler, context, and middleware request semantics identical across the built-in Fetch handler and framework integrations.

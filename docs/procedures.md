@@ -57,7 +57,7 @@ Procedure calls do not expose `Result | Promise<Result>`. A synchronous handler 
 Middleware therefore does not impose an asynchronous boundary by itself. Its `next()` call has the exact downstream result type, so a synchronous middleware can inspect or transform a synchronous result without a promise:
 
 ```ts
-const trace = procedures.middleware((_input, next) => {
+const trace = procedures.middleware(({ next }) => {
   events.push('before')
   const result = next()
   events.push('after')
@@ -95,8 +95,8 @@ const procedures = defineProcedures({
   context: () => ({ session: getSession() }),
 })
 
-const requireUser = procedures.middleware(async (args, next) => {
-  if (!args.context.session.user) throw new UnauthorizedError()
+const requireUser = procedures.middleware(async ({ context, next }) => {
+  if (!context.session.user) throw new UnauthorizedError()
   return next()
 })
 
@@ -106,8 +106,8 @@ const authenticated = procedures.use(requireUser)
 Derived builders retain the same definition ownership while adding middleware immutably:
 
 ```ts
-const requireAdmin = authenticated.middleware(async (args, next) => {
-  if (!args.context.session.user.isAdmin) throw new ForbiddenError()
+const requireAdmin = authenticated.middleware(async ({ context, next }) => {
+  if (!context.session.user.isAdmin) throw new ForbiddenError()
   return next()
 })
 

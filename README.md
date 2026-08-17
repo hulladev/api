@@ -49,7 +49,7 @@ packages/core/
     object.ts       safe record and tree utilities
     parameters.ts   shared client/server path parameter transport
     query.ts        normalized query cardinality and transport
-    request.ts      request representations and MIME matching
+    request.ts      request representations and MIME normalization
     representation.ts shared intrinsic wire schemas
     response.ts     response representation declarations
     procedure.ts    application procedures and callable registries
@@ -63,8 +63,7 @@ packages/core/
       definition.ts context, middleware scope, and complete-tree assembly
       errors.ts     internal server and validation errors
       fetch.ts      built-in Request/Response adapter
-      runtime.ts    platform-neutral wire routing, execution, and response encoding
-    wire.ts         public advanced server-adapter entry point
+      runtime.ts    standard-Request wire execution, published as the advanced adapter entry point
     validation.ts   Standard Schema validation and directional codecs
   tests/            Contract laws and vertical-slice tests
 
