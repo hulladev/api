@@ -1,9 +1,12 @@
+import type { CompiledContractRoute, CompiledPathParameters } from './compiler'
+import { getContractState } from './contract-state'
 import { HTTP_METHODS, type HttpMethod } from './http'
 import { isRecord } from './object'
-import { assertBasePath, joinRoutePaths, routePathShape } from './paths'
+import { assertBasePath, joinRoutePaths, pathParamNames, routePathShape } from './paths'
 import type { RouteResponses } from './response'
 import type { Route } from './route'
 import { isRouter, routerEntries, type AnyRouter } from './router'
+import type { ObjectSchema } from './validation'
 
 export type ContractRoute = Route | AnyRouter
 
@@ -33,8 +36,7 @@ export type ContractOptions<
 type RegisteredRoute = {
   readonly name: string
   readonly method: HttpMethod
-  readonly pathParts: readonly string[]
-  path?: string
+  readonly path: string
 }
 
 type RouteRegistry = {
@@ -62,8 +64,8 @@ function assertRouter(value: unknown, name: string): asserts value is AnyRouter 
   }
 }
 
-function registerRoute(registry: RouteRegistry, name: string, pathParts: readonly string[], route: Route): void {
-  const registered: RegisteredRoute = { name, method: route.method, pathParts }
+function registerRoute(registry: RouteRegistry, name: string, path: string, route: Route): void {
+  const registered: RegisteredRoute = { name, method: route.method, path }
   if (registry.first === undefined) {
     registry.first = registered
     return
@@ -72,13 +74,10 @@ function registerRoute(registry: RouteRegistry, name: string, pathParts: readonl
   let routes = registry.routes
   if (routes === undefined) {
     const first = registry.first
-    const firstPath = (first.path ??= joinRoutePaths(...first.pathParts))
-    routes = new Map([[`${first.method} ${routePathShape(firstPath)}`, first]])
+    routes = new Map([[`${first.method} ${routePathShape(first.path)}`, first]])
     registry.routes = routes
   }
 
-  const path = joinRoutePaths(...pathParts)
-  registered.path = path
   const signature = `${route.method} ${routePathShape(path)}`
   const existing = routes.get(signature)
 
@@ -89,6 +88,29 @@ function registerRoute(registry: RouteRegistry, name: string, pathParts: readonl
   }
 
   routes.set(signature, registered)
+}
+
+function compilePathParameters(path: string, schema: ObjectSchema | undefined): CompiledPathParameters | undefined {
+  const names = pathParamNames(path)
+  if (names.length === 0) return undefined
+  if (schema === undefined) throw new TypeError(`Contract route path "${path}" is missing a parameter schema`)
+  return { path, names, schema }
+}
+
+function compiledRoute(
+  key: readonly string[],
+  path: string,
+  pathParameters: readonly CompiledPathParameters[],
+  route: Route
+): CompiledContractRoute {
+  const ownParameters = compilePathParameters(route.path, 'params' in route ? route.params : undefined)
+  return {
+    key,
+    method: route.method,
+    path,
+    pathParameters: ownParameters === undefined ? [...pathParameters] : [...pathParameters, ownParameters],
+    route,
+  }
 }
 
 function validateResponseStatuses(route: Route, name: string, errors: RouteResponses): void {
@@ -103,10 +125,15 @@ function validateResponseStatuses(route: Route, name: string, errors: RouteRespo
   }
 }
 
-function validateContract(basePath: string, routes: ContractRoutes, errors: RouteResponses): void {
+/** @internal Validates a contract shape while producing the route metadata consumed by every runtime. */
+export function compileContractRouteDefinitions(
+  basePath: string,
+  routes: ContractRoutes,
+  errors: RouteResponses
+): readonly CompiledContractRoute[] {
   const registry: RouteRegistry = {}
+  const compiledRoutes: CompiledContractRoute[] = []
   const hasErrors = errors !== emptyErrors
-  let routeCount = 0
 
   for (const [name, value] of Object.entries(routes)) {
     const router = isRouter(value)
@@ -117,24 +144,30 @@ function validateContract(basePath: string, routes: ContractRoutes, errors: Rout
     if (!router) {
       assertRoute(value, name)
       if (hasErrors) validateResponseStatuses(value, `routes.${name}`, errors)
-      registerRoute(registry, `routes.${name}`, [basePath, value.path], value)
-      routeCount += 1
+      const path = joinRoutePaths(basePath, value.path)
+      registerRoute(registry, `routes.${name}`, path, value)
+      compiledRoutes.push(compiledRoute([name], path, [], value))
       continue
     }
 
     assertRouter(value, name)
+    const metadata = value.$meta
+    const routerParameters = compilePathParameters(metadata.path, 'params' in metadata ? metadata.params : undefined)
+    const pathParameters = routerParameters === undefined ? [] : [routerParameters]
     for (const [routeName, routeValue] of routerEntries(value)) {
       const qualifiedName = `routes.${name}.${routeName}`
       assertRoute(routeValue, qualifiedName)
       if (hasErrors) validateResponseStatuses(routeValue, qualifiedName, errors)
-      registerRoute(registry, qualifiedName, [basePath, value.$meta.path, routeValue.path], routeValue)
-      routeCount += 1
+      const path = joinRoutePaths(basePath, metadata.path, routeValue.path)
+      registerRoute(registry, qualifiedName, path, routeValue)
+      compiledRoutes.push(compiledRoute([name, routeName], path, pathParameters, routeValue))
     }
   }
 
-  if (routeCount === 0) {
+  if (compiledRoutes.length === 0) {
     throw new TypeError('Contract must declare at least one route')
   }
+  return compiledRoutes
 }
 
 function copyErrors(errors: unknown): Readonly<RouteResponses> {
@@ -180,12 +213,13 @@ export function defineContract(options: ContractOptions): Contract {
   const routes = Object.freeze({ ...options.routes }) as ContractRoutes
   const errors = copyErrors(options.errors)
 
-  validateContract(basePath, routes, errors)
-
-  return Object.freeze({
+  const compiledRoutes = compileContractRouteDefinitions(basePath, routes, errors)
+  const contract = Object.freeze({
     kind: 'contract',
     basePath,
     routes,
     errors,
   })
+  getContractState(contract).routes = compiledRoutes
+  return contract
 }

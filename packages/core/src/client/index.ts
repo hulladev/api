@@ -11,11 +11,13 @@ export type {
   ClientMiddlewareCandidate,
   ClientMiddlewareInput,
   ClientMiddlewareNext,
+  ClientMiddlewareOptions,
 } from './middleware'
 export type { ClientFetch, ClientHeaders, ClientRequestOptions, ClientTransportOptions } from './request'
 export { ClientResponseError } from './response'
 export type {
   ClientResponseErrorCode,
+  ClientResponseFactory,
   ClientResponseIssue,
   ClientResponseResult,
   ClientResponseResultFor,

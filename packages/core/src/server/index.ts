@@ -22,11 +22,17 @@ export type {
   ServerMiddlewareCandidate,
   ServerMiddlewareInput,
   ServerMiddlewareNext,
+  ServerMiddlewareOptions,
 } from './middleware'
 export { defineServer } from './definition'
 export { createFetchHandler } from './fetch'
 export type { FetchHandler, FetchServerErrorInput, FetchServerOptions, FetchServerPhase } from './fetch'
-export type { ServerErrorResult, ServerResponseResult, ServerResponseResultFor } from './response'
+export type {
+  ServerErrorResult,
+  ServerResponseFactory,
+  ServerResponseResult,
+  ServerResponseResultFor,
+} from './response'
 export type {
   DefineServerOptions,
   Server,

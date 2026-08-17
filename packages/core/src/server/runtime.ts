@@ -16,6 +16,7 @@ import {
 import type { StreamFormat, StreamSource } from '../stream'
 import { isSchemaStepAsync, mapSchemaStep, type SchemaStep } from '../validation'
 import { ServerRuntimeError } from './errors'
+import { createServerResponse } from './response'
 import type { ServerImplementation } from './types'
 
 export type WireServerPhase = 'context' | 'handler' | 'request' | 'response' | 'routing'
@@ -35,7 +36,7 @@ export type WireServerErrorInput = {
   readonly defaultResponse: WireServerResponse
   readonly error: unknown
   readonly phase: WireServerPhase
-  readonly request: unknown
+  readonly request: Request
   readonly route?: RouteMetadata
 }
 
@@ -52,8 +53,8 @@ export type WireServerBody = {
 }
 
 export type WireServerInput = {
-  /** Original host request exposed to context, middleware, and handlers. */
-  readonly request: unknown
+  /** Standard request exposed unchanged to context, middleware, and handlers. */
+  readonly request: Request
   readonly method: string
   readonly pathname: string
   readonly headers?: Readonly<Record<string, string>>
@@ -72,7 +73,7 @@ type MatchedRoute = {
 }
 
 type RuntimeServer = {
-  readonly context?: (input: { readonly request: unknown; readonly route: RouteMetadata }) => Awaitable<object>
+  readonly context?: (input: { readonly request: Request; readonly route: RouteMetadata }) => Awaitable<object>
   readonly contract: Contract
   readonly handlers: unknown
   readonly middlewares: readonly unknown[]
@@ -92,8 +93,8 @@ type RuntimeRoute = {
   readonly compiled: CompiledContractRoute
   readonly decodeInput: RuntimeInputDecoder
   readonly handler: RuntimeHandler
+  readonly hasInput: boolean
   readonly metadata: RouteMetadata
-  readonly middlewares: readonly unknown[]
   readonly pattern: readonly string[]
   readonly readsBody: boolean
   readonly readsQuery: boolean
@@ -120,6 +121,7 @@ type RouteSelection =
 const emptyParameters = {}
 const emptyContext = {}
 const emptyHeaders = {}
+const emptyRouteInput = {}
 
 function wireHeaders(input: WireServerInput): Readonly<Record<string, string>> {
   return input.headers ?? input.readHeaders?.() ?? emptyHeaders
@@ -274,8 +276,8 @@ function compileRuntimeRoutes(server: RuntimeServer, contractPlan: CanonicalCont
       compiled,
       decodeInput: compileRouteInput(plan),
       handler: handler as RuntimeHandler,
+      hasInput: plan.hasInput,
       metadata: plan.metadata,
-      middlewares: server.middlewares,
       pattern: plan.pattern,
       readsBody: plan.body !== undefined,
       readsQuery: plan.decodeQuery !== undefined,
@@ -372,7 +374,7 @@ function compileRouteInput(plan: CanonicalRoutePlan): RuntimeInputDecoder {
     Number(decodeHeaders !== undefined) +
     Number(decodeBody !== undefined)
 
-  if (fieldCount === 0) return async () => ({})
+  if (fieldCount === 0) return async () => emptyRouteInput
 
   return async (parameters, request, query, preserveRequest) => {
     const input: Record<string, unknown> = {}
@@ -594,7 +596,7 @@ async function executeRoute(
   const preserveRequest =
     match.runtime.readsBody &&
     request.body === undefined &&
-    (server.context !== undefined || match.runtime.middlewares.length > 0)
+    (server.context !== undefined || server.middlewares.length > 0)
   const routeInput = await match.runtime.decodeInput(match.parameters, request, query, preserveRequest)
 
   phase.value = 'context'
@@ -606,14 +608,19 @@ async function executeRoute(
     throw new ServerRuntimeError('invalid-context', 500, 'Server context factory must return an object')
   }
 
-  const sharedInput = { context, request: request.request, route: match.runtime.metadata }
-  const handlerInput = { ...sharedInput, ...routeInput }
+  const sharedInput = {
+    context,
+    request: request.request,
+    response: createServerResponse,
+    route: match.runtime.metadata,
+  }
+  const handlerInput = match.runtime.hasInput ? { ...sharedInput, ...routeInput } : sharedInput
 
   phase.value = 'handler'
   const result =
-    match.runtime.middlewares.length === 0
+    server.middlewares.length === 0
       ? await match.runtime.handler(handlerInput)
-      : await dispatchMiddlewares(match.runtime.middlewares, sharedInput, () => match.runtime.handler(handlerInput), {
+      : await dispatchMiddlewares(server.middlewares, sharedInput, () => match.runtime.handler(handlerInput), {
           invalidMiddleware: () =>
             new ServerRuntimeError('invalid-server-response', 500, 'Server middleware must be a function'),
           multipleNext: () =>
@@ -633,6 +640,7 @@ export function createWireHandler<const ContractType extends Contract, const Con
   const routes = compileRuntimeRoutes(server, contractPlan)
 
   return async (input: WireServerInput): Promise<WireServerResponse> => {
+    if (!(input.request instanceof Request)) throw new TypeError('Wire server input must provide a Request')
     const request = input.request
     let selectedMetadata: RouteMetadata | undefined
     const phase: { value: WireServerPhase } = { value: 'routing' }

@@ -1,6 +1,12 @@
 import type { Awaitable } from './context'
 import { type EitherIsAsync, type ValueIsAsync } from './execution'
-import { assertMiddleware, assertMiddlewares, dispatchMiddlewareSteps, type MiddlewareNext } from './middleware'
+import {
+  assertMiddleware,
+  assertMiddlewares,
+  dispatchMiddlewareSteps,
+  type MiddlewareNext,
+  type MiddlewareOptions,
+} from './middleware'
 import { isPlainRecord, isRecord, setOwn } from './object'
 import {
   encodeSchemaValue,
@@ -53,9 +59,13 @@ export type ProcedureMiddlewareInput<Context extends object, Input = unknown> = 
 
 export type ProcedureMiddlewareNext<Result> = MiddlewareNext<Result>
 
+export type ProcedureMiddlewareOptions<Context extends object, Input = unknown, Result = unknown> = MiddlewareOptions<
+  ProcedureMiddlewareInput<Context, Input>,
+  Result
+>
+
 export type ProcedureMiddleware<Context extends object, Input = unknown> = <Result>(
-  input: ProcedureMiddlewareInput<Context, Input>,
-  next: ProcedureMiddlewareNext<Result>
+  options: ProcedureMiddlewareOptions<Context, Input, Result>
 ) => Result | PromiseLike<Result>
 
 export type ProcedureHandlerInput<Context extends object, Input extends AnySchema | undefined> = {

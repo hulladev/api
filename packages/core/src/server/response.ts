@@ -27,6 +27,20 @@ type ResponseHeaderFields<ResponseDefinition extends AnyRouteResponse> = Respons
     ? { readonly headers: SchemaOutput<ResponseDefinition['headers']> }
     : { readonly headers?: HeadersInit }
 
+type ResponseBodyArguments<ResponseDefinition extends AnyRouteResponse> = ResponseDefinition['body'] extends {
+  readonly kind: 'empty'
+}
+  ? readonly [body?: undefined]
+  : readonly [body: ResponseBodyFields<ResponseDefinition>['body']]
+
+type ResponseHeaderArguments<ResponseDefinition extends AnyRouteResponse> = ResponseDefinition['body'] extends {
+  readonly kind: 'raw'
+}
+  ? readonly []
+  : ResponseDefinition['headers'] extends ResponseHeaders
+    ? readonly [headers: SchemaOutput<ResponseDefinition['headers']>]
+    : readonly [headers?: HeadersInit]
+
 export type ServerResponseResultFor<Status extends number, ResponseDefinition extends AnyRouteResponse> = {
   readonly status: Status
 } & ResponseBodyFields<ResponseDefinition> &
@@ -36,9 +50,20 @@ export type ServerResponseResult<Responses extends RouteResponses> = {
   readonly [Status in Extract<keyof Responses, number>]: ServerResponseResultFor<Status, Responses[Status]>
 }[Extract<keyof Responses, number>]
 
+export type ServerResponseFactory<Responses extends RouteResponses> = <Status extends Extract<keyof Responses, number>>(
+  status: Status,
+  ...arguments_: readonly [...ResponseBodyArguments<Responses[Status]>, ...ResponseHeaderArguments<Responses[Status]>]
+) => ServerResponseResultFor<Status, Responses[Status]>
+
 export type ServerErrorResult<
   Errors extends RouteResponses,
   Status extends Extract<keyof Errors, number> = Extract<keyof Errors, number>,
 > = {
   readonly [CurrentStatus in Status]: ServerResponseResultFor<CurrentStatus, Errors[CurrentStatus]>
 }[Status]
+
+export const createServerResponse = ((status: number, body?: unknown, headers?: HeadersInit) => ({
+  status,
+  ...(body === undefined ? {} : { body }),
+  ...(headers === undefined ? {} : { headers }),
+})) as unknown as ServerResponseFactory<RouteResponses>

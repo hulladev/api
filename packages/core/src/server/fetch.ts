@@ -1,6 +1,7 @@
+import type { Contract } from '../contract'
 import type { Awaitable, RouteMetadata } from './context'
 import { createWireHandler } from './runtime'
-import type { WireServerErrorInput, WireServerPhase, WireServerResponse } from './runtime'
+import type { WireServerErrorInput, WireServerInput, WireServerPhase, WireServerResponse } from './runtime'
 import type { ServerImplementation } from './types'
 
 export type FetchServerPhase = WireServerPhase
@@ -18,13 +19,6 @@ export type FetchServerOptions = {
 }
 
 export type FetchHandler = (request: Request) => Promise<Response>
-
-type FetchServerImplementation = {
-  readonly context: unknown
-  readonly contract: object
-  readonly handlers: unknown
-  readonly middlewares: unknown
-}
 
 function pathname(url: string): string {
   const authority = url.indexOf('://')
@@ -92,11 +86,16 @@ function responseBody(response: WireServerResponse): BodyInit | null {
 }
 
 function toResponse(response: WireServerResponse): Response {
-  if (response.body.kind === 'raw') {
-    if (!(response.body.value instanceof Response) || response.body.value.status !== response.status) {
+  const body = response.body
+  if (body.kind === 'raw') {
+    if (!(body.value instanceof Response) || body.value.status !== response.status) {
       throw new TypeError('Raw Fetch response status must match its declared contract status')
     }
-    return response.body.value
+    return body.value
+  }
+  if (body.kind === 'json') {
+    if (body.value === undefined) throw new TypeError('JSON response body cannot encode to undefined')
+    return Response.json(body.value, { status: response.status, headers: response.headers })
   }
   return new Response(responseBody(response), { status: response.status, headers: response.headers })
 }
@@ -109,16 +108,15 @@ function replacementResponse(response: Response): WireServerResponse {
   }
 }
 
-/** Creates a Web Fetch handler over the platform-neutral @hulla/api wire executor. */
-export function createFetchHandler(
-  implementation: FetchServerImplementation,
+/** Creates a Web Fetch handler over the adapter-facing @hulla/api wire executor. */
+export function createFetchHandler<const ContractType extends Contract, const Context extends object>(
+  implementation: ServerImplementation<ContractType, Context>,
   options: FetchServerOptions = {}
 ): FetchHandler {
   const onWireError =
     options.onError === undefined
       ? undefined
       : async (input: WireServerErrorInput): Promise<WireServerResponse | undefined> => {
-          if (!(input.request instanceof Request)) return undefined
           const replacement = await options.onError?.({
             error: input.error,
             phase: input.phase,
@@ -128,23 +126,20 @@ export function createFetchHandler(
           })
           return replacement instanceof Response ? replacementResponse(replacement) : undefined
         }
-  const dispatch = createWireHandler(
-    implementation as ServerImplementation,
-    onWireError === undefined ? {} : { onError: onWireError }
-  )
+  const dispatch = createWireHandler(implementation, onWireError === undefined ? {} : { onError: onWireError })
 
   return async (request) => {
     if (!(request instanceof Request)) throw new TypeError('Fetch handler input must be a Request')
     let headers: Readonly<Record<string, string>> | undefined
     const query = requestQuery(request.url)
-    const response = await dispatch({
+    const input: WireServerInput = {
       request,
       method: request.method,
       pathname: pathname(request.url),
-      ...(query === undefined ? {} : { query }),
       readHeaders: () => (headers ??= requestHeaders(request)),
       readBody: (representation, preserveRequest) => readBody(request, representation, preserveRequest),
-    })
+    }
+    const response = await dispatch(query === undefined ? input : { ...input, query })
     return toResponse(response)
   }
 }

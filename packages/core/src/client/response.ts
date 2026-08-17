@@ -18,6 +18,17 @@ type ClientResponseHeaderFields<ResponseDefinition extends AnyRouteResponse> =
     ? { readonly headers: SchemaOutput<ResponseDefinition['headers']> }
     : { readonly headers: Headers }
 
+type ClientResponseBodyArguments<ResponseDefinition extends AnyRouteResponse> = ResponseDefinition['body'] extends {
+  readonly kind: 'empty'
+}
+  ? readonly [body?: undefined]
+  : readonly [body: ClientResponseBodyFields<ResponseDefinition>['body']]
+
+type ClientResponseHeaderArguments<ResponseDefinition extends AnyRouteResponse> =
+  ResponseDefinition['headers'] extends ResponseHeaders
+    ? readonly [headers: SchemaOutput<ResponseDefinition['headers']>]
+    : readonly [headers?: Headers]
+
 export type ClientResponseResultFor<Status extends number, ResponseDefinition extends AnyRouteResponse> = {
   readonly status: Status
 } & ClientResponseBodyFields<ResponseDefinition> &
@@ -26,6 +37,20 @@ export type ClientResponseResultFor<Status extends number, ResponseDefinition ex
 export type ClientResponseResult<Responses extends RouteResponses> = {
   readonly [Status in Extract<keyof Responses, number>]: ClientResponseResultFor<Status, Responses[Status]>
 }[Extract<keyof Responses, number>]
+
+export type ClientResponseFactory<Responses extends RouteResponses> = <Status extends Extract<keyof Responses, number>>(
+  status: Status,
+  ...arguments_: readonly [
+    ...ClientResponseBodyArguments<Responses[Status]>,
+    ...ClientResponseHeaderArguments<Responses[Status]>,
+  ]
+) => ClientResponseResultFor<Status, Responses[Status]>
+
+export const createClientResponse = ((status: number, body?: unknown, headers?: Headers) => ({
+  status,
+  headers: headers ?? (body instanceof Response ? body.headers : new Headers()),
+  ...(body === undefined ? {} : { body }),
+})) as ClientResponseFactory<RouteResponses>
 
 export type ClientResponseIssue = APIErrorIssue & {
   readonly location: 'response'
@@ -89,7 +114,10 @@ function decodedStream(response: Response, plan: DecodableStreamPlan): AsyncIter
 
 function assertContentType(response: Response, expected: string | undefined): void {
   if (expected === undefined) return
-  const received = mimeEssence(response.headers.get('content-type') ?? '')
+  const header = response.headers.get('content-type') ?? ''
+  if (header === expected || header.startsWith(`${expected};`)) return
+
+  const received = mimeEssence(header)
   if (received !== expected) {
     throw new ClientResponseError(
       'content-type-mismatch',
@@ -150,11 +178,7 @@ export function compileClientResponse(plan: CanonicalResponsePlan): ClientRespon
         ? [response.headers, await decodeBody(response)]
         : await Promise.all([decodeHeaders(Object.fromEntries(response.headers.entries())), decodeBody(response)])
 
-    return {
-      status: response.status,
-      headers,
-      ...(empty ? {} : { body }),
-    }
+    return empty ? { status: response.status, headers } : { status: response.status, headers, body }
   }
 
   responseDecoders.set(plan, decode)

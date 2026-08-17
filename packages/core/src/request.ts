@@ -1,19 +1,12 @@
-import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { bytesSchema, formDataSchema, jsonValueSchema, stringSchema, type JsonValue } from './representation'
 import {
-  decodeSchema,
-  decodeSchemaValue,
-  encodeSchema,
-  encodeSchemaValue,
   isSchema,
-  mapSchemaStep,
   type AnySchema,
   type CodecSchema,
   type IdentitySchema,
   type NonSchemaOptions,
   type ObjectSchema,
   type SchemaInput,
-  type SchemaStep,
 } from './validation'
 
 export type QueryWireValue = string | readonly string[] | undefined
@@ -240,66 +233,6 @@ export function mimeEssence(contentType: string): string {
     .slice(0, separator === -1 ? contentType.length : separator)
     .trim()
     .toLowerCase()
-}
-
-export function matchesContentType(declaration: AnyRequestBody, contentType: string): boolean {
-  return mimeEssence(declaration.contentType) === mimeEssence(contentType)
-}
-
-export async function decodeRequestBody<const Declaration extends AnyRequestBody>(
-  declaration: Declaration,
-  value: unknown,
-  contentType: string
-): Promise<StandardSchemaV1.InferOutput<Declaration['schema']>> {
-  if (!matchesContentType(declaration, contentType)) {
-    throw new TypeError(
-      `Expected request content type ${mimeEssence(declaration.contentType)}, received ${mimeEssence(contentType) || 'none'}`
-    )
-  }
-
-  return decodeSchema(declaration.schema, value, { location: 'body' })
-}
-
-/** @internal Decodes a request body while preserving synchronous schema execution. */
-export function decodeRequestBodyValue<const Declaration extends AnyRequestBody>(
-  declaration: Declaration,
-  value: unknown,
-  contentType: string
-): SchemaStep<StandardSchemaV1.InferOutput<Declaration['schema']>> {
-  if (!matchesContentType(declaration, contentType)) {
-    throw new TypeError(
-      `Expected request content type ${mimeEssence(declaration.contentType)}, received ${mimeEssence(contentType) || 'none'}`
-    )
-  }
-
-  return decodeSchemaValue(declaration.schema, value, { location: 'body' })
-}
-
-export async function encodeRequestBody<const Declaration extends AnyRequestBody>(
-  declaration: Declaration,
-  value: StandardSchemaV1.InferOutput<Declaration['schema']>
-): Promise<{
-  readonly body: StandardSchemaV1.InferInput<Declaration['schema']>
-  readonly contentType: Declaration['contentType']
-}> {
-  return {
-    body: await encodeSchema(declaration.schema, value, { location: 'body' }),
-    contentType: declaration.contentType,
-  }
-}
-
-/** @internal Encodes a request body while preserving synchronous schema execution. */
-export function encodeRequestBodyValue<const Declaration extends AnyRequestBody>(
-  declaration: Declaration,
-  value: StandardSchemaV1.InferOutput<Declaration['schema']>
-): SchemaStep<{
-  readonly body: StandardSchemaV1.InferInput<Declaration['schema']>
-  readonly contentType: Declaration['contentType']
-}> {
-  return mapSchemaStep(encodeSchemaValue(declaration.schema, value, { location: 'body' }), (body) => ({
-    body,
-    contentType: declaration.contentType,
-  }))
 }
 
 export const request = /* @__PURE__ */ Object.freeze({ query, json, text, bytes, formData })

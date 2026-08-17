@@ -6,7 +6,7 @@ import type { Router } from '../router'
 import type { ObjectSchema } from '../validation'
 import type { Awaitable, RouteMetadata, ServerContextFactory } from './context'
 import type { ServerMiddleware, ServerMiddlewareCandidate } from './middleware'
-import type { ServerResponseResult } from './response'
+import type { ServerResponseFactory, ServerResponseResult } from './response'
 
 export type ServerHandlerInput<
   RouteType extends Route,
@@ -16,6 +16,7 @@ export type ServerHandlerInput<
 > = {
   readonly context: Readonly<Context>
   readonly request: Request
+  readonly response: ServerResponseFactory<RouteType['responses']>
   readonly route: Metadata
 } & RouteInput<RouteType, RouterParams>
 

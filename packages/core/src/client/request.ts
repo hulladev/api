@@ -111,12 +111,16 @@ function requestValue(
   headers: HeadersInit | undefined,
   body: BodyInit | undefined
 ): Request {
-  return new Request(url, {
-    method,
-    ...(headers === undefined ? {} : { headers }),
-    ...(body === undefined ? {} : { body }),
-    ...(options.signal === undefined ? {} : { signal: options.signal }),
-  })
+  const signal = options.signal
+  if (method === 'GET' && headers === undefined && body === undefined && signal === undefined) {
+    return new Request(url)
+  }
+
+  const init: RequestInit = { method }
+  if (headers !== undefined) init.headers = headers
+  if (body !== undefined) init.body = body
+  if (signal !== undefined) init.signal = signal
+  return new Request(url, init)
 }
 
 export function compileClientRequest(

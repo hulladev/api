@@ -1,5 +1,6 @@
 import { annotateAPIErrorIssues, type APIError, type APIErrorIssue, type QueryTransportErrorCode } from './errors'
 import { type ExecutionStep, mapExecutionStep } from './execution'
+import { hasOwn, setOwn } from './object'
 import { isRequestQueryDefinition, type AnyRequestQuery, type RequestQueryDefinition } from './request'
 import { compileSchemaExecution, isSchema, type ObjectSchema, type SchemaOutput } from './validation'
 
@@ -48,7 +49,7 @@ export class QueryTransportError extends TypeError implements APIError<QueryTran
 
 function explicitPlan(repeated: readonly string[]): QueryTransportPlan {
   const fields: Record<string, QueryCardinality> = {}
-  for (const key of repeated) fields[key] = 'repeated'
+  for (const key of repeated) setOwn(fields, key, 'repeated')
   return Object.freeze({ fields: Object.freeze(fields) })
 }
 
@@ -125,19 +126,17 @@ function encodedQuery(query: AnyRequestQuery & { readonly transport: QueryTransp
 }
 
 function queryInput(query: AnyRequestQuery & { readonly transport: QueryTransportPlan }, parameters: URLSearchParams) {
-  const input: Record<string, string | readonly string[]> = {}
-  const keys = new Set(parameters.keys())
+  const input: Record<string, string | string[]> = {}
 
-  for (const key of keys) {
-    const values = parameters.getAll(key)
-    const cardinality = query.transport.fields[key] ?? 'single'
-
-    if (cardinality === 'repeated') {
-      input[key] = values
+  for (const [key, value] of parameters) {
+    if (query.transport.fields[key] === 'repeated') {
+      if (hasOwn(input, key)) (input[key] as string[]).push(value)
+      else if (key === '__proto__') setOwn(input, key, [value])
+      else input[key] = [value]
       continue
     }
 
-    if (values.length > 1) {
+    if (hasOwn(input, key)) {
       throw new QueryTransportError(
         'duplicate-query-value',
         `Query field "${key}" must not be provided more than once`,
@@ -145,8 +144,8 @@ function queryInput(query: AnyRequestQuery & { readonly transport: QueryTranspor
       )
     }
 
-    const value = values[0]
-    if (value !== undefined) input[key] = value
+    if (key === '__proto__') setOwn(input, key, value)
+    else input[key] = value
   }
 
   return input

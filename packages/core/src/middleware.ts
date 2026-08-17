@@ -9,10 +9,9 @@ export type MiddlewareInput<Context extends object, RequestType, Route> = {
 
 export type MiddlewareNext<Result> = () => Result
 
-export type NextMiddleware<Context extends object, RequestType, Route> = <Result>(
-  input: MiddlewareInput<Context, RequestType, Route>,
-  next: MiddlewareNext<Promise<Result>>
-) => Awaitable<Result>
+export type MiddlewareOptions<Input extends object, Result> = Input & {
+  readonly next: MiddlewareNext<Result>
+}
 
 export function assertMiddleware(label: string, value: unknown): asserts value is (...args: never[]) => unknown {
   if (typeof value !== 'function') throw new TypeError(`${label} middleware must be a function`)
@@ -31,7 +30,7 @@ export type MiddlewareDispatchErrors = {
 }
 
 /** Executes middleware without introducing a promise when every layer is synchronous. */
-export function dispatchMiddlewareSteps<Input, Result>(
+export function dispatchMiddlewareSteps<Input extends object, Result>(
   middlewares: readonly unknown[],
   input: Input,
   terminal: () => ExecutionStep<Result>,
@@ -50,14 +49,14 @@ export function dispatchMiddlewareSteps<Input, Result>(
       return dispatch(index + 1)
     }
 
-    return middleware(input, next) as ExecutionStep<Result>
+    return middleware({ ...input, next }) as ExecutionStep<Result>
   }
 
   return dispatch(0)
 }
 
 /** Executes a middleware stack with a single-use next action at every layer. */
-export async function dispatchMiddlewares<Input, Result>(
+export async function dispatchMiddlewares<Input extends object, Result>(
   middlewares: readonly unknown[],
   input: Input,
   terminal: () => Awaitable<Result>,

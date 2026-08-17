@@ -8,7 +8,6 @@ export type {
   ContractRouteMetadata,
   RouteMetadata,
 } from './context'
-export { annotateAPIErrorIssues } from './errors'
 export { isPromiseLike, mapExecutionStep, type ExecutionStep } from './execution'
 export type { RouteInput } from './input'
 export { compilePathParameterEncoder } from './parameters'

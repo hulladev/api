@@ -14,7 +14,12 @@ import {
   type ClientRequestCreator,
   type ClientTransportOptions,
 } from './request'
-import { ClientResponseError, compileClientResponse, type ClientResponseDecoder } from './response'
+import {
+  ClientResponseError,
+  compileClientResponse,
+  createClientResponse,
+  type ClientResponseDecoder,
+} from './response'
 import type { ClientDefinition, ClientRoutes, DefineClientOptions } from './types'
 
 type EmptyClientContext = Record<string, never>
@@ -66,7 +71,7 @@ async function executeRoute(
 
   if (middlewares.length === 0) return fetchAndDecode()
 
-  const middlewareInput = { context, request, route: runtime.metadata }
+  const middlewareInput = { context, request, response: createClientResponse, route: runtime.metadata }
 
   return dispatchMiddlewares<ClientMiddlewareInput<object, Contract>, unknown>(
     middlewares,
