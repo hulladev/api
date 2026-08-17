@@ -8,6 +8,7 @@ import { encodeValue } from './scenario'
 const routeCount = 256
 const targetIndex = routeCount - 1
 const targetId = 'item/42'
+const adapterRequest = new Request('https://bench.local')
 const outputSchema = z.object({ id: z.string(), index: z.number().int() })
 const parameterSchema = z.object({ id: z.string() })
 
@@ -63,7 +64,7 @@ async function directStaticDispatch(): Promise<void> {
 
 async function hullaApiStaticDispatch(): Promise<void> {
   const result = await staticWire({
-    request: { adapter: 'benchmark' },
+    request: adapterRequest,
     method: 'GET',
     pathname: `/static/${targetIndex}`,
   })
@@ -94,7 +95,7 @@ async function directDynamicDispatch(): Promise<void> {
 
 async function hullaApiDynamicDispatch(): Promise<void> {
   const result = await dynamicWire({
-    request: { adapter: 'benchmark' },
+    request: adapterRequest,
     method: 'GET',
     pathname: `/dynamic/${targetIndex}/${encodeURIComponent(targetId)}`,
   })

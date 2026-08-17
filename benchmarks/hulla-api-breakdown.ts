@@ -66,20 +66,22 @@ const middlewareContract = defineContract({
 const middlewareServerBase = defineServer(middlewareContract, {
   context: ({ request }) => ({ token: request.headers.get('authorization') ?? '' }),
 })
-const serverMiddleware = middlewareServerBase.middleware((input, next) => {
-  if (input.context.token !== 'Bearer benchmark') throw new Error('Missing benchmark token')
+const serverMiddleware = middlewareServerBase.middleware(({ context, next }) => {
+  if (context.token !== 'Bearer benchmark') throw new Error('Missing benchmark token')
   return next()
 })
 const middlewareServer = middlewareServerBase.use(serverMiddleware)
-const middlewareHandler = createFetchHandler(middlewareServer.build({ protected: () => ({ status: 200, body: 'ok' }) }))
+const middlewareHandler = createFetchHandler(
+  middlewareServer.build({ protected: ({ response }) => response(200, 'ok') })
+)
 const middlewareClientBase = defineClient(middlewareContract, {
   baseUrl: 'https://bench.local',
   fetch: middlewareHandler,
   headers: { authorization: 'Bearer benchmark' },
   context: ({ request }) => ({ method: request.method }),
 })
-const clientMiddleware = middlewareClientBase.middleware((input, next) => {
-  if (input.context.method !== 'GET') throw new Error('Unexpected method')
+const clientMiddleware = middlewareClientBase.middleware(({ context, next }) => {
+  if (context.method !== 'GET') throw new Error('Unexpected method')
   return next()
 })
 const middlewareClient = middlewareClientBase.use(clientMiddleware).build()
@@ -153,6 +155,7 @@ const adapterImplementation = adapterServer.build({
 })
 const adapterFetch = createFetchHandler(adapterImplementation)
 const adapterWire = createWireHandler(adapterImplementation)
+const adapterRequest = new Request('https://bench.local/execute', { method: 'POST' })
 
 async function directWireDispatch(): Promise<void> {
   const input = adapterInput.parse(adapterValue)
@@ -179,7 +182,7 @@ async function hullaApiFetchDispatch(): Promise<void> {
 
 async function hullaApiWireDispatch(): Promise<void> {
   const responseValue = await adapterWire({
-    request: { adapter: 'benchmark' },
+    request: adapterRequest,
     method: 'POST',
     pathname: '/execute',
     headers: { 'content-type': 'application/json' },

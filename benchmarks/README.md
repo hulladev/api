@@ -35,7 +35,9 @@ Run the default benchmark from the repository root with:
 bun run bench
 ```
 
-The terminal output is intentionally compact. A full Markdown report with medians, throughput, ratios, minima, maxima, standard deviation, and every raw sample is written to `benchmarks/results/latest.md`. Set `BENCH_REPORT` to choose another report path.
+Every run appends its raw samples, package version, Git revision, and source fingerprint to `benchmarks/results/history.ndjson`. The terminal and `benchmarks/results/latest.md` aggregate all compatible runs, reporting median, mean, coefficient of variation, throughput, ratios, extrema, standard deviation, and sample count. They also compare each stable benchmark identity with the most recent compatible prior source revision, even when the displayed package version changed; negative median changes are faster and positive changes are slower. Compatibility requires the same runtime, host, OS, platform, architecture, CPU, iteration count, and warmup count, so unrelated environments are never averaged together. Set `BENCH_HISTORY` or `BENCH_REPORT` to choose different output paths.
+
+NDJSON is an append-only measurement log rather than a report cache. At the expected scale it can be scanned in a few milliseconds, remains inspectable and recoverable without tooling, and preserves enough metadata for version trends. A database becomes useful only if history grows large enough to require interactive ad hoc queries or concurrent writers; the file schema can be imported into one without changing benchmark records.
 
 The same run reports minified and gzip footprint for each minimal viable package solution. The @hulla/api entry includes its built-in Fetch client/server. These are Bun-target production bundles with Zod externalized because it is shared, user-supplied validation code. They measure runtime code retained by representative imports rather than the size of the installed package directory.
 

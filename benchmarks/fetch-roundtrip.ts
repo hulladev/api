@@ -10,6 +10,7 @@ import {
   type Benchmark,
   type PackageSizeResult,
 } from './harness'
+import { persistBenchmarkHistory } from './history'
 import { honoBenchmarks, honoNativeBenchmarks } from './hono'
 import { hullaApiBenchmarks, hullaApiNativeBenchmarks } from './hulla-api'
 import { hullaApiBreakdownBenchmarks } from './hulla-api-breakdown'
@@ -60,11 +61,16 @@ const benchmarks: readonly Benchmark[] = [
   ...coldStartBenchmarks,
   ...hullaApiBreakdownBenchmarks,
   ...routeScalingBenchmarks,
-].map((benchmark) => ({ ...benchmark, runtime: versionedRuntime(benchmark.runtime) }))
+].map((benchmark) => ({ ...benchmark, runtimeKey: benchmark.runtime, runtime: versionedRuntime(benchmark.runtime) }))
 const results = await runBenchmarks(benchmarks, options)
+const historyPath = process.env['BENCH_HISTORY'] ?? new URL('./results/history.ndjson', import.meta.url).pathname
+const history = await persistBenchmarkHistory(results, options, historyPath)
 
-printResults(results, options)
+printResults(history.results, options, history.compatibleRuns, history.previousLabel)
 printPackageSizes(packageSizes)
 const reportPath = process.env['BENCH_REPORT'] ?? new URL('./results/latest.md', import.meta.url).pathname
-await writeBenchmarkReport(results, packageSizes, options, reportPath)
+await writeBenchmarkReport(history.results, packageSizes, options, reportPath, history)
+console.log(
+  `\nBenchmark history: ${history.path} (${history.compatibleRuns} compatible, ${history.totalRuns} total runs)`
+)
 console.log(`\nDetailed report: ${reportPath}`)
