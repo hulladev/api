@@ -2,6 +2,10 @@
 
 Procedures are optional application functions. They are not HTTP routes, client extensions, or server service locators. A procedure owns only the pieces it declares: input, output, context, middleware, and a handler.
 
+```ts
+import { defineProcedures, procedure } from '@hulla/api/procedure'
+```
+
 The default `procedure` builder is useful for one-off functions:
 
 ```ts
@@ -22,7 +26,7 @@ One-off procedures are callable immediately and have no structural identity.
 Use a validator-specific route input helper to compose a route's declared params, query, headers, and body. For Zod, `routeInput()` returns an ordinary `z.object()`. Use Zod's normal APIs to modify it when the procedure intentionally differs from the route:
 
 ```ts
-import { procedure } from '@hulla/api'
+import { procedure } from '@hulla/api/procedure'
 import { routeInput, routeOutput } from '@hulla/api-zod'
 
 const route = contract.routes.organizations.createUser
@@ -53,9 +57,9 @@ Procedure calls do not expose `Result | Promise<Result>`. A synchronous handler 
 Middleware therefore does not impose an asynchronous boundary by itself. Its `next()` call has the exact downstream result type, so a synchronous middleware can inspect or transform a synchronous result without a promise:
 
 ```ts
-const trace = procedures.middleware((actions) => {
+const trace = procedures.middleware((_input, next) => {
   events.push('before')
-  const result = actions.next()
+  const result = next()
   events.push('after')
   return result
 })
@@ -68,7 +72,8 @@ Declaring the middleware `async` intentionally changes procedures using it to `P
 Standard Schema deliberately does not describe whether a validator runs synchronously. Ordinary validator schemas need no @hulla/api-specific field and retain their normal developer experience. If a schema intentionally performs async validation, mark it without mutating the validator-owned object:
 
 ```ts
-import { procedure, validation } from '@hulla/api'
+import { validation } from '@hulla/api'
+import { procedure } from '@hulla/api/procedure'
 
 const availableName = validation.async(
   z.string().refine(async (name) => isNameAvailable(name))
@@ -90,9 +95,9 @@ const procedures = defineProcedures({
   context: () => ({ session: getSession() }),
 })
 
-const requireUser = procedures.middleware(async (actions, args) => {
+const requireUser = procedures.middleware(async (args, next) => {
   if (!args.context.session.user) throw new UnauthorizedError()
-  return actions.next()
+  return next()
 })
 
 const authenticated = procedures.use(requireUser)
@@ -101,9 +106,9 @@ const authenticated = procedures.use(requireUser)
 Derived builders retain the same definition ownership while adding middleware immutably:
 
 ```ts
-const requireAdmin = authenticated.middleware(async (actions, args) => {
+const requireAdmin = authenticated.middleware(async (args, next) => {
   if (!args.context.session.user.isAdmin) throw new ForbiddenError()
-  return actions.next()
+  return next()
 })
 
 const admin = authenticated.use(requireAdmin)

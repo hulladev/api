@@ -1,224 +1,149 @@
 # Server authoring
 
-This document records the server-authoring API and naming conventions.
-
-## Vocabulary
-
-- `defineServer()` creates a transport-neutral server authoring scope.
-- The authoring scope is conventionally named `server`.
-- `server.implement()` defines a partial handler implementation without mutating the authoring scope.
-- Handler fragments are conventionally named `*Handlers`.
-- `server.build()` combines fragments and returns a complete server implementation.
-- The completed implementation is conventionally named `implementation`.
-- Backend integrations accept only the completed server implementation, never the authoring scope or an individual fragment.
+`defineServer()` binds a contract to context, middleware, and one complete handler tree. `build()` returns the transport-neutral implementation consumed by the built-in Fetch handler or a wire adapter.
 
 ```ts
-// server.ts
-const base = defineServer(contract, { context: createContext })
-const authenticate = base.middleware((actions, args) => {
-  if (!args.context.user) {
-    return actions.error(401, { body: { code: 'UNAUTHENTICATED' } })
+import { defineServer } from '@hulla/api/server'
+
+const server = defineServer(contract, {
+  context: async ({ request, route }) => ({
+    requestId: request.headers.get('x-request-id') ?? crypto.randomUUID(),
+    user: await authenticate(request),
+    routeKey: route.key,
+  }),
+})
+```
+
+The context factory's resolved object is inferred once and exposed as `input.context` in every middleware and route handler.
+
+## Middleware
+
+Client and server middleware share the `(input, next)` shape. A server middleware either continues or returns one of `contract.errors` directly:
+
+```ts
+const requireUser = server.middleware(async (input, next) => {
+  if (!input.context.user) {
+    return {
+      status: 401,
+      body: { code: 'UNAUTHENTICATED' },
+    }
   }
 
-  return actions.next()
+  return next()
 })
 
-export const server = base.use(authenticate)
+const authenticated = server.use(requireUser)
 ```
 
-```ts
-// handlers/health.ts
-import { server } from '../server'
+The error status selects its exact declared body and response-header types. Undeclared statuses, mismatched bodies, missing required headers, and invalid envelope properties are rejected by TypeScript.
 
-export const healthHandlers = server.implement({
-  health(actions, args) {
-    return actions.respond({
-      status: 200,
-      body: `healthy:${args.context.requestId}`,
-    })
+A `.use()` scope applies to its complete contract. When route groups require independently scoped context or middleware, declare separate contracts and mount their Fetch or wire handlers through the host router. Middleware can also branch on `input.route` when one cross-cutting policy intentionally covers selected routes.
+
+`next()` is single-use. Calling it more than once fails deterministically.
+
+## Complete handler tree
+
+Pass one contract-shaped handler tree to `build()`:
+
+```ts
+const implementation = authenticated.build({
+  health: () => ({
+    status: 200,
+    body: 'ok',
+  }),
+
+  organizations: {
+    createUser: async ({ params, query, headers, body, context, request, route }) => {
+      const existing = await findUser(params.userId)
+      if (existing) {
+        return {
+          status: 409,
+          body: { code: 'CONFLICT' },
+        }
+      }
+
+      return {
+        status: 201,
+        body: await createUser({
+          organizationId: params.organizationId,
+          userId: params.userId,
+          notify: query.notify,
+          actorId: headers['x-actor-id'],
+          createdAt: body.createdAt,
+          requestId: context.requestId,
+        }),
+        headers: { etag: `"${params.userId}"` },
+      }
+    },
   },
 })
 ```
 
-```ts
-// implementation.ts
-import { server } from './server'
-import { healthHandlers } from './handlers/health'
-import { organizationHandlers } from './handlers/organizations'
+Each handler receives only one input object:
 
-export const implementation = server.build(healthHandlers, organizationHandlers)
-```
+- `params`, `query`, `headers`, and `body` are decoded application values declared by that route.
+- `context` is the inferred context-factory result.
+- `request` is the original Fetch `Request`.
+- `route` contains the literal key, method, and fully joined path.
 
-## Composition guarantees
+The status discriminates the complete response envelope. An empty response forbids `body`; a raw response requires `Response` and forbids separate headers; schema-backed response headers are required and typed when declared.
 
-- A fragment may implement any subset of routes, including part of a router.
-- Every fragment receives the exact route input and server context types from its authoring scope.
-- Handlers must return every response status declared for their route.
-- Route response values are checked at `actions.respond()`, while middleware errors are checked at `actions.error()`.
-- Fragments compose recursively and duplicate leaf handlers are rejected.
-- Fragments created by root and derived server scopes compose in one build, preserving each fragment's middleware stack.
-- `server.build()` requires every route in the contract exactly once at compile time.
-- `server.build()` also checks duplicates and completeness at runtime for JavaScript consumers.
-- Framework adapters require the complete implementation type, preserving the full-contract guarantee at the transport boundary.
+Handlers must cover every status declared by their route. Runtime execution also rejects undeclared statuses and encodes the selected body and headers through their directional schemas.
 
-## Fetch handler
+## Organizing handlers across modules
 
-`@hulla/api` adapts a completed implementation to Web Fetch out of the box:
+Handler modules are ordinary TypeScript values; there is no runtime fragment abstraction. Use the type-only helper when a module needs contextual typing outside `build()`:
 
 ```ts
-import { createFetchHandler } from '@hulla/api/server'
-import { implementation } from './implementation'
+import type { ServerHandlersOf } from '@hulla/api/server'
 
-export const fetchHandler = createFetchHandler(implementation)
-```
+type AppHandlers = ServerHandlersOf<typeof server>
 
-The returned value has the exact `(request: Request) => Promise<Response>` surface used by Fetch-native hosts and by the @hulla/api client transport:
+export const healthHandlers = {
+  health: () => ({ status: 200, body: 'ok' }),
+} satisfies Pick<AppHandlers, 'health'>
 
-```ts
-// Bun
-Bun.serve({ fetch: fetchHandler })
-
-// Deno
-Deno.serve(fetchHandler)
-
-// In-memory client/server round trip
-const client = defineClient(contract, {
-  baseUrl: 'https://api.example.com',
-  fetch: fetchHandler,
-}).build()
-```
-
-Core owns contract semantics: compiled route matching, path/query/header/body decoding, context and middleware execution, response validation and encoding, streams, and protocol-safe 404/405/400/415/500 wire responses. The Fetch adapter alone translates Web `Request`, `Response`, `Headers`, `FormData`, and `ReadableStream` primitives.
-
-For hosts that already perform routing or body parsing, use the compiled wire dispatcher instead of rebuilding a second contract runtime:
-
-```ts
-import { createWireHandler } from '@hulla/api/wire'
-
-const dispatch = createWireHandler(implementation)
-
-const response = await dispatch({
-  request,
-  method: hostRequest.method,
-  pathname: hostRequest.pathname,
-  query: hostRequest.searchParams,
-  body: {
-    value: hostRequest.parsedJson,
-    contentType: hostRequest.contentType,
+export const organizationHandlers = {
+  organizations: {
+    // ...
   },
+} satisfies Pick<AppHandlers, 'organizations'>
+
+export const implementation = server.build({
+  ...healthHandlers,
+  ...organizationHandlers,
 })
 ```
 
-`request` remains the original host request exposed to context, middleware, and handlers. `headers`, `query`, and `body` contain adapter-extracted wire values. A lazy `readBody` callback lets an adapter defer extraction until the matched route requires it. The dispatcher always owns route selection, contract validation, handler execution, and wire response production.
+`build()` checks completeness and unknown or invalid handlers at the JavaScript boundary as well as through TypeScript.
 
-Node's Fetch globals provide the required primitives, but `node:http` uses `IncomingMessage` and `ServerResponse`; translating those host objects is intentionally the job of a thin Node or framework integration. Integrations can add lifecycle hooks, connection information, logging, compression, and framework-specific behavior around the core handler without duplicating contract transport logic.
+## Global and route responses sharing a status
 
-An optional error hook can observe internal failures or replace the default response:
-
-```ts
-const fetchHandler = createFetchHandler(implementation, {
-  onError({ error, phase, route, defaultResponse }) {
-    logger.error({ error, phase, route })
-    return defaultResponse
-  },
-})
-```
-
-Incoming structured contract failures are returned as `APIProblem` JSON with their Standard Schema-compatible issues. Unexpected context, handler, or response failures default to a generic 500 response and are passed in full only to `onError`, so internal details are not leaked across the HTTP boundary.
-
-## Module dependencies
-
-Keep the authoring scope separate from the completed server module:
-
-```text
-contract -> server -> handler fragments -> implementation -> framework integration
-```
-
-`server.ts` does not import handler fragments. Handler fragments import `server`, and `implementation.ts` imports both,
-so the runtime dependency graph remains acyclic.
-
-## Responses and errors
-
-Routes own every outcome in their response map. The contract separately declares the error responses available to middleware, indexed by their HTTP status. Both use the same response helpers:
+A route response may reuse a status from `contract.errors` only when both reference the same response declaration:
 
 ```ts
-const apiError = response.json(
-  z.object({
-    code: z.enum(['UNAUTHORIZED', 'CONFLICT']),
-    message: z.string().optional(),
-  })
-)
+const notFound = response.json(notFoundSchema)
 
 const contract = defineContract({
-  errors: {
-    401: apiError,
-  },
+  errors: { 404: notFound },
   routes: {
-    createUser: route.post('/users', {
-      responses: {
-        201: response.json(user),
-        409: apiError,
-      },
+    user: route.get('/users/:id', {
+      responses: { 200: response.json(userSchema), 404: notFound },
     }),
   },
 })
 ```
 
-The error body requires no @hulla/api-specific fields. Different statuses may use different response representations, schemas, and headers. A route may reuse the same response descriptor, but its declarations remain owned by the route.
+Different schemas under the same status would be ambiguous after a direct middleware or handler return, so contract construction rejects that combination.
 
-Handlers use `actions.respond()` for every route-owned response, including failure statuses:
-
-```ts
-createUser(actions, args) {
-  if (alreadyExists(args.body)) {
-    return actions.respond({ status: 409, body: { code: 'CONFLICT' } })
-  }
-
-  return actions.respond({ status: 201, body: createUser(args.body) })
-}
-```
-
-Middleware is declared through the server so its context and contract errors are already known. `actions.error()` accepts only statuses from `contract.errors` and infers the selected status from the middleware return type:
+## Fetch and wire execution
 
 ```ts
-const base = defineServer(contract, { context: createContext })
-const authenticate = base.middleware((actions, args) => {
-  if (!args.context.user) {
-    return actions.error(401, { body: { code: 'UNAUTHORIZED' } })
-  }
+import { createFetchHandler } from '@hulla/api/server'
 
-  return actions.next()
-})
-
-const protectedServer = base.use(authenticate)
+export const fetch = createFetchHandler(implementation)
 ```
 
-`server.middleware()` defines a reusable middleware value without applying it. `server.use()` returns a derived scope and accepts one or more middleware values in execution order. Middleware errors supplement route responses; they never remove a route handler's response obligations.
+`createFetchHandler()` handles Fetch request extraction and response construction. `createWireHandler()` from `@hulla/api/wire` exposes the lower-level host-neutral dispatcher used by framework adapters.
 
-## Handler parameter convention
-
-Actions come first because handlers and middleware always use them to produce a result, while request arguments are often unused. Documentation should keep request data in a plain `args` parameter instead of destructuring it in the parameter list:
-
-```ts
-createUser(actions, args) {
-  args.body
-  args.query
-  args.params
-  args.context
-  args.route
-}
-```
-
-`args.route` contains the handler's exact metadata without requiring a type import. Its `key`, `method`, and `path`
-remain literal types inferred from the contract.
-
-Typing `args.` triggers the editor's complete property list automatically. The list contains only fields available to that route, so routes without a body, query, headers, or parameters do not advertise those fields. Users can destructure after discovering the available arguments when that makes the implementation clearer:
-
-```ts
-createUser(actions, args) {
-  const { body, context, params, query } = args
-  // ...
-}
-```
-
-Inline parameter destructuring remains supported, but it should not be the primary documentation style because editors generally do not open completion lists automatically on an empty destructuring pattern.
+The shared canonical route plan caches compilation only. Requests, responses, handler results, and application data are never cached.

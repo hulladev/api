@@ -21,7 +21,7 @@ The first vertical slice includes:
 - Standard Schema identity validation and explicit directional codecs
 - a built-in Fetch client and server handler over a compiled host-parsed wire runtime
 - an advanced `@hulla/api/wire` server-adapter boundary and optional Zod integration package
-- optional procedures with exact sync/async return types, validation, context, middleware, and structurally identified callable trees
+- optional `@hulla/api/procedure` functions with exact sync/async return types, validation, context, middleware, and structurally identified callable trees
 - normalized contract problems and a nested `Date` codec round-trip test
 
 See [`docs/architecture.md`](./docs/architecture.md) for the boundary and request call graph, and
@@ -57,10 +57,10 @@ packages/core/
     server/
       index.ts      public server authoring entry point
       context.ts    server context primitives
-      middleware.ts typed middleware actions and contract-error inference
-      response.ts   typed handler and middleware results
-      types.ts      handler fragments and implementation types
-      definition.ts fragment validation and assembly
+      middleware.ts direct middleware continuations and contract-error types
+      response.ts   status-discriminated handler and middleware results
+      types.ts      complete handler-tree and implementation types
+      definition.ts context, middleware scope, and complete-tree assembly
       errors.ts     internal server and validation errors
       fetch.ts      built-in Request/Response adapter
       runtime.ts    platform-neutral wire routing, execution, and response encoding

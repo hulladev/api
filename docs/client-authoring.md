@@ -50,18 +50,18 @@ const base = defineClient(contract, {
 })
 ```
 
-Middleware uses the same actions-first convention as server middleware. `middleware()` defines a reusable middleware value, `use()` returns an immutable derived scope, and `build()` materializes the callable tree:
+Middleware uses the same `(input, next)` convention as server middleware. `middleware()` defines a reusable middleware value, `use()` returns a derived scope, and `build()` materializes the callable tree:
 
 ```ts
-const authenticate = base.middleware(async (actions, args) => {
-  args.request.headers.set('authorization', `Bearer ${args.context.accessToken}`)
-  return actions.next()
+const authenticate = base.middleware(async (input, next) => {
+  input.request.headers.set('authorization', `Bearer ${input.context.accessToken}`)
+  return next()
 })
 
 export const client = base.use(authenticate).build()
 ```
 
-Middleware wraps the complete transport operation, including response decoding. It can prepare the request, perform logging or tracing before and after `actions.next()`, and reject a call. Higher-level result policies belong in application procedures.
+Middleware wraps the complete transport operation, including response decoding. It can prepare the request, perform logging or tracing before and after `next()`, and reject a call. Higher-level result policies belong in application procedures.
 
 ## Transport boundary
 
@@ -83,4 +83,4 @@ export async function createUser(input: Parameters<typeof client.organizations.c
 }
 ```
 
-Use an @hulla/api procedure only when its schema, context, middleware, or structural identity provides concrete value. Procedures do not change or wrap the client surface.
+Use an `@hulla/api/procedure` procedure only when its schema, context, middleware, or structural identity provides concrete value. Procedures do not change or wrap the client surface.
