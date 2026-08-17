@@ -1,47 +1,9 @@
 import * as v from 'valibot'
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
-import { decodeRequestBody, encodeRequestBody, matchesContentType, mimeEssence, request } from '../src/request'
+import { mimeEssence, request } from '../src/request'
 import { response } from '../src/response'
 import { route } from '../src/route'
-import { codec } from '../src/validation'
-import { zodCodecFixture } from './zod-fixture'
-
-const directionalBodies = [
-  {
-    name: 'Zod',
-    body: request.json(
-      zodCodecFixture(
-        z.object({
-          createdAt: z.codec(z.iso.datetime(), z.date(), {
-            decode: (value) => new Date(value),
-            encode: (value) => value.toISOString(),
-          }),
-        })
-      )
-    ),
-  },
-  {
-    name: 'Valibot',
-    body: request.json(
-      codec({
-        decode: v.object({
-          createdAt: v.pipe(
-            v.string(),
-            v.isoTimestamp(),
-            v.transform((value) => new Date(value))
-          ),
-        }),
-        encode: v.object({
-          createdAt: v.pipe(
-            v.date(),
-            v.transform((value) => value.toISOString())
-          ),
-        }),
-      })
-    ),
-  },
-] as const
 
 describe('request declarations', () => {
   test.each([
@@ -75,32 +37,10 @@ describe('request declarations', () => {
     expect(formData).toMatchObject({ representation: 'form-data', contentType: 'multipart/form-data' })
   })
 
-  test('matches media types by MIME essence', () => {
-    const json = request.json()
-    const formData = request.formData()
-
+  test('normalizes media types to their MIME essence', () => {
     expect(mimeEssence(' Application/JSON ; charset=utf-8')).toBe('application/json')
-    expect(matchesContentType(json, 'application/json; charset=utf-8')).toBe(true)
-    expect(matchesContentType(formData, 'multipart/form-data; boundary=abc')).toBe(true)
-    expect(matchesContentType(json, 'text/plain')).toBe(false)
-  })
-
-  test.each(directionalBodies)('encodes and decodes $name representation schemas directionally', async ({ body }) => {
-    const application = { createdAt: new Date('2026-08-06T10:00:00.000Z') }
-
-    await expect(encodeRequestBody(body, application)).resolves.toEqual({
-      body: { createdAt: '2026-08-06T10:00:00.000Z' },
-      contentType: 'application/json',
-    })
-    await expect(
-      decodeRequestBody(body, { createdAt: '2026-08-06T10:00:00.000Z' }, 'application/json; charset=utf-8')
-    ).resolves.toEqual(application)
-    await expect(decodeRequestBody(body, { createdAt: 'invalid' }, 'application/json')).rejects.toMatchObject({
-      code: 'schema-validation',
-      location: 'body',
-      issues: [{ location: 'body' }],
-    })
-    await expect(decodeRequestBody(body, {}, 'text/plain')).rejects.toThrow('Expected request content type')
+    expect(mimeEssence('multipart/form-data; boundary=abc')).toBe('multipart/form-data')
+    expect(mimeEssence('')).toBe('')
   })
 
   test('supports custom content types without changing representation', () => {

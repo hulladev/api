@@ -128,19 +128,19 @@ describe('defineClient', () => {
         return { token: 'secret', url: request.url }
       },
     })
-    const authenticate = base.middleware(async (args, next) => {
+    const authenticate = base.middleware(async ({ context, next, request, route: metadata }) => {
       calls.push('authenticate')
-      expectTypeOf(args.context.token).toEqualTypeOf<string>()
-      expectTypeOf(args.request).toEqualTypeOf<Request>()
-      expectTypeOf(args.route.key).toEqualTypeOf<
+      expectTypeOf(context.token).toEqualTypeOf<string>()
+      expectTypeOf(request).toEqualTypeOf<Request>()
+      expectTypeOf(metadata.key).toEqualTypeOf<
         readonly ['health'] | readonly ['organizations', 'listUsers'] | readonly ['organizations', 'createUser']
       >()
-      expect(args.context.url).toBe(args.request.url)
-      args.request.headers.set('authorization', `Bearer ${args.context.token}`)
+      expect(context.url).toBe(request.url)
+      request.headers.set('authorization', `Bearer ${context.token}`)
       return next()
     })
-    const observe = base.middleware(async (args, next) => {
-      calls.push(`observe:${args.route.key.join('.')}`)
+    const observe = base.middleware(async ({ next, route: metadata }) => {
+      calls.push(`observe:${metadata.key.join('.')}`)
       return next()
     })
     const authenticated = base.use(authenticate, observe)
@@ -151,6 +151,26 @@ describe('defineClient', () => {
     expect(authenticated.middlewares).toEqual([authenticate, observe])
     expect(authenticated.context).toBe(base.context)
     expect(calls).toEqual(['context', 'authenticate', 'observe:health', 'fetch'])
+  })
+
+  test('creates typed contract-error responses from client middleware', async () => {
+    const fetcher = vi.fn<typeof fetch>()
+    const base = defineClient(contract, { baseUrl: 'https://api.example.com', fetch: fetcher })
+    const reject = base.middleware(({ response }) => response(401, { code: 'UNAUTHORIZED' }))
+
+    await expect(base.use(reject).build().health()).resolves.toEqual({
+      status: 401,
+      headers: new Headers(),
+      body: { code: 'UNAUTHORIZED' },
+    })
+    expect(fetcher).not.toHaveBeenCalled()
+
+    const invalidMiddleware = () =>
+      base.middleware(({ response }) =>
+        // @ts-expect-error Status 401 selects the UNAUTHORIZED body.
+        response(401, { code: 'CONFLICT' })
+      )
+    expectTypeOf(invalidMiddleware).toBeFunction()
   })
 
   test('rejects invalid middleware at the JavaScript boundary', () => {
@@ -165,7 +185,7 @@ describe('defineClient', () => {
   test('rejects middleware that calls next more than once', async () => {
     const fetcher = vi.fn(async () => new Response('ok', { headers: { 'content-type': 'text/plain' } }))
     const base = defineClient(contract, { baseUrl: 'https://api.example.com', fetch: fetcher })
-    const duplicate = base.middleware(async (_input, next) => {
+    const duplicate = base.middleware(async ({ next }) => {
       await next()
       return next()
     })

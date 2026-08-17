@@ -1,6 +1,7 @@
+import * as v from 'valibot'
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
-import { defineContract, request, response, route, router } from '../src'
+import { codec, defineContract, request, response, route, router } from '../src'
 import { defineClient } from '../src/client'
 import { defineServer, ServerRuntimeError } from '../src/server'
 import { createFetchHandler, type FetchHandler } from '../src/server'
@@ -21,6 +22,38 @@ const user = zodCodecFixture(
     createdAt: dateTime,
   })
 )
+
+const directionalBodySchemas = [
+  {
+    name: 'Zod',
+    schema: zodCodecFixture(
+      z.object({
+        createdAt: z.codec(z.iso.datetime(), z.date(), {
+          decode: (value) => new Date(value),
+          encode: (value) => value.toISOString(),
+        }),
+      })
+    ),
+  },
+  {
+    name: 'Valibot',
+    schema: codec({
+      decode: v.object({
+        createdAt: v.pipe(
+          v.string(),
+          v.isoTimestamp(),
+          v.transform((value) => new Date(value))
+        ),
+      }),
+      encode: v.object({
+        createdAt: v.pipe(
+          v.date(),
+          v.transform((value) => value.toISOString())
+        ),
+      }),
+    }),
+  },
+] as const
 
 const contract = defineContract({
   basePath: '/api',
@@ -70,9 +103,9 @@ function buildServer(options: { readonly authorized?: boolean } = {}) {
       requestId: request.headers.get('x-request-id') ?? metadata.key.join('.'),
     }),
   })
-  const authorize = base.middleware(async (input, next) => {
-    calls.push(`middleware:${input.context.requestId}`)
-    return options.authorized === false ? { status: 401, body: { code: 'UNAUTHORIZED' } } : next()
+  const authorize = base.middleware(async ({ context, next, response }) => {
+    calls.push(`middleware:${context.requestId}`)
+    return options.authorized === false ? response(401, { code: 'UNAUTHORIZED' }) : next()
   })
   const protectedServer = base.use(authorize)
 
@@ -106,6 +139,38 @@ function buildServer(options: { readonly authorized?: boolean } = {}) {
 }
 
 describe('createFetchHandler', () => {
+  test.each(directionalBodySchemas)(
+    'round trips directional $name request bodies through the public Fetch boundary',
+    async ({ schema }) => {
+      const bodyContract = defineContract({
+        routes: {
+          echo: route.post('/echo', {
+            body: schema,
+            responses: { 200: response.json(schema) },
+          }),
+        },
+      })
+      const implementation = defineServer(bodyContract).build({
+        echo: ({ body }) => ({ status: 200, body }),
+      })
+      const handler = createFetchHandler(implementation)
+      let encodedRequestBody: unknown
+      const client = defineClient(bodyContract, {
+        baseUrl: 'https://api.example.com',
+        fetch: async (requestValue) => {
+          encodedRequestBody = await requestValue.clone().json()
+          return handler(requestValue)
+        },
+      }).build()
+      const createdAt = new Date('2026-08-06T10:00:00.000Z')
+
+      const result = await client.echo({ body: { createdAt } })
+
+      expect(encodedRequestBody).toEqual({ createdAt: createdAt.toISOString() })
+      expect(result).toMatchObject({ status: 200, body: { createdAt } })
+    }
+  )
+
   test('runs a typed client round trip through the shared Fetch transport', async () => {
     const createdAt = new Date('2026-08-14T12:34:56.000Z')
     const server = buildServer()
@@ -332,7 +397,7 @@ describe('createFetchHandler', () => {
   test('rejects server middleware that calls next more than once', async () => {
     let handlerCalls = 0
     const base = defineServer(contract)
-    const duplicate = base.middleware(async (_input, next) => {
+    const duplicate = base.middleware(async ({ next }) => {
       await next()
       return next()
     })

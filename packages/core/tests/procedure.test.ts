@@ -158,11 +158,11 @@ describe('procedure', () => {
     const base = defineProcedures({
       context: ({ procedure: metadata }) => ({ prefix: metadata.key.join(':') || 'standalone' }),
     })
-    const observe = base.middleware(async (args, next) => {
-      calls.push(`before:${args.procedure.key.join('.')}`)
-      expectTypeOf(args.context.prefix).toEqualTypeOf<string>()
+    const observe = base.middleware(async ({ context, next, procedure: metadata }) => {
+      calls.push(`before:${metadata.key.join('.')}`)
+      expectTypeOf(context.prefix).toEqualTypeOf<string>()
       const result = await next()
-      calls.push(`after:${args.procedure.key.join('.')}`)
+      calls.push(`after:${metadata.key.join('.')}`)
       return result
     })
     const traced = base.use(observe)
@@ -189,8 +189,8 @@ describe('procedure', () => {
 
   test('types middleware input after an input declaration', async () => {
     const shaped = procedure.input(z.object({ id: z.string() }))
-    const observe = shaped.middleware(async (args, next) => {
-      expectTypeOf(args.input).toEqualTypeOf<{ id: string }>()
+    const observe = shaped.middleware(async ({ input, next }) => {
+      expectTypeOf(input).toEqualTypeOf<{ id: string }>()
       return next()
     })
     const read = shaped.use(observe).handler(({ input }) => input.id)
@@ -200,7 +200,7 @@ describe('procedure', () => {
 
   test('preserves synchronous execution through synchronous middleware', () => {
     const calls: string[] = []
-    const observe = procedure.middleware((_input, next) => {
+    const observe = procedure.middleware(({ next }) => {
       calls.push('before')
       const result = next()
       calls.push('after')
@@ -215,7 +215,7 @@ describe('procedure', () => {
 
   test('rejects middleware that calls next more than once', async () => {
     let handlerCalls = 0
-    const duplicate = procedure.middleware(async (_input, next) => {
+    const duplicate = procedure.middleware(async ({ next }) => {
       await next()
       return next()
     })

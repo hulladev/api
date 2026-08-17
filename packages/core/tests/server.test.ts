@@ -14,6 +14,7 @@ import {
   type ServerResponseResult,
   type ServerRouteMetadata,
 } from '../src/server'
+import { createServerResponse } from '../src/server/response'
 import { zodCodecFixture } from './zod-fixture'
 
 const dateTime = zodCodecFixture(
@@ -221,13 +222,13 @@ describe('defineServer', () => {
 
   test('types direct middleware errors and preserves a flat contract-scoped stack', async () => {
     const base = defineServer(contract, { context: () => ({ requestId: 'request-1' }) })
-    const timing = base.middleware(async ({ context, route: metadata }, next) => {
+    const timing = base.middleware(async ({ context, next, route: metadata }) => {
       expectTypeOf(context.requestId).toEqualTypeOf<string>()
       expectTypeOf(metadata.path).toExtend<string>()
       return next()
     })
-    const authenticate = base.middleware(async (_input, next) =>
-      Math.random() > 0.5 ? next() : { status: 401, body: { code: 'UNAUTHORIZED' } }
+    const authenticate = base.middleware(async ({ next, response }) =>
+      Math.random() > 0.5 ? next() : response(401, { code: 'UNAUTHORIZED' })
     )
     const server = base.use(timing, authenticate)
     const implementation = server.build(handlers())
@@ -237,14 +238,13 @@ describe('defineServer', () => {
     >()
     expect(implementation.middlewares).toEqual([timing, authenticate])
     await expect(
-      implementation.middlewares[0]?.(
-        {
-          context: { requestId: 'request-1' },
-          request: new Request('https://example.test'),
-          route: { key: ['health'], method: 'GET', path: '/api/health' },
-        },
-        async () => 'adapter-result'
-      )
+      implementation.middlewares[0]?.({
+        context: { requestId: 'request-1' },
+        next: async () => 'adapter-result',
+        request: new Request('https://example.test'),
+        response: createServerResponse,
+        route: { key: ['health'], method: 'GET', path: '/api/health' },
+      })
     ).resolves.toBe('adapter-result')
   })
 

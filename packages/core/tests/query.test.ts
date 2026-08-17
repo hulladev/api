@@ -97,6 +97,18 @@ describe('query transport', () => {
     })
   })
 
+  test('preserves interleaved repeated values in source order', async () => {
+    const schema = v.object({ search: v.string(), tags: v.array(v.string()) })
+    const declaration = route.get('/search', {
+      query: request.query(schema, { repeated: ['tags'] }),
+      responses,
+    })
+
+    await expect(
+      decodeQuery(declaration.query, new URLSearchParams('tags=admin&search=Ada&tags=author'))
+    ).resolves.toEqual({ search: 'Ada', tags: ['admin', 'author'] })
+  })
+
   test('rejects duplicate scalar values', async () => {
     const declaration = route.get('/search', {
       query: v.object({ search: v.string() }),

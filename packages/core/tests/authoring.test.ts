@@ -29,30 +29,22 @@ describe('server authoring ergonomics', () => {
         requestId: request.headers.get('x-request-id') ?? metadata.key.join('.'),
       }),
     })
-    const timing = base.middleware(async ({ context, route: metadata }, next) => {
+    const timing = base.middleware(async ({ context, next, route: metadata }) => {
       expectTypeOf(context.requestId).toEqualTypeOf<string>()
       expectTypeOf(metadata.path).toEqualTypeOf<'/health' | '/profile'>()
       return next()
     })
-    const authenticate = base.middleware(async (_input, next) =>
-      Math.random() > 0.5 ? next() : { status: 401, body: { code: 'UNAUTHENTICATED', message: 'Sign in first' } }
+    const authenticate = base.middleware(async ({ next, response }) =>
+      Math.random() > 0.5 ? next() : response(401, { code: 'UNAUTHENTICATED', message: 'Sign in first' })
     )
-    const rateLimit = base.middleware((_input, next) =>
-      Math.random() > 0.5
-        ? next()
-        : {
-            status: 429,
-            body: { code: 'RATE_LIMITED', retryAfter: 30 },
-            headers: { 'retry-after': '30' },
-          }
+    const rateLimit = base.middleware(({ next, response }) =>
+      Math.random() > 0.5 ? next() : response(429, { code: 'RATE_LIMITED', retryAfter: 30 }, { 'retry-after': '30' })
     )
     const server = base.use(timing, authenticate, rateLimit)
     const implementation = server.build({
-      health: () => ({ status: 200, body: 'ok' }),
-      profile: ({ context }) =>
-        Math.random() > 0.5
-          ? { status: 200, body: { id: context.requestId } }
-          : { status: 404, body: { code: 'PROFILE_NOT_FOUND' } },
+      health: ({ response }) => response(200, 'ok'),
+      profile: ({ context, response }) =>
+        Math.random() > 0.5 ? response(200, { id: context.requestId }) : response(404, { code: 'PROFILE_NOT_FOUND' }),
     })
 
     expect(base.middlewares).toEqual([])
@@ -73,17 +65,17 @@ describe('server authoring ergonomics', () => {
   test('rejects invalid direct middleware error combinations', () => {
     const base = defineServer(contract, { context: () => ({ requestId: 'request-1' }) })
     const invalidMiddleware = () => {
-      base.middleware(async (_input, next) =>
+      base.middleware(async ({ next, response }) =>
         // @ts-expect-error Status 403 is not declared by contract.errors.
-        Math.random() > 0.5 ? next() : { status: 403, body: { code: 'UNAUTHENTICATED' } }
+        Math.random() > 0.5 ? next() : response(403, { code: 'UNAUTHENTICATED' })
       )
-      base.middleware(async (_input, next) =>
+      base.middleware(async ({ next, response }) =>
         // @ts-expect-error Status 401 selects the UNAUTHENTICATED body.
-        Math.random() > 0.5 ? next() : { status: 401, body: { code: 'RATE_LIMITED', retryAfter: 30 } }
+        Math.random() > 0.5 ? next() : response(401, { code: 'RATE_LIMITED', retryAfter: 30 })
       )
-      base.middleware(async (_input, next) =>
+      base.middleware(async ({ next, response }) =>
         // @ts-expect-error The 429 response requires typed headers.
-        Math.random() > 0.5 ? next() : { status: 429, body: { code: 'RATE_LIMITED', retryAfter: 30 } }
+        Math.random() > 0.5 ? next() : response(429, { code: 'RATE_LIMITED', retryAfter: 30 })
       )
     }
 
