@@ -24,13 +24,11 @@ const contract = defineContract({
 
 const server = defineServer(contract)
 const handler = createFetchHandler(
-  server.build(
-    server.implement({
-      item: (actions, input) => actions.respond({ status: 200, body: input.params.id }),
-      search: (actions, input) => actions.respond({ status: 200, body: input.query.term }),
-      echo: (actions, input) => actions.respond({ status: 200, body: input.body }),
-    })
-  )
+  server.build({
+    item: (input) => ({ status: 200, body: input.params.id }),
+    search: (input) => ({ status: 200, body: input.query.term }),
+    echo: (input) => ({ status: 200, body: input.body }),
+  })
 )
 const client = defineClient(contract, { baseUrl: 'https://property.test', fetch: handler }).build()
 

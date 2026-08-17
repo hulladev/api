@@ -10,9 +10,7 @@ describe('@hulla/api Fetch runtime', () => {
       routes: { health: route.get('/health', { responses: { 200: response.json() } }) },
     })
     const server = defineServer(contract)
-    const implementation = server.build(
-      server.implement({ health: (actions) => actions.respond({ status: 200, body: { ok: true } }) })
-    )
+    const implementation = server.build({ health: () => ({ status: 200, body: { ok: true } }) })
     const handler = createFetchHandler(implementation)
     const client = defineClient(contract, { baseUrl: 'https://api.example.com', fetch: handler }).build()
 

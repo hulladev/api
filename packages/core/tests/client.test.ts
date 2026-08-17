@@ -76,7 +76,7 @@ function jsonResponse(value: unknown, init: ResponseInit): Response {
 }
 
 describe('defineClient', () => {
-  test('creates a frozen contract-shaped tree with route-specific call types', () => {
+  test('creates a contract-shaped tree with route-specific call types', () => {
     const definition = defineClient(contract, { fetch: vi.fn<typeof fetch>() })
     const client = definition.build()
 
@@ -87,9 +87,6 @@ describe('defineClient', () => {
     expect(definition.middlewares).toEqual([])
     expect(Object.keys(client)).toEqual(['health', 'organizations'])
     expect(Object.keys(client.organizations)).toEqual(['listUsers', 'createUser'])
-    expect(Object.isFrozen(client)).toBe(true)
-    expect(Object.isFrozen(client.organizations)).toBe(true)
-    expect(Object.isFrozen(client.health)).toBe(true)
 
     expectTypeOf<Parameters<typeof client.health>>().toEqualTypeOf<
       [options?: { readonly headers?: HeadersInit; readonly signal?: AbortSignal }]
@@ -131,7 +128,7 @@ describe('defineClient', () => {
         return { token: 'secret', url: request.url }
       },
     })
-    const authenticate = base.middleware(async (actions, args) => {
+    const authenticate = base.middleware(async (args, next) => {
       calls.push('authenticate')
       expectTypeOf(args.context.token).toEqualTypeOf<string>()
       expectTypeOf(args.request).toEqualTypeOf<Request>()
@@ -140,11 +137,11 @@ describe('defineClient', () => {
       >()
       expect(args.context.url).toBe(args.request.url)
       args.request.headers.set('authorization', `Bearer ${args.context.token}`)
-      return actions.next()
+      return next()
     })
-    const observe = base.middleware(async (actions, args) => {
+    const observe = base.middleware(async (args, next) => {
       calls.push(`observe:${args.route.key.join('.')}`)
-      return actions.next()
+      return next()
     })
     const authenticated = base.use(authenticate, observe)
 
@@ -153,8 +150,6 @@ describe('defineClient', () => {
     expect(base.middlewares).toEqual([])
     expect(authenticated.middlewares).toEqual([authenticate, observe])
     expect(authenticated.context).toBe(base.context)
-    expect(Object.isFrozen(authenticated)).toBe(true)
-    expect(Object.isFrozen(authenticated.middlewares)).toBe(true)
     expect(calls).toEqual(['context', 'authenticate', 'observe:health', 'fetch'])
   })
 
@@ -170,9 +165,9 @@ describe('defineClient', () => {
   test('rejects middleware that calls next more than once', async () => {
     const fetcher = vi.fn(async () => new Response('ok', { headers: { 'content-type': 'text/plain' } }))
     const base = defineClient(contract, { baseUrl: 'https://api.example.com', fetch: fetcher })
-    const duplicate = base.middleware(async (actions) => {
-      await actions.next()
-      return actions.next()
+    const duplicate = base.middleware(async (_input, next) => {
+      await next()
+      return next()
     })
 
     await expect(base.use(duplicate).build().health()).rejects.toThrowError(

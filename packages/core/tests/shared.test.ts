@@ -5,13 +5,13 @@ import type {
   ClientContextInput,
   ClientContractRouteMetadata,
   ClientMiddlewareInput,
-  ClientMiddlewareNextResult,
+  ClientMiddlewareNext,
 } from '../src/client'
 import type {
-  MiddlewareNextResult,
   ServerContextFactory,
   ServerContextInput,
   ServerMiddlewareInput,
+  ServerMiddlewareNext,
   ServerRouteMetadata,
 } from '../src/server'
 
@@ -32,5 +32,5 @@ test('client and server bindings share context and middleware primitives', () =>
   expectTypeOf<ClientMiddlewareInput<Context, typeof contract>>().toEqualTypeOf<
     ServerMiddlewareInput<Context, typeof contract>
   >()
-  expectTypeOf<ClientMiddlewareNextResult<string>>().toEqualTypeOf<MiddlewareNextResult<string>>()
+  expectTypeOf<ClientMiddlewareNext<string>>().toEqualTypeOf<ServerMiddlewareNext<string>>()
 })

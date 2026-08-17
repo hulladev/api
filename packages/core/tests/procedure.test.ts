@@ -158,10 +158,10 @@ describe('procedure', () => {
     const base = defineProcedures({
       context: ({ procedure: metadata }) => ({ prefix: metadata.key.join(':') || 'standalone' }),
     })
-    const observe = base.middleware(async (actions, args) => {
+    const observe = base.middleware(async (args, next) => {
       calls.push(`before:${args.procedure.key.join('.')}`)
       expectTypeOf(args.context.prefix).toEqualTypeOf<string>()
-      const result = await actions.next()
+      const result = await next()
       calls.push(`after:${args.procedure.key.join('.')}`)
       return result
     })
@@ -189,9 +189,9 @@ describe('procedure', () => {
 
   test('types middleware input after an input declaration', async () => {
     const shaped = procedure.input(z.object({ id: z.string() }))
-    const observe = shaped.middleware(async (actions, args) => {
+    const observe = shaped.middleware(async (args, next) => {
       expectTypeOf(args.input).toEqualTypeOf<{ id: string }>()
-      return actions.next()
+      return next()
     })
     const read = shaped.use(observe).handler(({ input }) => input.id)
 
@@ -200,9 +200,9 @@ describe('procedure', () => {
 
   test('preserves synchronous execution through synchronous middleware', () => {
     const calls: string[] = []
-    const observe = procedure.middleware((actions) => {
+    const observe = procedure.middleware((_input, next) => {
       calls.push('before')
-      const result = actions.next()
+      const result = next()
       calls.push('after')
       return result
     })
@@ -215,9 +215,9 @@ describe('procedure', () => {
 
   test('rejects middleware that calls next more than once', async () => {
     let handlerCalls = 0
-    const duplicate = procedure.middleware(async (actions) => {
-      await actions.next()
-      return actions.next()
+    const duplicate = procedure.middleware(async (_input, next) => {
+      await next()
+      return next()
     })
     const operation = procedure.use(duplicate).handler(() => {
       handlerCalls += 1

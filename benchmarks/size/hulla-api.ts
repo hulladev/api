@@ -8,8 +8,6 @@ const contract = defineContract({
   routes: { health: route.get('/health', { responses: { 200: response.json(output) } }) },
 })
 const server = defineServer(contract)
-const handler = createFetchHandler(
-  server.build(server.implement({ health: (actions) => actions.respond({ status: 200, body: { ok: true } }) }))
-)
+const handler = createFetchHandler(server.build({ health: () => ({ status: 200, body: { ok: true } }) }))
 
 export const client = defineClient(contract, { baseUrl: 'https://size.local', fetch: handler }).build()

@@ -66,6 +66,28 @@ describe('contract declaration', () => {
     )
   })
 
+  test('requires overlapping route and contract-error statuses to share one response definition', () => {
+    const notFound = response.json(z.object({ code: z.literal('NOT_FOUND') }))
+
+    expect(() =>
+      defineContract({
+        errors: { 404: notFound },
+        routes: {
+          item: route.get('/item', {
+            responses: { 404: response.json(z.object({ message: z.string() })) },
+          }),
+        },
+      })
+    ).toThrowError('response 404 conflicts with the contract error declared for the same status')
+
+    expect(() =>
+      defineContract({
+        errors: { 404: notFound },
+        routes: { item: route.get('/item', { responses: { 404: notFound } }) },
+      })
+    ).not.toThrow()
+  })
+
   test('base-path rejects empty segments (//)', () => {
     expect(() => defineContract({ basePath: '//', routes: { health } })).toThrowError(
       'Contract base path "//" cannot contain empty segments (//)'

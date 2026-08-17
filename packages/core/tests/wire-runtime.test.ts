@@ -29,14 +29,12 @@ function createRuntime() {
   })
   const server = defineServer(contract)
   return createWireHandler(
-    server.build(
-      server.implement({
-        echo: (actions, input) => actions.respond({ status: 200, body: input.body }),
-        dynamic: (actions, input) => actions.respond({ status: 200, body: input.params.id }),
-        current: (actions) => actions.respond({ status: 200, body: 'current' }),
-        bytes: (actions, input) => actions.respond({ status: 200, body: input.body }),
-      })
-    )
+    server.build({
+      echo: (input) => ({ status: 200, body: input.body }),
+      dynamic: (input) => ({ status: 200, body: input.params.id }),
+      current: () => ({ status: 200, body: 'current' }),
+      bytes: (input) => ({ status: 200, body: input.body }),
+    })
   )
 }
 
@@ -105,9 +103,7 @@ describe('wire server runtime', () => {
       routes: { health: route.get('/health', { responses: { 200: response.text() } }) },
     })
     const server = defineServer(contract)
-    const dispatch = createWireHandler(
-      server.build(server.implement({ health: (actions) => actions.respond({ status: 200, body: 'ok' }) }))
-    )
+    const dispatch = createWireHandler(server.build({ health: () => ({ status: 200, body: 'ok' }) }))
 
     await expect(dispatch({ request: {}, method: 'GET', pathname: '/he%61lth' })).resolves.toMatchObject({
       status: 200,

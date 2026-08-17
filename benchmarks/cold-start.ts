@@ -28,9 +28,7 @@ async function hullaApiFirstCall(): Promise<void> {
     routes: { health: route.get('/health', { responses: { 200: response.json(healthOutput) } }) },
   })
   const server = defineServer(contract)
-  const handler = createFetchHandler(
-    server.build(server.implement({ health: (actions) => actions.respond({ status: 200, body: healthValue }) }))
-  )
+  const handler = createFetchHandler(server.build({ health: () => ({ status: 200, body: healthValue }) }))
   const client = defineClient(contract, { baseUrl: 'https://bench.local', fetch: handler }).build()
   const result = await client.health()
   if (result.status !== 200 || !result.body.ok) throw new Error('Unexpected cold @hulla/api result')

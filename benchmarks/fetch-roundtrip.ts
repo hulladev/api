@@ -14,6 +14,7 @@ import { honoBenchmarks, honoNativeBenchmarks } from './hono'
 import { hullaApiBenchmarks, hullaApiNativeBenchmarks } from './hulla-api'
 import { hullaApiBreakdownBenchmarks } from './hulla-api-breakdown'
 import { orpcBenchmarks, orpcNativeBenchmarks } from './orpc'
+import { routeScalingBenchmarks } from './route-scaling'
 import { trpcBenchmarks, trpcNativeBenchmarks } from './trpc'
 import { tsRestBenchmarks, tsRestNativeBenchmarks } from './ts-rest'
 
@@ -58,6 +59,7 @@ const benchmarks: readonly Benchmark[] = [
   ...honoBenchmarks,
   ...coldStartBenchmarks,
   ...hullaApiBreakdownBenchmarks,
+  ...routeScalingBenchmarks,
 ].map((benchmark) => ({ ...benchmark, runtime: versionedRuntime(benchmark.runtime) }))
 const results = await runBenchmarks(benchmarks, options)
 

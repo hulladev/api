@@ -32,13 +32,11 @@ const contract = defineContract({
 
 const server = defineServer(contract)
 const handler = createFetchHandler(
-  server.build(
-    server.implement({
-      health: (actions) => actions.respond({ status: 200, body: healthValue }),
-      createUser: (actions) => actions.respond({ status: 201, body: createdUserValue }),
-      large: (actions) => actions.respond({ status: 200, body: largeResult }),
-    })
-  )
+  server.build({
+    health: () => ({ status: 200, body: healthValue }),
+    createUser: () => ({ status: 201, body: createdUserValue }),
+    large: () => ({ status: 200, body: largeResult }),
+  })
 )
 const client = defineClient(contract, { baseUrl: 'https://bench.local', fetch: handler }).build()
 

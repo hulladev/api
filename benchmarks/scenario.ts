@@ -6,6 +6,8 @@ export const benchmarkScenarios = Object.freeze({
   'large-json-post': 'Large JSON POST with client/server input and output validation',
   'cold-first-call': 'Loaded-module application construction plus the first validated request',
   'wire-dispatch': 'Server adapter dispatch with a host-parsed JSON body',
+  'large-static-dispatch': 'Static route dispatch through a 256-route server',
+  'large-dynamic-dispatch': 'Parameterized route dispatch through a 256-route server',
   'dynamic-http': 'Dynamic path, query, and header transport with validation at both boundaries',
   'middleware-context': 'Client and server context plus one middleware layer',
   'validation-failure': 'Invalid server request validation and protocol error serialization',

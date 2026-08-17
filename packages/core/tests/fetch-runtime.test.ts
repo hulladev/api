@@ -70,41 +70,38 @@ function buildServer(options: { readonly authorized?: boolean } = {}) {
       requestId: request.headers.get('x-request-id') ?? metadata.key.join('.'),
     }),
   })
-  const authorize = base.middleware(async (actions, input) => {
+  const authorize = base.middleware(async (input, next) => {
     calls.push(`middleware:${input.context.requestId}`)
-    return options.authorized === false ? actions.error(401, { body: { code: 'UNAUTHORIZED' } }) : actions.next()
+    return options.authorized === false ? { status: 401, body: { code: 'UNAUTHORIZED' } } : next()
   })
   const protectedServer = base.use(authorize)
 
   return {
     calls,
-    implementation: protectedServer.build(
-      protectedServer.implement({
-        health: (actions) => actions.respond({ status: 200, body: 'ok' }),
-        organizations: {
-          createUser: (actions, input) => {
-            calls.push('handler:createUser')
-            return actions.respond({
-              status: 201,
-              headers: { etag: input.params.userId },
-              body: {
-                id: input.params.userId,
-                organizationId: input.params.organizationId,
-                createdAt: input.body.createdAt,
-              },
-            })
-          },
+    implementation: protectedServer.build({
+      health: () => ({ status: 200, body: 'ok' }),
+      organizations: {
+        createUser: (input) => {
+          calls.push('handler:createUser')
+          return {
+            status: 201,
+            headers: { etag: input.params.userId },
+            body: {
+              id: input.params.userId,
+              organizationId: input.params.organizationId,
+              createdAt: input.body.createdAt,
+            },
+          }
         },
-        events: (actions) =>
-          actions.respond({
-            status: 200,
-            body: (async function* () {
-              yield { sequence: 1 }
-              yield { sequence: 2 }
-            })(),
-          }),
-      })
-    ),
+      },
+      events: () => ({
+        status: 200,
+        body: (async function* () {
+          yield { sequence: 1 }
+          yield { sequence: 2 }
+        })(),
+      }),
+    }),
   }
 }
 
@@ -187,24 +184,21 @@ describe('createFetchHandler', () => {
   test('reports internal failures to an optional hook without leaking them by default', async () => {
     const failures: unknown[] = []
     const base = defineServer(contract)
-    const implementation = base.build(
-      base.implement({
-        health: (() => ({ status: 200, body: 'ok' })) as never,
-        organizations: {
-          createUser: (actions, input) =>
-            actions.respond({
-              status: 201,
-              headers: { etag: input.params.userId },
-              body: {
-                id: input.params.userId,
-                organizationId: input.params.organizationId,
-                createdAt: input.body.createdAt,
-              },
-            }),
-        },
-        events: (actions) => actions.respond({ status: 200, body: [] }),
-      })
-    )
+    const implementation = base.build({
+      health: (() => 'invalid response') as never,
+      organizations: {
+        createUser: (input) => ({
+          status: 201,
+          headers: { etag: input.params.userId },
+          body: {
+            id: input.params.userId,
+            organizationId: input.params.organizationId,
+            createdAt: input.body.createdAt,
+          },
+        }),
+      },
+      events: () => ({ status: 200, body: [] }),
+    })
     const handler = createFetchHandler(implementation, {
       onError: ({ error, phase, defaultResponse }) => {
         failures.push({ error, phase, status: defaultResponse.status })
@@ -249,9 +243,7 @@ describe('createFetchHandler', () => {
       },
     })
     const server = defineServer(bodyContract)
-    const implementation = server.build(
-      server.implement({ bytes: (actions, input) => actions.respond({ status: 200, body: input.body }) })
-    )
+    const implementation = server.build({ bytes: (input) => ({ status: 200, body: input.body }) })
     const handler = createFetchHandler(implementation)
     const payload = new Uint8Array([1, 2, 3])
     const responseValue = await handler(
@@ -278,11 +270,9 @@ describe('createFetchHandler', () => {
     const server = defineServer(bodyContract, {
       context: async ({ request: contextRequest }) => ({ observed: await contextRequest.text() }),
     })
-    const implementation = server.build(
-      server.implement({
-        echo: (actions, input) => actions.respond({ status: 200, body: `${input.context.observed}:${input.body}` }),
-      })
-    )
+    const implementation = server.build({
+      echo: (input) => ({ status: 200, body: `${input.context.observed}:${input.body}` }),
+    })
 
     const result = await createFetchHandler(implementation)(
       new Request('https://api.example.com/echo', {
@@ -307,12 +297,10 @@ describe('createFetchHandler', () => {
       },
     })
     const server = defineServer(precedenceContract)
-    const implementation = server.build(
-      server.implement({
-        dynamic: (actions, input) => actions.respond({ status: 200, body: input.params.id }),
-        current: (actions) => actions.respond({ status: 200, body: 'current' }),
-      })
-    )
+    const implementation = server.build({
+      dynamic: (input) => ({ status: 200, body: input.params.id }),
+      current: () => ({ status: 200, body: 'current' }),
+    })
 
     const result = await createFetchHandler(implementation)(new Request('https://api.example.com/users/me'))
     expect(await result.text()).toBe('current')
@@ -332,12 +320,10 @@ describe('createFetchHandler', () => {
       },
     })
     const server = defineServer(precedenceContract)
-    const implementation = server.build(
-      server.implement({
-        collectionAction: (actions) => actions.respond({ status: 200, body: 'collection' }),
-        user: (actions) => actions.respond({ status: 200, body: 'user' }),
-      })
-    )
+    const implementation = server.build({
+      collectionAction: () => ({ status: 200, body: 'collection' }),
+      user: () => ({ status: 200, body: 'user' }),
+    })
 
     const result = await createFetchHandler(implementation)(new Request('https://api.example.com/users/new'))
     expect(await result.text()).toBe('user')
@@ -346,32 +332,29 @@ describe('createFetchHandler', () => {
   test('rejects server middleware that calls next more than once', async () => {
     let handlerCalls = 0
     const base = defineServer(contract)
-    const duplicate = base.middleware(async (actions) => {
-      await actions.next()
-      return actions.next()
+    const duplicate = base.middleware(async (_input, next) => {
+      await next()
+      return next()
     })
     const server = base.use(duplicate)
-    const implementation = server.build(
-      server.implement({
-        health: (actions) => {
-          handlerCalls += 1
-          return actions.respond({ status: 200, body: 'ok' })
-        },
-        organizations: {
-          createUser: (actions, input) =>
-            actions.respond({
-              status: 201,
-              headers: { etag: input.params.userId },
-              body: {
-                id: input.params.userId,
-                organizationId: input.params.organizationId,
-                createdAt: input.body.createdAt,
-              },
-            }),
-        },
-        events: (actions) => actions.respond({ status: 200, body: [] }),
-      })
-    )
+    const implementation = server.build({
+      health: () => {
+        handlerCalls += 1
+        return { status: 200, body: 'ok' }
+      },
+      organizations: {
+        createUser: (input) => ({
+          status: 201,
+          headers: { etag: input.params.userId },
+          body: {
+            id: input.params.userId,
+            organizationId: input.params.organizationId,
+            createdAt: input.body.createdAt,
+          },
+        }),
+      },
+      events: () => ({ status: 200, body: [] }),
+    })
 
     const result = await createFetchHandler(implementation)(new Request('https://api.example.com/api/health'))
     expect(result.status).toBe(500)
@@ -387,17 +370,15 @@ describe('createFetchHandler', () => {
       },
     })
     const server = defineServer(representationContract)
-    const implementation = server.build(
-      server.implement({
-        empty: (actions) => actions.respond({ status: 204 }),
-        form: (actions) => {
-          const body = new FormData()
-          body.set('name', 'Hulla')
-          return actions.respond({ status: 200, body })
-        },
-        raw: (actions) => actions.respond({ status: 202, body: new Response('raw', { status: 202 }) }),
-      })
-    )
+    const implementation = server.build({
+      empty: () => ({ status: 204 }),
+      form: () => {
+        const body = new FormData()
+        body.set('name', 'Hulla')
+        return { status: 200, body }
+      },
+      raw: () => ({ status: 202, body: new Response('raw', { status: 202 }) }),
+    })
     const handler = createFetchHandler(implementation)
 
     const empty = await handler(new Request('https://api.example.com/empty'))
@@ -423,11 +404,9 @@ describe('createFetchHandler', () => {
       },
     })
     const server = defineServer(formContract)
-    const implementation = server.build(
-      server.implement({
-        submit: (actions, input) => actions.respond({ status: 200, body: String(input.body.get('name')) }),
-      })
-    )
+    const implementation = server.build({
+      submit: (input) => ({ status: 200, body: String(input.body.get('name')) }),
+    })
     const body = new FormData()
     body.set('name', 'Ada')
 
@@ -441,24 +420,21 @@ describe('createFetchHandler', () => {
 
   test('lets the Fetch error hook replace the protocol-safe response', async () => {
     const base = defineServer(contract)
-    const implementation = base.build(
-      base.implement({
-        health: (() => ({ status: 200, body: 'not produced' })) as never,
-        organizations: {
-          createUser: (actions, input) =>
-            actions.respond({
-              status: 201,
-              headers: { etag: input.params.userId },
-              body: {
-                id: input.params.userId,
-                organizationId: input.params.organizationId,
-                createdAt: input.body.createdAt,
-              },
-            }),
-        },
-        events: (actions) => actions.respond({ status: 200, body: [] }),
-      })
-    )
+    const implementation = base.build({
+      health: (() => 'invalid response') as never,
+      organizations: {
+        createUser: (input) => ({
+          status: 201,
+          headers: { etag: input.params.userId },
+          body: {
+            id: input.params.userId,
+            organizationId: input.params.organizationId,
+            createdAt: input.body.createdAt,
+          },
+        }),
+      },
+      events: () => ({ status: 200, body: [] }),
+    })
     const handler = createFetchHandler(implementation, {
       onError: ({ defaultResponse, phase, request: failedRequest }) => {
         expect(defaultResponse.status).toBe(500)
@@ -483,11 +459,9 @@ describe('createFetchHandler', () => {
       routes: { raw: route.get('/raw', { responses: { 202: response.raw() } }) },
     })
     const server = defineServer(rawContract)
-    const mismatched = server.build(
-      server.implement({
-        raw: (actions) => actions.respond({ status: 202, body: new Response('wrong', { status: 200 }) }),
-      })
-    )
+    const mismatched = server.build({
+      raw: () => ({ status: 202, body: new Response('wrong', { status: 200 }) }),
+    })
 
     await expect(createFetchHandler(mismatched)(new Request('https://api.example.com/raw'))).rejects.toThrowError(
       'Raw Fetch response status must match its declared contract status'

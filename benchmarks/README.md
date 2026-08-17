@@ -21,7 +21,7 @@ The native validated profile uses each package's simplest practical path while r
 
 Identity schemas use ordinary forward validation at outgoing boundaries; they are not forced through Zod's reverse-codec path. A separate transformed-Date scenario measures genuine codec encode/decode work at all four boundaries.
 
-The separately labeled focused diagnostics compare @hulla/api with equivalent direct implementations for host-parsed wire dispatch, dynamic path/query/header transport, client and server middleware/context, invalid-input serialization, codecs, and ten-chunk NDJSON streaming. They isolate @hulla/api feature costs and are not cross-package rankings. Network and socket costs are deliberately excluded; `Direct Fetch` is the lower-level baseline rather than a competing contract library.
+The separately labeled focused diagnostics compare @hulla/api with equivalent direct implementations for host-parsed wire dispatch, static and parameterized dispatch through 256-route tables, dynamic path/query/header transport, client and server middleware/context, invalid-input serialization, codecs, and ten-chunk NDJSON streaming. They isolate @hulla/api feature costs and are not cross-package rankings. Network and socket costs are deliberately excluded; `Direct Fetch` is the lower-level baseline rather than a competing contract library.
 
 A loaded-module first-call scenario reconstructs each framework's one-route contract/router, server adapter, and client before issuing its first validated request. It measures application construction after imports have loaded; it does not claim to measure process/module cold start.
 

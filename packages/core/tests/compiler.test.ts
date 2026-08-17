@@ -1,6 +1,7 @@
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
 import { compileContract, defineContract, response, route, router, type CompiledContractRouteFor } from '../src'
+import { compileCanonicalContract } from '../src/route-plan'
 
 const organizationParams = z.object({ organizationId: z.string() })
 const userParams = z.object({ userId: z.string() })
@@ -77,6 +78,36 @@ describe('contract compiler', () => {
   test('caches compilation by immutable contract identity', () => {
     expect(compileContract(contract)).toBe(compileContract(contract))
     expect(compileContract(defineContract({ routes: { health } }))).not.toBe(compileContract(contract))
+  })
+
+  test('compiles one shared client/server execution plan per contract', () => {
+    const sharedResponse = response.json(z.object({ id: z.string() }))
+    const plannedContract = defineContract({
+      errors: { 400: sharedResponse },
+      routes: {
+        create: route.post('/users/:id', {
+          params: z.object({ id: z.string() }),
+          query: z.object({ source: z.string() }),
+          headers: z.object({ authorization: z.string() }),
+          body: z.object({ name: z.string() }),
+          responses: { 201: sharedResponse },
+        }),
+      },
+    })
+
+    const plan = compileCanonicalContract(plannedContract)
+    const plannedRoute = plan.routes[0]!
+
+    expect(compileCanonicalContract(plannedContract)).toBe(plan)
+    expect(plannedRoute.compiled).toBe(compileContract(plannedContract).routes[0])
+    expect(plannedRoute).toMatchObject({ hasInput: true, pattern: ['users', ':id'] })
+    expect(plannedRoute.encodePath).toBeTypeOf('function')
+    expect(plannedRoute.decodePath).toBeTypeOf('function')
+    expect(plannedRoute.encodeQuery).toBeTypeOf('function')
+    expect(plannedRoute.decodeQuery).toBeTypeOf('function')
+    expect(plannedRoute.headers).toBeDefined()
+    expect(plannedRoute.body).toBeDefined()
+    expect(plannedRoute.responses[0]?.[1]).toBe(plan.errors[0]?.[1])
   })
 
   test('preserves prototype-like route keys safely', () => {

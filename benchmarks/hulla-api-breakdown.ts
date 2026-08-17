@@ -26,15 +26,12 @@ const transportContract = defineContract({
 })
 const transportServer = defineServer(transportContract)
 const transportHandler = createFetchHandler(
-  transportServer.build(
-    transportServer.implement({
-      item: (actions, input) =>
-        actions.respond({
-          status: 200,
-          body: { id: input.params.id, limit: input.query.limit, token: input.headers['x-token'] },
-        }),
-    })
-  )
+  transportServer.build({
+    item: (input) => ({
+      status: 200,
+      body: { id: input.params.id, limit: input.query.limit, token: input.headers['x-token'] },
+    }),
+  })
 )
 const transportClient = defineClient(transportContract, {
   baseUrl: 'https://bench.local',
@@ -69,27 +66,21 @@ const middlewareContract = defineContract({
 const middlewareServerBase = defineServer(middlewareContract, {
   context: ({ request }) => ({ token: request.headers.get('authorization') ?? '' }),
 })
-const serverMiddleware = middlewareServerBase.middleware((actions, input) => {
+const serverMiddleware = middlewareServerBase.middleware((input, next) => {
   if (input.context.token !== 'Bearer benchmark') throw new Error('Missing benchmark token')
-  return actions.next()
+  return next()
 })
 const middlewareServer = middlewareServerBase.use(serverMiddleware)
-const middlewareHandler = createFetchHandler(
-  middlewareServer.build(
-    middlewareServer.implement({
-      protected: (actions) => actions.respond({ status: 200, body: 'ok' }),
-    })
-  )
-)
+const middlewareHandler = createFetchHandler(middlewareServer.build({ protected: () => ({ status: 200, body: 'ok' }) }))
 const middlewareClientBase = defineClient(middlewareContract, {
   baseUrl: 'https://bench.local',
   fetch: middlewareHandler,
   headers: { authorization: 'Bearer benchmark' },
   context: ({ request }) => ({ method: request.method }),
 })
-const clientMiddleware = middlewareClientBase.middleware((actions, input) => {
+const clientMiddleware = middlewareClientBase.middleware((input, next) => {
   if (input.context.method !== 'GET') throw new Error('Unexpected method')
-  return actions.next()
+  return next()
 })
 const middlewareClient = middlewareClientBase.use(clientMiddleware).build()
 
@@ -115,9 +106,7 @@ const failureContract = defineContract({
   },
 })
 const failureServer = defineServer(failureContract)
-const failureHandler = createFetchHandler(
-  failureServer.build(failureServer.implement({ failure: (actions) => actions.respond({ status: 204 }) }))
-)
+const failureHandler = createFetchHandler(failureServer.build({ failure: () => ({ status: 204 }) }))
 const invalidBody = JSON.stringify({ count: -1 })
 
 async function directFailure(): Promise<void> {
@@ -159,11 +148,9 @@ const adapterContract = defineContract({
   },
 })
 const adapterServer = defineServer(adapterContract)
-const adapterImplementation = adapterServer.build(
-  adapterServer.implement({
-    execute: (actions, input) => actions.respond({ status: 200, body: { doubled: input.body.value * 2 } }),
-  })
-)
+const adapterImplementation = adapterServer.build({
+  execute: (input) => ({ status: 200, body: { doubled: input.body.value * 2 } }),
+})
 const adapterFetch = createFetchHandler(adapterImplementation)
 const adapterWire = createWireHandler(adapterImplementation)
 
@@ -217,11 +204,7 @@ const codecContract = defineContract({
   },
 })
 const codecServer = defineServer(codecContract)
-const codecHandler = createFetchHandler(
-  codecServer.build(
-    codecServer.implement({ echo: (actions, input) => actions.respond({ status: 200, body: input.body }) })
-  )
-)
+const codecHandler = createFetchHandler(codecServer.build({ echo: (input) => ({ status: 200, body: input.body }) }))
 const codecClient = defineClient(codecContract, { baseUrl: 'https://bench.local', fetch: codecHandler }).build()
 
 async function directCodecRoundtrip(): Promise<void> {
@@ -251,9 +234,7 @@ const streamContract = defineContract({
   routes: { events: route.get('/events', { responses: { 200: response.stream(ndjson(chunkSchema)) } }) },
 })
 const streamServer = defineServer(streamContract)
-const streamHandler = createFetchHandler(
-  streamServer.build(streamServer.implement({ events: (actions) => actions.respond({ status: 200, body: chunks }) }))
-)
+const streamHandler = createFetchHandler(streamServer.build({ events: () => ({ status: 200, body: chunks }) }))
 const streamClient = defineClient(streamContract, { baseUrl: 'https://bench.local', fetch: streamHandler }).build()
 
 async function directStream(): Promise<void> {
