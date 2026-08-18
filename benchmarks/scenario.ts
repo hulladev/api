@@ -2,17 +2,17 @@ import { z } from 'zod'
 
 export const benchmarkScenarios = Object.freeze({
   'static-get': 'Static JSON GET with server and client output validation',
-  'small-json-post': 'Small JSON POST with client/server input and output validation',
-  'large-json-post': 'Large JSON POST with client/server input and output validation',
+  'small-json-post': "Small JSON POST with each runtime's request and response validation",
+  'large-json-post': "Large JSON POST with each runtime's request and response validation",
   'cold-first-call': 'Loaded-module application construction plus the first validated request',
   'wire-dispatch': 'Server adapter dispatch with a host-parsed JSON body',
   'large-static-dispatch': 'Static route dispatch through a 256-route server',
   'large-dynamic-dispatch': 'Parameterized route dispatch through a 256-route server',
-  'dynamic-http': 'Dynamic path, query, and header transport with validation at both boundaries',
+  'dynamic-http': 'Dynamic path, query, and header transport with directional validation',
   'middleware-context': 'Client and server context plus one middleware layer',
   'validation-failure': 'Invalid server request validation and protocol error serialization',
-  'codec-roundtrip': 'Transformed Date codec at all four client/server boundaries',
-  streaming: 'Ten NDJSON chunks with server encoding and client decoding validation',
+  'codec-roundtrip': 'Bidirectional Date codec across client and server HTTP boundaries',
+  streaming: 'Ten NDJSON chunks with server and client schema validation',
 })
 
 export type BenchmarkScenario = keyof typeof benchmarkScenarios
@@ -32,7 +32,7 @@ export const largeValue = {
 }
 export const largeResult = { count: largeValue.items.length, items: largeValue.items }
 
-/** Validates an identity schema at an outgoing boundary without invoking codec machinery. */
+/** Validates an identity schema at an inbound boundary. */
 export function encodeValue<const Schema extends z.ZodType>(schema: Schema, value: z.output<Schema>): z.input<Schema> {
   return schema.parse(value) as z.input<Schema>
 }

@@ -17,9 +17,9 @@ export type BenchmarkProfile = 'focused' | 'native' | 'strict-parity'
 const benchmarkProfiles: Readonly<Record<BenchmarkProfile, { readonly description: string; readonly title: string }>> =
   Object.freeze({
     'strict-parity': {
-      title: 'Equivalent-guarantee strict parity',
+      title: 'Validated round trips',
       description:
-        'Every package crosses the same applicable validation boundaries: server and client output for GET, and client encode → server decode → server encode → client decode for POST. This is the primary feature-parity comparison.',
+        'Each package validates requests and responses at the boundaries provided by its public model. Guarantees differ and are listed in the benchmark README.',
     },
     native: {
       title: 'Native validated paths',
@@ -274,7 +274,7 @@ export async function writeBenchmarkReport(
     '',
     '## Bundle footprint',
     '',
-    'Production bundles are minified for Bun with Zod externalized because it is the shared user-supplied validator. Gzip uses level 9.',
+    'Production bundles are minified for Bun with Zod externalized because it is a user-supplied schema library. Gzip uses level 9.',
     '',
     '| Runtime | Minified | Gzip |',
     '|---|---:|---:|',

@@ -1,5 +1,4 @@
-import { defineContract, response, route } from '@hulla/api'
-import { codec as zodCodec } from '@hulla/api-zod'
+import { codec, defineContract, response, route } from '@hulla/api'
 import { defineClient } from '@hulla/api/client'
 import { createFetchHandler, defineServer } from '@hulla/api/server'
 import { ndjson } from '@hulla/api/stream'
@@ -199,11 +198,17 @@ const nativeDateCodec = z.object({
     encode: (value) => value.toISOString(),
   }),
 })
-const dateCodec = zodCodec(nativeDateCodec)
+const dateCodec = codec(z.object({ createdAt: z.iso.datetime() }), z.object({ createdAt: z.date() }), {
+  decode: ({ createdAt }) => ({ createdAt: new Date(createdAt) }),
+  encode: ({ createdAt }) => ({ createdAt: createdAt.toISOString() }),
+})
 const codecValue = { createdAt: new Date('2026-08-16T12:00:00.000Z') }
 const codecContract = defineContract({
   routes: {
-    echo: route.post('/codec', { body: dateCodec, responses: { 200: response.json(dateCodec) } }),
+    echo: route.post('/codec', {
+      body: dateCodec,
+      responses: { 200: response.json(dateCodec) },
+    }),
   },
 })
 const codecServer = defineServer(codecContract)

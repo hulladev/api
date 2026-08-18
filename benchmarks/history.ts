@@ -62,8 +62,6 @@ const corePackagePath = resolve(repositoryDirectory, 'packages/core/package.json
 const fingerprintPaths = [
   resolve(repositoryDirectory, 'packages/core/src'),
   resolve(repositoryDirectory, 'packages/core/package.json'),
-  resolve(repositoryDirectory, 'packages/zod/src'),
-  resolve(repositoryDirectory, 'packages/zod/package.json'),
   benchmarkDirectory,
   resolve(benchmarkDirectory, 'package.json'),
   resolve(repositoryDirectory, 'bun.lock'),
@@ -128,7 +126,6 @@ async function sourceRevision(): Promise<SourceRevision> {
     '--untracked-files=all',
     '--',
     'packages/core',
-    'packages/zod',
     'benchmarks',
     'bun.lock',
     'package.json',
