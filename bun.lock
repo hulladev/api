@@ -47,6 +47,28 @@
         "zod": "^4.4.3",
       },
     },
+    "packages/swr": {
+      "name": "@hulla/api-swr",
+      "version": "2.0.0",
+      "devDependencies": {
+        "@hulla/api": "workspace:*",
+        "zod": "^4.4.3",
+      },
+      "peerDependencies": {
+        "@hulla/api": "^2.0.0",
+      },
+    },
+    "packages/tanstack-query": {
+      "name": "@hulla/api-tanstack-query",
+      "version": "2.0.0",
+      "devDependencies": {
+        "@hulla/api": "workspace:*",
+        "zod": "^4.4.3",
+      },
+      "peerDependencies": {
+        "@hulla/api": "^2.0.0",
+      },
+    },
   },
   "packages": {
     "@babel/code-frame": ["@babel/code-frame@7.24.7", "", { "dependencies": { "@babel/highlight": "7.24.7", "picocolors": "1.0.1" } }, "sha512-BcYH1CVJBO9tvyIZ2jVeXgSIMvGZ2FDRvDdOIVQyuklNKSsx+eppDEBq/g47Ayw+RqNFE+URvOShmf+f/qwAlA=="],
@@ -158,6 +180,10 @@
     "@hulla/api": ["@hulla/api@workspace:packages/core"],
 
     "@hulla/api-benchmarks": ["@hulla/api-benchmarks@workspace:benchmarks"],
+
+    "@hulla/api-swr": ["@hulla/api-swr@workspace:packages/swr"],
+
+    "@hulla/api-tanstack-query": ["@hulla/api-tanstack-query@workspace:packages/tanstack-query"],
 
     "@inquirer/confirm": ["@inquirer/confirm@3.1.17", "", { "dependencies": { "@inquirer/core": "9.0.5", "@inquirer/type": "1.5.1" } }, "sha512-qCpt/AABzPynz8tr69VDvhcjwmzAryipWXtW8Vi6m651da4H/d0Bdn55LkxXD7Rp2gfgxvxzTdb66AhIA8gzBA=="],
 

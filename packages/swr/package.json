@@ -1,0 +1,32 @@
+{
+  "name": "@hulla/api-swr",
+  "version": "2.0.0",
+  "description": "SWR option helpers for @hulla/api clients",
+  "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "clean": "rm -rf dist coverage",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@hulla/api": "workspace:*",
+    "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "@hulla/api": "^2.0.0"
+  }
+}
