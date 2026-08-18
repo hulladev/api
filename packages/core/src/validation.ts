@@ -123,22 +123,22 @@ export function codec<const WireSchema extends AnySchema, const ApplicationSchem
   type Application = SchemaOutput<ApplicationSchema>
   const wire = wireSchema as StandardSchemaV1<Wire, Wire>
   const application = applicationSchema as StandardSchemaV1<Application, Application>
-  const encode: StandardSchemaV1<Application, Wire> = Object.freeze({
-    '~standard': Object.freeze({
+  const encode: StandardSchemaV1<Application, Wire> = {
+    '~standard': {
       version: 1 as const,
       vendor: '@hulla/api',
       validate: codecValidation(application, wire, options.encode),
-    }),
-  })
+    },
+  }
 
-  return Object.freeze({
-    '~standard': Object.freeze({
+  return {
+    '~standard': {
       version: 1 as const,
       vendor: '@hulla/api',
       validate: codecValidation(wire, application, options.decode),
-    }),
-    '~hulla': Object.freeze({ version: 1 as const, encode }),
-  }) as CodecSchema<Wire, Application>
+    },
+    '~hulla': { version: 1 as const, encode },
+  } as CodecSchema<Wire, Application>
 }
 
 export function isSchema(value: unknown): value is AnySchema {
@@ -186,7 +186,7 @@ export function asyncSchema<const Schema extends AnySchema>(schema: Schema): Asy
   if (!isSchema(schema)) throw new TypeError('Async validation input must be a Standard Schema')
   if (isAsyncSchema(schema)) return schema as unknown as AsyncSchema<Schema>
 
-  const wrapper = Object.freeze({ '~standard': schema['~standard'] }) as AsyncSchema<Schema>
+  const wrapper = { '~standard': schema['~standard'] } as AsyncSchema<Schema>
   asyncSchemaSources.set(wrapper, schema)
   return wrapper
 }
@@ -250,7 +250,7 @@ export function compileSchemaExecution<const Schema extends AnySchema>(
       : (value) => validateWithValue(source['~hulla'].encode, value, options)
   }
 
-  const plan = Object.freeze({ decode, ...(encode === undefined ? {} : { encode }) }) as SchemaExecutionPlan<Schema>
+  const plan = { decode, ...(encode === undefined ? {} : { encode }) } as SchemaExecutionPlan<Schema>
   plans.set(options.location, plan as unknown as SchemaExecutionPlan)
   return plan
 }

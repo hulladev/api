@@ -39,7 +39,7 @@ export class ServerImplementationError
     super(message)
     this.name = 'ServerImplementationError'
     this.code = code
-    this.handlerKeys = Object.freeze([...handlerKeys])
+    this.handlerKeys = [...handlerKeys]
     this.issues = annotateAPIErrorIssues(
       handlerKeys.length === 0
         ? [{ message }]

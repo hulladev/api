@@ -18,7 +18,6 @@ describe('structured API errors', () => {
       expect(error.code).toBeTypeOf('string')
       expect(error.issues.length).toBeGreaterThan(0)
       expect(error.issues[0]).toHaveProperty('message')
-      expect(Object.isFrozen(error.issues)).toBe(true)
     }
 
     expect(schema).toMatchObject({
@@ -46,8 +45,6 @@ describe('structured API errors', () => {
       { message: 'Invalid value', path: ['value'], code: 'custom.invalid', location: 'input' },
     ])
     expect(annotated[0]).not.toBe(source[0])
-    expect(Object.isFrozen(annotated)).toBe(true)
-    expect(Object.isFrozen(annotated[0])).toBe(true)
 
     const vendorCode = annotateAPIErrorIssues([{ message: 'Vendor issue', code: 42 }], {
       code: 'schema-validation',

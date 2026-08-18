@@ -31,7 +31,7 @@ function pathname(url: string): string {
 }
 
 function requestHeaders(request: Request): Readonly<Record<string, string>> {
-  return Object.freeze(Object.fromEntries(request.headers.entries()))
+  return Object.fromEntries(request.headers.entries())
 }
 
 function requestQuery(url: string): URLSearchParams | undefined {
@@ -103,8 +103,8 @@ function toResponse(response: WireServerResponse): Response {
 function replacementResponse(response: Response): WireServerResponse {
   return {
     status: response.status,
-    headers: Object.freeze({}),
-    body: Object.freeze({ kind: 'raw', value: response }),
+    headers: {},
+    body: { kind: 'raw', value: response },
   }
 }
 

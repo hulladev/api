@@ -45,22 +45,16 @@ export type APIErrorIssueAnnotations = {
   readonly location?: APIErrorLocation
 }
 
-/** Copies and freezes issues while adding boundary metadata that is not already present. */
+/** Copies issues while adding boundary metadata that is not already present. */
 export function annotateAPIErrorIssues(
   issues: readonly APIErrorIssue[],
   annotations: APIErrorIssueAnnotations = {}
 ): readonly APIErrorIssue[] {
-  return Object.freeze(
-    issues.map((issue) =>
-      Object.freeze({
-        ...issue,
-        ...(issue.code === undefined && annotations.code !== undefined ? { code: annotations.code } : {}),
-        ...(issue.location === undefined && annotations.location !== undefined
-          ? { location: annotations.location }
-          : {}),
-      })
-    )
-  )
+  return issues.map((issue) => ({
+    ...issue,
+    ...(issue.code === undefined && annotations.code !== undefined ? { code: annotations.code } : {}),
+    ...(issue.location === undefined && annotations.location !== undefined ? { location: annotations.location } : {}),
+  }))
 }
 
 /** Structurally narrows unknown failures without relying on package-local instanceof identity. */
@@ -107,19 +101,19 @@ function pathKey(segment: PropertyKey | StandardSchemaV1.PathSegment): string | 
 export function toAPIProblem(error: APIError, options: APIProblemOptions): APIProblem {
   const issues = error.issues.map((issue): APIProblemIssue => {
     const path = issue.path?.map(pathKey)
-    return Object.freeze({
+    return {
       message: issue.message,
-      ...(path === undefined ? {} : { path: Object.freeze(path) }),
+      ...(path === undefined ? {} : { path }),
       ...(typeof issue.code === 'string' ? { code: issue.code } : {}),
       ...(issue.location === undefined ? {} : { location: issue.location }),
-    })
+    }
   })
 
-  return Object.freeze({
+  return {
     type: options.type ?? 'about:blank',
     title: options.title ?? error.message,
     status: options.status,
     code: error.code,
-    ...(issues.length === 0 ? {} : { issues: Object.freeze(issues) }),
-  })
+    ...(issues.length === 0 ? {} : { issues }),
+  }
 }

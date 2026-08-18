@@ -13,6 +13,5 @@ describe('Fetch client errors', () => {
       response,
       issues: [{ code: 'unexpected-status', location: 'response' }],
     })
-    expect(Object.isFrozen(error.issues)).toBe(true)
   })
 })

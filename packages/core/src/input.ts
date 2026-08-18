@@ -138,11 +138,11 @@ export function routeInput<const RouteType extends Route>(route: RouteType): Rou
   if ('headers' in route && isSchema(route.headers)) fields.push({ field: 'headers', schema: route.headers })
   if ('body' in route && route.body !== undefined) fields.push({ field: 'body', schema: route.body.schema })
 
-  return Object.freeze({
-    '~standard': Object.freeze({
+  return {
+    '~standard': {
       version: 1 as const,
       vendor: '@hulla/api',
       validate: (value: unknown) => combinedRouteInput(fields, value),
-    }),
-  }) as RouteInputSchema<RouteType>
+    },
+  } as RouteInputSchema<RouteType>
 }
