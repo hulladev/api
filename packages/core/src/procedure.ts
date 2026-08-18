@@ -9,13 +9,14 @@ import {
 } from './middleware'
 import { isPlainRecord, isRecord, setOwn } from './object'
 import {
-  encodeSchemaValue,
+  compileSchemaExecution,
   isAsyncSchema,
   isSchema,
   isSchemaStepAsync,
   mapSchemaStep,
   type AnySchema,
   type AsyncSchema,
+  type SchemaInput,
   type SchemaOutput,
   type SchemaStep,
   type SchemaValidationOptions,
@@ -28,9 +29,11 @@ type DefinedField<Name extends PropertyKey, Value> = [Value] extends [undefined]
   ? object
   : { readonly [Key in Name]: Value }
 
-export type ProcedureInputValue<Schema extends AnySchema> = SchemaOutput<Schema>
+export type ProcedureInputValue<Schema extends AnySchema> = SchemaInput<Schema>
 
 export type ProcedureOutputValue<Schema extends AnySchema> = SchemaOutput<Schema>
+export type ProcedureHandlerInputValue<Schema extends AnySchema> = SchemaOutput<Schema>
+export type ProcedureHandlerOutputValue<Schema extends AnySchema> = SchemaInput<Schema>
 
 export type ProcedureMetadata<Key extends readonly string[] = readonly string[]> = {
   readonly kind: 'procedure'
@@ -71,7 +74,7 @@ export type ProcedureMiddleware<Context extends object, Input = unknown> = <Resu
 export type ProcedureHandlerInput<Context extends object, Input extends AnySchema | undefined> = {
   readonly context: Readonly<Context>
   readonly procedure: ProcedureMetadata
-} & DefinedField<'input', Input extends AnySchema ? ProcedureInputValue<Input> : undefined>
+} & DefinedField<'input', Input extends AnySchema ? ProcedureHandlerInputValue<Input> : undefined>
 
 type ProcedureCallArguments<Input extends AnySchema | undefined> = Input extends AnySchema
   ? readonly [input: ProcedureInputValue<Input>]
@@ -114,7 +117,7 @@ type ProcedureRuntime = {
 const procedureRuntimes = new WeakMap<AnyProcedure, ProcedureRuntime>()
 
 type MiddlewareValue<Input extends AnySchema | undefined> = Input extends AnySchema
-  ? ProcedureInputValue<Input>
+  ? ProcedureHandlerInputValue<Input>
   : unknown
 
 type MiddlewareIsAsync<Middleware> = Middleware extends (...args: never[]) => infer Result
@@ -144,7 +147,7 @@ export type ProcedureBuilder<
       ? <
           const Handler extends (
             args: ProcedureHandlerInput<Context, Input>
-          ) => Awaitable<ProcedureOutputValue<Output>>,
+          ) => Awaitable<ProcedureHandlerOutputValue<Output>>,
         >(
           handler: Handler
         ) => Procedure<Input, ProcedureOutputValue<Output>, EitherIsAsync<Async, ValueIsAsync<ReturnType<Handler>>>>
@@ -163,12 +166,12 @@ function validateApplicationSchema(
   value: unknown,
   options: SchemaValidationOptions
 ): SchemaStep<unknown> {
-  const validation = encodeSchemaValue(schema, value, options)
+  const validation = compileSchemaExecution(schema, options).decode(value)
   if (isSchemaStepAsync(validation) && !isAsyncSchema(schema)) {
     void Promise.resolve(validation).catch(() => undefined)
     throw new TypeError('Asynchronous Standard Schemas must be wrapped with validation.async(schema)')
   }
-  return mapSchemaStep(validation, () => value)
+  return validation
 }
 
 function registerProcedure(procedure: AnyProcedure, runtime: ProcedureRuntime, metadata?: ProcedureMetadata): void {
@@ -288,20 +291,20 @@ function createBuilder<
           ? inputValue
           : validateApplicationSchema(inputSchema, inputValue, { location: 'input' })
 
-      return mapSchemaStep(inputStep, () => {
+      return mapSchemaStep(inputStep, (decodedInput) => {
         const contextStep =
           contextFactory === undefined
             ? (emptyProcedureContext as Context)
-            : contextFactory({ input: inputValue, procedure: metadata })
+            : contextFactory({ input: decodedInput, procedure: metadata })
 
         return mapSchemaStep(contextStep, (context) => {
           if (!isRecord(context)) throw new TypeError('Procedure context factory must return an object')
 
-          const middlewareInput = { context, input: inputValue, procedure: metadata }
+          const middlewareInput = { context, input: decodedInput, procedure: metadata }
           const handlerInput = {
             context,
             procedure: metadata,
-            ...(hasInput ? { input: inputValue } : {}),
+            ...(hasInput ? { input: decodedInput } : {}),
           } as ProcedureHandlerInput<Context, Input>
 
           const result =
@@ -333,20 +336,18 @@ function createBuilder<
   return Object.freeze({ input, output, handler, middleware, use, build })
 }
 
-export function defineProcedures(): ProcedureBuilder<EmptyProcedureContext>
+export function defineProcedures(options?: {}): ProcedureBuilder<EmptyProcedureContext>
 export function defineProcedures<
   const Factory extends (input: ProcedureContextInput) => object | PromiseLike<object>,
 >(options: {
   readonly context: Factory
 }): ProcedureBuilder<Awaited<ReturnType<Factory>>, undefined, undefined, ValueIsAsync<ReturnType<Factory>>>
 export function defineProcedures(
-  options?: DefineProceduresOptions<object>
+  options: DefineProceduresOptions<object> = {}
 ): ProcedureBuilder<object, undefined, undefined, boolean> {
-  if (options !== undefined && !isRecord(options)) throw new TypeError('Procedure options must be an object')
-  if (options?.context !== undefined && typeof options.context !== 'function') {
+  if (!isRecord(options)) throw new TypeError('Procedure options must be an object')
+  if (options.context !== undefined && typeof options.context !== 'function') {
     throw new TypeError('Procedure context must be a function')
   }
-  return createBuilder<object, undefined, undefined, boolean>({}, options?.context, [])
+  return createBuilder<object, undefined, undefined, boolean>({}, options.context, [])
 }
-
-export const procedure: ProcedureBuilder<EmptyProcedureContext> = /* @__PURE__ */ defineProcedures()

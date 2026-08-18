@@ -1,51 +1,53 @@
 import * as v from 'valibot'
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
-import { defineProcedures, procedure } from '../src/procedure'
+import { defineProcedures, type ProcedureContextInput } from '../src/procedure'
 import { response, routeOutput, type RouteResponseBody } from '../src/response'
 import { route } from '../src/route'
 import { validation } from '../src/validation'
-import { zodCodecFixture } from './zod-fixture'
 
-const dateTime = zodCodecFixture(
-  z.codec(z.iso.datetime(), z.date(), {
-    decode: (value) => new Date(value),
-    encode: (value) => value.toISOString(),
-  })
-)
+const procedure = defineProcedures()
 
-const user = zodCodecFixture(
-  z.object({
-    id: z.string(),
-    createdAt: dateTime,
-  })
-)
+const dateTime = z.codec(z.iso.datetime(), z.date(), {
+  decode: (value) => new Date(value),
+  encode: (value) => value.toISOString(),
+})
+
+const user = z.object({
+  id: z.string(),
+  createdAt: dateTime,
+})
 
 const createUserRoute = route.post('/users', {
-  body: zodCodecFixture(z.object({ createdAt: dateTime })),
+  body: z.object({ createdAt: dateTime }),
   responses: {
     201: response.json(user),
   },
 })
 
 describe('procedure', () => {
+  test('uses Standard Schema without validator configuration', () => {
+    expect(defineProcedures()).toHaveProperty('input')
+    expect(defineProcedures({})).toHaveProperty('output')
+  })
+
   test('creates synchronous one-off callable procedures from exact route-shaped schemas', () => {
     const createUser = procedure
-      .input(zodCodecFixture(z.object({ body: z.object({ createdAt: dateTime }) })))
+      .input(z.object({ body: z.object({ createdAt: dateTime }) }))
       .output(routeOutput(createUserRoute, 201))
       .handler(({ input, context, procedure: metadata }) => {
         expectTypeOf(input.body.createdAt).toEqualTypeOf<Date>()
         expectTypeOf(context).toEqualTypeOf<Readonly<Record<string, never>>>()
         expect(metadata.key).toEqual([])
-        return { id: 'user-1', createdAt: input.body.createdAt }
+        return { id: 'user-1', createdAt: input.body.createdAt.toISOString() }
       })
-    const createdAt = new Date('2026-08-12T10:00:00.000Z')
+    const createdAt = '2026-08-12T10:00:00.000Z'
 
     expectTypeOf<Parameters<typeof createUser>>().toEqualTypeOf<
       [
         input: {
           body: {
-            createdAt: Date
+            createdAt: string
           }
         },
       ]
@@ -58,7 +60,7 @@ describe('procedure', () => {
       id: string
       createdAt: Date
     }>()
-    expect(createUser({ body: { createdAt } })).toEqual({ id: 'user-1', createdAt })
+    expect(createUser({ body: { createdAt } })).toEqual({ id: 'user-1', createdAt: new Date(createdAt) })
     expect('$meta' in createUser).toBe(false)
     expect(Object.getOwnPropertySymbols(createUser)).toEqual([])
 
@@ -97,9 +99,9 @@ describe('procedure', () => {
     expectTypeOf<ReturnType<typeof asyncHandler>>().toEqualTypeOf<Promise<string>>()
     await expect(asyncHandler()).resolves.toBe('handler')
 
-    const withAsyncContext = defineProcedures({ context: async () => ({ prefix: 'async' }) }).handler(
-      ({ context }) => context.prefix
-    )
+    const withAsyncContext = defineProcedures({
+      context: async () => ({ prefix: 'async' }),
+    }).handler(({ context }) => context.prefix)
     expectTypeOf<ReturnType<typeof withAsyncContext>>().toEqualTypeOf<Promise<string>>()
     await expect(withAsyncContext()).resolves.toBe('async')
   })
@@ -156,7 +158,9 @@ describe('procedure', () => {
   test('builds nested callable trees with structural identities', async () => {
     const calls: string[] = []
     const base = defineProcedures({
-      context: ({ procedure: metadata }) => ({ prefix: metadata.key.join(':') || 'standalone' }),
+      context: ({ procedure: metadata }: ProcedureContextInput) => ({
+        prefix: metadata.key.join(':') || 'standalone',
+      }),
     })
     const observe = base.middleware(async ({ context, next, procedure: metadata }) => {
       calls.push(`before:${metadata.key.join('.')}`)
@@ -229,8 +233,8 @@ describe('procedure', () => {
   })
 
   test('rejects foreign, duplicate, cyclic, and malformed tree members', () => {
-    const first = defineProcedures()
-    const second = defineProcedures()
+    const first = defineProcedures({})
+    const second = defineProcedures({})
     const local = first.handler(() => 'local')
     const foreign = second.handler(() => 'foreign')
 
@@ -250,7 +254,7 @@ describe('procedure', () => {
   })
 
   test('preserves prototype-like structural keys safely', () => {
-    const base = defineProcedures()
+    const base = defineProcedures({})
     const operation = base.handler(() => 'safe')
     const api = base.build({ ['__proto__']: { ['constructor']: operation } })
 
