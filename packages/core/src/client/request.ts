@@ -133,17 +133,27 @@ export function compileClientRequest(
   const encodePath = plan.encodePath
   const encodeQuery = plan.encodeQuery
   const encodeHeaders = plan.headers?.encode
+  const hasRouteHeaders = plan.headers !== undefined
   const encodeBody = plan.body?.schema.encode
+  const hasBody = plan.body !== undefined
   const serializeBody =
     plan.body === undefined
       ? undefined
       : compileBodySerializer(plan.body.declaration.representation, plan.body.declaration.contentType)
   const configuredHeaders = transport.headers
 
-  if (staticUrl !== undefined && encodeQuery === undefined && encodeHeaders === undefined && encodeBody !== undefined) {
-    return (input, options) =>
-      mapExecutionStep(encodeBody(input['body'] as never), (encoded) => {
-        const serialized = serializeBody!(encoded)
+  const routeHeaders = (value: unknown): ExecutionStep<Readonly<Record<string, string | undefined>>> =>
+    encodeHeaders === undefined
+      ? textWireObject(value, 'headers')
+      : mapExecutionStep(encodeHeaders(value), (encoded) => textWireObject(encoded, 'headers'))
+  const requestBody = (value: unknown): ExecutionStep<CompiledBody> =>
+    encodeBody === undefined
+      ? serializeBody!(value)
+      : mapExecutionStep(encodeBody(value), (encoded) => serializeBody!(encoded))
+
+  if (staticUrl !== undefined && encodeQuery === undefined && !hasRouteHeaders && hasBody) {
+    return (input, options) => {
+      return mapExecutionStep(requestBody(input['body']), (serialized) => {
         const configured = typeof configuredHeaders === 'function' ? configuredHeaders() : configuredHeaders
         return mapExecutionStep(configured, (resolvedHeaders) =>
           requestValue(
@@ -155,13 +165,14 @@ export function compileClientRequest(
           )
         )
       })
+    }
   }
 
   if (
     staticUrl !== undefined &&
     encodeQuery === undefined &&
-    encodeHeaders === undefined &&
-    encodeBody === undefined &&
+    !hasRouteHeaders &&
+    !hasBody &&
     configuredHeaders === undefined
   ) {
     return (_input, options) => requestValue(staticUrl, compiled.method, options, options.headers, undefined)
@@ -172,12 +183,8 @@ export function compileClientRequest(
       staticUrl ?? encodePath!(input['params'] as Readonly<Record<string, unknown>>),
       encodeQuery?.(input['query'] as never),
       typeof configuredHeaders === 'function' ? configuredHeaders() : configuredHeaders,
-      encodeHeaders === undefined
-        ? undefined
-        : mapExecutionStep(encodeHeaders(input['headers'] as never), (encoded) => textWireObject(encoded, 'headers')),
-      encodeBody === undefined
-        ? undefined
-        : mapExecutionStep(encodeBody(input['body'] as never), (encoded) => serializeBody!(encoded)),
+      hasRouteHeaders ? routeHeaders(input['headers']) : undefined,
+      hasBody ? requestBody(input['body']) : undefined,
     ] as const
     type ResolvedValues = readonly [
       path: string,

@@ -1,4 +1,4 @@
-import { defineSchema } from './validation'
+import type { StandardSchemaV1 } from '@standard-schema/spec'
 
 export type JsonValue =
   | string
@@ -25,22 +25,36 @@ export function isJsonValue(value: unknown, ancestors = new Set<object>()): valu
   return valid
 }
 
-export const jsonValueSchema = /* @__PURE__ */ defineSchema({
+function identitySchema<const Value>(definition: {
+  readonly name: string
+  readonly check: (value: unknown) => value is Value
+}): StandardSchemaV1<Value> {
+  return Object.freeze({
+    '~standard': Object.freeze({
+      version: 1 as const,
+      vendor: 'hulla',
+      validate: (value: unknown): StandardSchemaV1.Result<Value> =>
+        definition.check(value) ? { value } : { issues: [{ message: `Expected ${definition.name}` }] },
+    }),
+  })
+}
+
+export const jsonValueSchema = /* @__PURE__ */ identitySchema({
   name: 'a JSON value',
   check: isJsonValue,
 })
 
-export const stringSchema = /* @__PURE__ */ defineSchema({
+export const stringSchema = /* @__PURE__ */ identitySchema({
   name: 'a string',
   check: (value: unknown): value is string => typeof value === 'string',
 })
 
-export const bytesSchema = /* @__PURE__ */ defineSchema({
+export const bytesSchema = /* @__PURE__ */ identitySchema({
   name: 'a Uint8Array',
   check: (value: unknown): value is Uint8Array => value instanceof Uint8Array,
 })
 
-export const formDataSchema = /* @__PURE__ */ defineSchema({
+export const formDataSchema = /* @__PURE__ */ identitySchema({
   name: 'FormData',
   check: (value: unknown): value is FormData => value instanceof FormData,
 })

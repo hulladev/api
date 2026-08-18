@@ -403,9 +403,17 @@ function compileRouteInput(plan: CanonicalRoutePlan): RuntimeInputDecoder {
 
 async function* encodedStream(
   source: StreamSource<unknown>,
-  encode: (value: never) => SchemaStep<unknown>
+  schema: {
+    readonly decode: (value: unknown) => SchemaStep<unknown>
+    readonly encode?: (value: unknown) => SchemaStep<unknown>
+  }
 ): AsyncIterable<unknown> {
-  for await (const value of source) yield await encode(value as never)
+  for await (const value of source) {
+    if (schema.encode === undefined) {
+      await schema.decode(value)
+      yield value
+    } else yield await schema.encode(value)
+  }
 }
 
 function byteStream(source: StreamSource<unknown>): ReadableStream<Uint8Array> {
@@ -438,16 +446,18 @@ function compileResponseHeaders(
   if (definition.headers === undefined) {
     return (value) => value as Readonly<Record<string, string>> | undefined
   }
-  const encode = plan.headers!.encode
-  return (value) =>
-    mapSchemaStep(encode(value as never), (encodedValue) => {
-      const encoded = textWireObject(encodedValue, 'headers')
+  const schema = plan.headers!
+  return (value) => {
+    const wire = schema.encode === undefined ? mapSchemaStep(schema.decode(value), () => value) : schema.encode(value)
+    return mapSchemaStep(wire, (wireValue) => {
+      const encoded = textWireObject(wireValue, 'headers')
       const headers: Record<string, string> = {}
       for (const [key, field] of Object.entries(encoded)) {
         if (field !== undefined) headers[key] = field
       }
       return headers
     })
+  }
 }
 
 type SerializedResponseBody = {
@@ -463,39 +473,51 @@ function compileResponseBody(plan: CanonicalResponsePlan): (value: unknown) => S
     case 'empty':
       return () => ({ kind: 'empty', value: undefined })
     case 'json': {
-      const encode = plan.body!.encode
-      return (value) =>
-        mapSchemaStep(encode(value as never), (encoded) => {
-          if (encoded === undefined) throw new TypeError('JSON response body cannot encode to undefined')
-          return { kind: 'json', value: encoded }
+      const schema = plan.body!
+      return (value) => {
+        const wire =
+          schema.encode === undefined ? mapSchemaStep(schema.decode(value), () => value) : schema.encode(value)
+        return mapSchemaStep(wire, (wireValue) => {
+          if (wireValue === undefined) throw new TypeError('JSON response body cannot encode to undefined')
+          return { kind: 'json', value: wireValue }
         })
+      }
     }
     case 'text': {
-      const encode = plan.body!.encode
-      return (value) =>
-        mapSchemaStep(encode(value as never), (encoded) => {
-          if (typeof encoded !== 'string') throw new TypeError('Text response body must encode to a string')
-          return { kind: 'text', value: encoded }
+      const schema = plan.body!
+      return (value) => {
+        const wire =
+          schema.encode === undefined ? mapSchemaStep(schema.decode(value), () => value) : schema.encode(value)
+        return mapSchemaStep(wire, (wireValue) => {
+          if (typeof wireValue !== 'string') throw new TypeError('Text response body must encode to a string')
+          return { kind: 'text', value: wireValue }
         })
+      }
     }
     case 'bytes': {
-      const encode = plan.body!.encode
-      return (value) =>
-        mapSchemaStep(encode(value as never), (encoded) => {
-          if (!(encoded instanceof Uint8Array)) throw new TypeError('Byte response body must encode to Uint8Array')
-          return { kind: 'bytes', value: encoded }
+      const schema = plan.body!
+      return (value) => {
+        const wire =
+          schema.encode === undefined ? mapSchemaStep(schema.decode(value), () => value) : schema.encode(value)
+        return mapSchemaStep(wire, (wireValue) => {
+          if (!(wireValue instanceof Uint8Array)) throw new TypeError('Byte response body must encode to Uint8Array')
+          return { kind: 'bytes', value: wireValue }
         })
+      }
     }
     case 'form-data': {
-      const encode = plan.body!.encode
-      return (value) =>
-        mapSchemaStep(encode(value as never), (encoded) => {
-          if (!(encoded instanceof FormData)) throw new TypeError('Form data response body must encode to FormData')
-          return { kind: 'form-data', value: encoded }
+      const schema = plan.body!
+      return (value) => {
+        const wire =
+          schema.encode === undefined ? mapSchemaStep(schema.decode(value), () => value) : schema.encode(value)
+        return mapSchemaStep(wire, (wireValue) => {
+          if (!(wireValue instanceof FormData)) throw new TypeError('Form data response body must encode to FormData')
+          return { kind: 'form-data', value: wireValue }
         })
+      }
     }
     case 'stream': {
-      const streamEncoder = 'schema' in body ? plan.body!.encode : undefined
+      const streamSchema = 'schema' in body ? plan.body! : undefined
       const format = 'format' in body ? (body.format as StreamFormat<unknown>) : undefined
       return (value) => {
         const source = value as StreamSource<unknown>
@@ -503,9 +525,9 @@ function compileResponseBody(plan: CanonicalResponsePlan): (value: unknown) => S
           throw new TypeError('Stream response body must be iterable')
         }
         const wire =
-          streamEncoder === undefined || format === undefined
+          streamSchema === undefined || format === undefined
             ? source
-            : format.encode(encodedStream(source, streamEncoder))
+            : format.encode(encodedStream(source, streamSchema))
         return { kind: 'stream', value: byteStream(wire) }
       }
     }

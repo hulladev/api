@@ -3,22 +3,17 @@ import { z } from 'zod'
 import { defineContract, request, response, route, router } from '../src'
 import { defineClient, type ClientResponseResult, type ClientRouteInput } from '../src/client'
 import { ndjson } from '../src/stream'
-import { zodCodecFixture } from './zod-fixture'
 
-const dateTime = zodCodecFixture(
-  z.codec(z.iso.datetime(), z.date(), {
-    decode: (value) => new Date(value),
-    encode: (value) => value.toISOString(),
-  })
-)
+const dateTime = z.codec(z.iso.datetime(), z.date(), {
+  decode: (value) => new Date(value),
+  encode: (value) => value.toISOString(),
+})
 
-const user = zodCodecFixture(
-  z.object({
-    id: z.string(),
-    organizationId: z.string(),
-    createdAt: dateTime,
-  })
-)
+const user = z.object({
+  id: z.string(),
+  organizationId: z.string(),
+  createdAt: dateTime,
+})
 
 const apiError = response.json(z.object({ code: z.literal('UNAUTHORIZED') }))
 
@@ -33,32 +28,22 @@ const contract = defineContract({
       params: z.object({ organizationId: z.string() }),
       routes: {
         listUsers: route.get('/users', {
-          query: request.query(
-            zodCodecFixture(
-              z.object({
-                limit: z.codec(z.string(), z.number().int(), { decode: Number, encode: String }),
-                tags: z.array(z.string()).optional(),
-              })
-            ),
-            { repeated: ['tags'] }
-          ),
-          responses: { 200: response.json(zodCodecFixture(z.array(user))) },
+          query: z.object({
+            limit: z.codec(z.string(), z.number().int(), { decode: Number, encode: String }),
+            tags: z.array(z.string()).optional(),
+          }),
+          responses: { 200: response.json(z.array(user)) },
         }),
         createUser: route.post('/users/:userId', {
           params: z.object({ userId: z.string() }),
-          query: request.query(
-            zodCodecFixture(
-              z.object({
-                notify: z.codec(z.enum(['true', 'false']), z.boolean(), {
-                  decode: (value) => value === 'true',
-                  encode: (value) => (value ? 'true' : 'false'),
-                }),
-              })
-            ),
-            { repeated: [] }
-          ),
+          query: z.object({
+            notify: z.codec(z.enum(['true', 'false']), z.boolean(), {
+              decode: (value) => value === 'true',
+              encode: (value) => (value ? 'true' : 'false'),
+            }),
+          }),
           headers: z.object({ 'x-actor-id': z.string() }),
-          body: zodCodecFixture(z.object({ createdAt: dateTime })),
+          body: z.object({ createdAt: dateTime }),
           responses: {
             201: response.json(user, { headers: z.object({ etag: z.string() }) }),
             409: response.json(z.object({ code: z.literal('CONFLICT') })),
@@ -93,9 +78,9 @@ describe('defineClient', () => {
     >()
     expectTypeOf<Parameters<typeof client.organizations.createUser>[0]>().toExtend<{
       readonly params: { organizationId: string } & { userId: string }
-      readonly query: { notify: boolean }
+      readonly query: { notify: 'true' | 'false' }
       readonly headers: { 'x-actor-id': string }
-      readonly body: { createdAt: Date }
+      readonly body: { createdAt: string }
     }>()
     expectTypeOf<Awaited<ReturnType<typeof client.organizations.createUser>>['status']>().toEqualTypeOf<
       201 | 409 | 401
@@ -234,7 +219,7 @@ describe('defineClient', () => {
     expect((request as Request).body).toBeNull()
   })
 
-  test('encodes nested params, repeated query, headers, and JSON bodies exactly once', async () => {
+  test('serializes nested params, flat query, headers, and JSON bodies exactly once', async () => {
     const createdAt = new Date('2026-08-10T12:34:56.000Z')
     const fetcher = vi.fn<typeof fetch>(async () =>
       jsonResponse(
@@ -250,9 +235,9 @@ describe('defineClient', () => {
 
     const result = await client.organizations.createUser({
       params: { organizationId: 'hulla dev', userId: 'user/1' },
-      query: { notify: true },
+      query: { notify: 'true' },
       headers: { 'x-actor-id': 'actor-1' },
-      body: { createdAt },
+      body: { createdAt: createdAt.toISOString() },
     })
 
     expect(result).toEqual({
@@ -280,13 +265,13 @@ describe('defineClient', () => {
     expect(await (request as Request).text()).toBe(JSON.stringify({ createdAt: createdAt.toISOString() }))
   })
 
-  test('serializes repeated query values through the compiled query transport', async () => {
+  test('serializes array query values through the compiled query transport', async () => {
     const fetcher = vi.fn<typeof fetch>(async () => jsonResponse([], { status: 200 }))
     const client = defineClient(contract, { baseUrl: 'https://api.example.com', fetch: fetcher }).build()
 
     await client.organizations.listUsers({
       params: { organizationId: 'organization-1' },
-      query: { limit: 25, tags: ['admin', 'author'] },
+      query: { limit: '25', tags: ['admin', 'author'] },
     })
 
     expect((fetcher.mock.calls[0]![0] as Request).url).toBe(
@@ -348,7 +333,7 @@ describe('defineClient', () => {
           responses: { 204: response.empty() },
         }),
         events: route.get('/events', {
-          responses: { 200: response.stream(ndjson(zodCodecFixture(z.object({ at: dateTime })))) },
+          responses: { 200: response.stream(ndjson(z.object({ at: dateTime }))) },
         }),
       },
     })

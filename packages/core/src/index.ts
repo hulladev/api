@@ -27,7 +27,7 @@ export type { HttpMethod } from './http'
 export { QueryTransportError } from './query'
 export type { QueryCardinality, QueryTransportPlan } from './query'
 export { codec, validation } from './validation'
-export type { AsyncSchema, CodecOptions, CodecSchema, IdentitySchema, ObjectSchema } from './validation'
+export type { AsyncSchema, CodecOptions, CodecSchema, IdentitySchema, ObjectSchema, SchemaOutbound } from './validation'
 export { request } from './request'
 export type {
   AnyRequestBody,

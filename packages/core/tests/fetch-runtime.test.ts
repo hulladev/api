@@ -1,4 +1,3 @@
-import * as v from 'valibot'
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
 import { codec, defineContract, request, response, route, router } from '../src'
@@ -6,54 +5,22 @@ import { defineClient } from '../src/client'
 import { defineServer, ServerRuntimeError } from '../src/server'
 import { createFetchHandler, type FetchHandler } from '../src/server'
 import { ndjson } from '../src/stream'
-import { zodCodecFixture } from './zod-fixture'
 
-const dateTime = zodCodecFixture(
-  z.codec(z.iso.datetime(), z.date(), {
-    decode: (value) => new Date(value),
-    encode: (value) => value.toISOString(),
-  })
-)
+const dateTime = z.codec(z.iso.datetime(), z.date(), {
+  decode: (value) => new Date(value),
+  encode: (value) => value.toISOString(),
+})
 
-const user = zodCodecFixture(
-  z.object({
-    id: z.string(),
-    organizationId: z.string(),
-    createdAt: dateTime,
-  })
-)
+const user = z.object({
+  id: z.string(),
+  organizationId: z.string(),
+  createdAt: dateTime,
+})
 
-const directionalBodySchemas = [
-  {
-    name: 'Zod',
-    schema: zodCodecFixture(
-      z.object({
-        createdAt: z.codec(z.iso.datetime(), z.date(), {
-          decode: (value) => new Date(value),
-          encode: (value) => value.toISOString(),
-        }),
-      })
-    ),
-  },
-  {
-    name: 'Valibot',
-    schema: codec({
-      decode: v.object({
-        createdAt: v.pipe(
-          v.string(),
-          v.isoTimestamp(),
-          v.transform((value) => new Date(value))
-        ),
-      }),
-      encode: v.object({
-        createdAt: v.pipe(
-          v.date(),
-          v.transform((value) => value.toISOString())
-        ),
-      }),
-    }),
-  },
-] as const
+const directionalBodySchema = codec(z.object({ createdAt: z.iso.datetime() }), z.object({ createdAt: z.date() }), {
+  decode: ({ createdAt }) => ({ createdAt: new Date(createdAt) }),
+  encode: ({ createdAt }) => ({ createdAt: createdAt.toISOString() }),
+})
 
 const contract = defineContract({
   basePath: '/api',
@@ -69,19 +36,14 @@ const contract = defineContract({
       routes: {
         createUser: route.post('/users/:userId', {
           params: z.object({ userId: z.string().min(1) }),
-          query: request.query(
-            zodCodecFixture(
-              z.object({
-                notify: z.codec(z.enum(['true', 'false']), z.boolean(), {
-                  decode: (value) => value === 'true',
-                  encode: (value) => (value ? 'true' : 'false'),
-                }),
-              })
-            ),
-            { repeated: [] }
-          ),
+          query: z.object({
+            notify: z.codec(z.enum(['true', 'false']), z.boolean(), {
+              decode: (value) => value === 'true',
+              encode: (value) => (value ? 'true' : 'false'),
+            }),
+          }),
           headers: z.object({ 'x-actor-id': z.string().min(1) }),
-          body: zodCodecFixture(z.object({ createdAt: dateTime })),
+          body: z.object({ createdAt: dateTime }),
           responses: {
             201: response.json(user, { headers: z.object({ etag: z.string() }) }),
           },
@@ -122,7 +84,7 @@ function buildServer(options: { readonly authorized?: boolean } = {}) {
             body: {
               id: input.params.userId,
               organizationId: input.params.organizationId,
-              createdAt: input.body.createdAt,
+              createdAt: input.body.createdAt.toISOString(),
             },
           }
         },
@@ -139,37 +101,175 @@ function buildServer(options: { readonly authorized?: boolean } = {}) {
 }
 
 describe('createFetchHandler', () => {
-  test.each(directionalBodySchemas)(
-    'round trips directional $name request bodies through the public Fetch boundary',
-    async ({ schema }) => {
-      const bodyContract = defineContract({
-        routes: {
-          echo: route.post('/echo', {
-            body: schema,
-            responses: { 200: response.json(schema) },
-          }),
+  test('round trips one application value through a core codec at both Fetch boundaries', async () => {
+    const schema = directionalBodySchema
+    const bodyContract = defineContract({
+      routes: {
+        echo: route.post('/echo', {
+          body: schema,
+          responses: { 200: response.json(schema) },
+        }),
+      },
+    })
+    const implementation = defineServer(bodyContract).build({
+      echo: ({ body }) => ({ status: 200, body }),
+    })
+    const handler = createFetchHandler(implementation)
+    let encodedRequestBody: unknown
+    const client = defineClient(bodyContract, {
+      baseUrl: 'https://api.example.com',
+      fetch: async (requestValue) => {
+        encodedRequestBody = await requestValue.clone().json()
+        return handler(requestValue)
+      },
+    }).build()
+    const createdAt = new Date('2026-08-06T10:00:00.000Z')
+
+    const result = await client.echo({ body: { createdAt } })
+
+    expect(encodedRequestBody).toEqual({ createdAt: createdAt.toISOString() })
+    expect(result).toMatchObject({ status: 200, body: { createdAt } })
+  })
+
+  test('keeps vendor codecs directional unless a core codec is explicitly passed', async () => {
+    let nativeDecodeCalls = 0
+    let nativeEncodeCalls = 0
+    const nativeCodec = z.codec(z.iso.datetime(), z.date(), {
+      decode: (value) => {
+        nativeDecodeCalls += 1
+        return new Date(value)
+      },
+      encode: (value) => {
+        nativeEncodeCalls += 1
+        return value.toISOString()
+      },
+    })
+
+    let explicitDecodeCalls = 0
+    let explicitEncodeCalls = 0
+    const explicitCodec = codec(z.iso.datetime(), z.date(), {
+      decode: (value) => {
+        explicitDecodeCalls += 1
+        return new Date(value)
+      },
+      encode: (value) => {
+        explicitEncodeCalls += 1
+        return value.toISOString()
+      },
+    })
+
+    const codecContract = defineContract({
+      routes: {
+        directional: route.post('/directional', {
+          body: nativeCodec,
+          responses: { 200: response.json(nativeCodec) },
+        }),
+        bidirectional: route.post('/bidirectional', {
+          body: explicitCodec,
+          responses: { 200: response.json(explicitCodec) },
+        }),
+      },
+    })
+    const handler = createFetchHandler(
+      defineServer(codecContract).build({
+        directional: ({ body }) => {
+          expectTypeOf(body).toEqualTypeOf<Date>()
+          return { status: 200, body: body.toISOString() }
+        },
+        bidirectional: ({ body }) => {
+          expectTypeOf(body).toEqualTypeOf<Date>()
+          return { status: 200, body }
         },
       })
-      const implementation = defineServer(bodyContract).build({
-        echo: ({ body }) => ({ status: 200, body }),
-      })
-      const handler = createFetchHandler(implementation)
-      let encodedRequestBody: unknown
-      const client = defineClient(bodyContract, {
-        baseUrl: 'https://api.example.com',
-        fetch: async (requestValue) => {
-          encodedRequestBody = await requestValue.clone().json()
-          return handler(requestValue)
+    )
+    const wireBodies: unknown[] = []
+    const client = defineClient(codecContract, {
+      baseUrl: 'https://api.example.com',
+      fetch: async (request) => {
+        wireBodies.push(await request.clone().json())
+        return handler(request)
+      },
+    }).build()
+    const isoDate = '2026-08-17T18:00:00.000Z'
+    const date = new Date(isoDate)
+
+    expectTypeOf<Parameters<typeof client.directional>[0]['body']>().toEqualTypeOf<string>()
+    expectTypeOf<Parameters<typeof client.bidirectional>[0]['body']>().toEqualTypeOf<Date>()
+
+    const directional = await client.directional({ body: isoDate })
+    const bidirectional = await client.bidirectional({ body: date })
+
+    expect(directional).toMatchObject({ status: 200, body: date })
+    expect(bidirectional).toMatchObject({ status: 200, body: date })
+    expect(wireBodies).toEqual([isoDate, isoDate])
+    expect(nativeDecodeCalls).toBeGreaterThan(0)
+    expect(nativeEncodeCalls).toBe(0)
+    expect(explicitDecodeCalls).toBe(2)
+    expect(explicitEncodeCalls).toBe(2)
+  })
+
+  test('encodes codec application values before path, query, and header transport', async () => {
+    const params = codec(z.object({ id: z.string() }), z.object({ id: z.int() }), {
+      decode: ({ id }) => ({ id: Number(id) }),
+      encode: ({ id }) => ({ id: String(id) }),
+    })
+    const query = codec(z.object({ page: z.string() }), z.object({ page: z.int() }), {
+      decode: ({ page }) => ({ page: Number(page) }),
+      encode: ({ page }) => ({ page: String(page) }),
+    })
+    const headers = codec(
+      z.object({ 'x-enabled': z.enum(['true', 'false']) }),
+      z.object({ 'x-enabled': z.boolean() }),
+      {
+        decode: (value) => ({ 'x-enabled': value['x-enabled'] === 'true' }),
+        encode: (value) => ({ 'x-enabled': value['x-enabled'] ? ('true' as const) : ('false' as const) }),
+      }
+    )
+    const codecContract = defineContract({
+      routes: {
+        inspect: route.get('/users/:id', {
+          params,
+          query,
+          headers,
+          responses: { 200: response.json(directionalBodySchema, { headers }) },
+        }),
+      },
+    })
+    const createdAt = new Date('2026-08-17T18:00:00.000Z')
+    const handler = createFetchHandler(
+      defineServer(codecContract).build({
+        inspect: (input) => {
+          expectTypeOf(input.params.id).toEqualTypeOf<number>()
+          expectTypeOf(input.query.page).toEqualTypeOf<number>()
+          expectTypeOf(input.headers['x-enabled']).toEqualTypeOf<boolean>()
+          expect(input).toMatchObject({
+            params: { id: 2 },
+            query: { page: 3 },
+            headers: { 'x-enabled': true },
+          })
+          return { status: 200, headers: { 'x-enabled': true }, body: { createdAt } }
         },
-      }).build()
-      const createdAt = new Date('2026-08-06T10:00:00.000Z')
+      })
+    )
+    let requestValue: Request | undefined
+    const client = defineClient(codecContract, {
+      baseUrl: 'https://api.example.com',
+      fetch: (request) => {
+        requestValue = request as Request
+        return handler(request)
+      },
+    }).build()
 
-      const result = await client.echo({ body: { createdAt } })
+    const result = await client.inspect({
+      params: { id: 2 },
+      query: { page: 3 },
+      headers: { 'x-enabled': true },
+    })
 
-      expect(encodedRequestBody).toEqual({ createdAt: createdAt.toISOString() })
-      expect(result).toMatchObject({ status: 200, body: { createdAt } })
-    }
-  )
+    expect(requestValue?.url).toBe('https://api.example.com/users/2?page=3')
+    expect(requestValue?.headers.get('x-enabled')).toBe('true')
+    expect(result).toMatchObject({ status: 200, headers: { 'x-enabled': true }, body: { createdAt } })
+  })
 
   test('runs a typed client round trip through the shared Fetch transport', async () => {
     const createdAt = new Date('2026-08-14T12:34:56.000Z')
@@ -185,9 +285,9 @@ describe('createFetchHandler', () => {
     await expect(
       client.organizations.createUser({
         params: { organizationId: 'hulla dev', userId: 'user/1' },
-        query: { notify: true },
+        query: { notify: 'true' },
         headers: { 'x-actor-id': 'actor-1' },
-        body: { createdAt },
+        body: { createdAt: createdAt.toISOString() },
       })
     ).resolves.toEqual({
       status: 201,
@@ -258,7 +358,7 @@ describe('createFetchHandler', () => {
           body: {
             id: input.params.userId,
             organizationId: input.params.organizationId,
-            createdAt: input.body.createdAt,
+            createdAt: input.body.createdAt.toISOString(),
           },
         }),
       },
@@ -414,7 +514,7 @@ describe('createFetchHandler', () => {
           body: {
             id: input.params.userId,
             organizationId: input.params.organizationId,
-            createdAt: input.body.createdAt,
+            createdAt: input.body.createdAt.toISOString(),
           },
         }),
       },
@@ -494,7 +594,7 @@ describe('createFetchHandler', () => {
           body: {
             id: input.params.userId,
             organizationId: input.params.organizationId,
-            createdAt: input.body.createdAt,
+            createdAt: input.body.createdAt.toISOString(),
           },
         }),
       },

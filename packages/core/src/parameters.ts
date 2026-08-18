@@ -44,18 +44,23 @@ export function compilePathParameterEncoder(
       readonly encoded: Readonly<Record<string, unknown>>
     }
     const steps = plans.map(({ declaration, encode }) => {
-      return mapExecutionStep(encode(parameterGroup(declaration, value)), (encoded) => {
-        if (!isRecord(encoded)) throw new TypeError('Encoded route parameters must be an object')
-        return { declaration, encoded }
+      const group = parameterGroup(declaration, value)
+      const encoded = encode === undefined ? group : encode(group)
+      return mapExecutionStep(encoded, (resolved) => {
+        if (!isRecord(resolved)) throw new TypeError('Encoded route parameters must be an object')
+        return { declaration, encoded: resolved }
       })
     })
     const resolved = (steps.some(isPromiseLike) ? Promise.all(steps) : steps) as ExecutionStep<readonly EncodedGroup[]>
 
     return mapExecutionStep(resolved, (groups) => {
-      const encodedValues: Record<string, unknown> = {}
+      const encodedValues: Record<string, string> = {}
       for (const { declaration, encoded } of groups) {
         for (const name of declaration.names) {
           const parameter = encoded[name]
+          if (parameter === undefined || parameter === null) {
+            throw new TypeError(`Route parameter "${name}" must be defined`)
+          }
           if (typeof parameter !== 'string') {
             throw new TypeError(`Route parameter "${name}" must encode to a string`)
           }

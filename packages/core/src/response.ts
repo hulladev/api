@@ -5,10 +5,9 @@ import { defineStreamResponse, type FormattedStreamResponseBody, type StreamResp
 import {
   isSchema,
   type AnySchema,
-  type CodecSchema,
-  type IdentitySchema,
   type NonSchemaOptions,
   type ObjectSchema,
+  type SchemaInput,
   type SchemaOutput,
 } from './validation'
 
@@ -137,21 +136,21 @@ type EmptyResponseOptions<Headers extends ResponseHeaders | undefined> = {
   readonly headers?: Headers
 }
 
-type WireSchema<Wire> = CodecSchema<Wire, unknown> | IdentitySchema<Wire>
+type CheckedWireSchema<Schema extends AnySchema, Wire> = SchemaInput<Schema> extends Wire ? Schema : never
 type SchemaResponseBodyKind = Exclude<ResponseBodyKind, 'empty' | 'raw' | 'stream'>
 
 type BodyResponseFactory<
   Kind extends SchemaResponseBodyKind,
   Wire,
-  DefaultSchema extends WireSchema<Wire>,
+  DefaultSchema extends AnySchema,
   DefaultContentType extends string,
 > = {
   <
-    const Schema extends WireSchema<Wire>,
+    const Schema extends AnySchema,
     const Headers extends ResponseHeaders | undefined = undefined,
     const ContentType extends string = DefaultContentType,
   >(
-    schema: Schema,
+    schema: CheckedWireSchema<Schema, Wire>,
     options?: ResponseOptions<Headers, ContentType>
   ): RouteResponse<ResponseBody<Kind, Schema>, Headers, ContentType>
   <
@@ -165,7 +164,7 @@ type BodyResponseFactory<
 function defineDefaultBodyResponse<
   const Kind extends SchemaResponseBodyKind,
   Wire,
-  const DefaultSchema extends WireSchema<Wire>,
+  const DefaultSchema extends AnySchema,
   const DefaultContentType extends string,
 >(
   kind: Kind,
@@ -173,7 +172,7 @@ function defineDefaultBodyResponse<
   defaultContentType: DefaultContentType
 ): BodyResponseFactory<Kind, Wire, DefaultSchema, DefaultContentType> {
   function bodyResponse<
-    const Schema extends WireSchema<Wire>,
+    const Schema extends AnySchema,
     const Headers extends ResponseHeaders | undefined = undefined,
     const ContentType extends string = DefaultContentType,
   >(

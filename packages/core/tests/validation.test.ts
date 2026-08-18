@@ -7,16 +7,15 @@ import {
   codec,
   compileSchemaExecution,
   decodeSchema,
-  defineSchema,
   encodeSchema,
   isSchema,
   SchemaValidationError,
   validation,
   type AsyncSchema,
   type SchemaInput,
+  type SchemaOutbound,
   type SchemaOutput,
 } from '../src/validation'
-import { zodCodecFixture } from './zod-fixture'
 
 function transformSchema<Input, Output>(
   transform: (value: Input) => Output,
@@ -39,34 +38,12 @@ const identitySchemas = [
   { name: 'Valibot', schema: valibotIdentity },
 ] as const
 
-const zodDateCodec = zodCodecFixture(
-  z.object({
-    createdAt: z.codec(z.iso.datetime(), z.date(), {
-      decode: (value) => new Date(value),
-      encode: (value) => value.toISOString(),
-    }),
-  })
-)
-const valibotDateCodec = codec({
-  decode: v.object({
-    createdAt: v.pipe(
-      v.string(),
-      v.isoTimestamp(),
-      v.transform((value) => new Date(value))
-    ),
-  }),
-  encode: v.object({
-    createdAt: v.pipe(
-      v.date(),
-      v.transform((value) => value.toISOString())
-    ),
+const zodDateCodec = z.object({
+  createdAt: z.codec(z.iso.datetime(), z.date(), {
+    decode: (value) => new Date(value),
+    encode: (value) => value.toISOString(),
   }),
 })
-const directionalSchemas = [
-  { name: 'Zod', schema: zodDateCodec },
-  { name: 'Valibot', schema: valibotDateCodec },
-] as const
-
 describe('Standard Schema validation', () => {
   test.each([
     { name: 'Zod', schema: z.string() },
@@ -77,7 +54,6 @@ describe('Standard Schema validation', () => {
     expect(compileSchemaExecution(schema, { location: 'body' })).toBe(body)
     expect(compileSchemaExecution(schema, { location: 'response' })).not.toBe(body)
     expect(body.decode('value')).toBe('value')
-    expect(body.encode('value')).toBe('value')
   })
 
   test('marks asynchronous schemas without mutating validator-owned objects', async () => {
@@ -99,10 +75,11 @@ describe('Standard Schema validation', () => {
   })
 
   test('recognizes schemas structurally', () => {
-    const local = defineSchema({
-      name: 'a string',
-      check: (value: unknown): value is string => typeof value === 'string',
-    })
+    const local = transformSchema(
+      (value: string) => value,
+      (value: unknown): value is string => typeof value === 'string',
+      'Expected a string'
+    )
 
     expect(isSchema(local)).toBe(true)
     expect(isSchema(z.string())).toBe(true)
@@ -111,50 +88,11 @@ describe('Standard Schema validation', () => {
     expect(isSchema({})).toBe(false)
   })
 
-  test('creates dependency-free identity schemas that validate both directions', async () => {
-    const positiveInteger = defineSchema({
-      name: 'a positive integer',
-      check: (value: unknown): value is number => Number.isInteger(value) && Number(value) > 0,
-    })
-
-    await expect(decodeSchema(positiveInteger, 42)).resolves.toBe(42)
-    await expect(encodeSchema(positiveInteger, 42)).resolves.toBe(42)
-    await expect(decodeSchema(positiveInteger, -1)).rejects.toMatchObject({
-      name: 'SchemaValidationError',
-      issues: [{ message: 'Expected a positive integer' }],
-    })
-    expectTypeOf<SchemaInput<typeof positiveInteger>>().toEqualTypeOf<number>()
-    expectTypeOf<SchemaOutput<typeof positiveInteger>>().toEqualTypeOf<number>()
-  })
-
-  test('combines Standard Schemas into an explicitly reversible codec', async () => {
-    const numberString = codec({
-      decode: transformSchema(
-        (value: string) => Number(value),
-        (value: unknown): value is string => typeof value === 'string' && /^\d+$/.test(value),
-        'Expected an integer string'
-      ),
-      encode: transformSchema(
-        (value: number) => String(value),
-        (value: unknown): value is number => Number.isInteger(value),
-        'Expected an integer'
-      ),
-    })
-
-    await expect(decodeSchema(numberString, '42')).resolves.toBe(42)
-    await expect(encodeSchema(numberString, 42)).resolves.toBe('42')
-    await expect(decodeSchema(numberString, '4.2')).rejects.toBeInstanceOf(SchemaValidationError)
-    await expect(encodeSchema(numberString, 4.2)).rejects.toBeInstanceOf(SchemaValidationError)
-    expectTypeOf<SchemaInput<typeof numberString>>().toEqualTypeOf<string>()
-    expectTypeOf<SchemaOutput<typeof numberString>>().toEqualTypeOf<number>()
-  })
-
   test.each(identitySchemas)('uses $name schemas directly for identity contracts', async ({ schema }) => {
     const value = { id: 'user-1', active: true }
 
     expect(isSchema(schema)).toBe(true)
     await expect(decodeSchema(schema, value)).resolves.toEqual(value)
-    await expect(encodeSchema(schema, value)).resolves.toEqual(value)
     await expect(decodeSchema(schema, { id: 1, active: true })).rejects.toBeInstanceOf(SchemaValidationError)
   })
 
@@ -165,20 +103,72 @@ describe('Standard Schema validation', () => {
     expectTypeOf<SchemaOutput<typeof valibotIdentity>>().toEqualTypeOf<{ id: string; active: boolean }>()
   })
 
-  test.each(directionalSchemas)('builds directional contracts from paired $name schemas', async ({ schema }) => {
+  test('uses Standard Schema forward transforms for native directional schemas', async () => {
+    const schema = zodDateCodec
     const application = { createdAt: new Date('2026-08-05T10:00:00.000Z') }
     const wire = { createdAt: '2026-08-05T10:00:00.000Z' }
 
     await expect(decodeSchema(schema, wire)).resolves.toEqual(application)
-    await expect(encodeSchema(schema, application)).resolves.toEqual(wire)
     await expect(decodeSchema(schema, { createdAt: 'invalid' })).rejects.toBeInstanceOf(SchemaValidationError)
   })
 
-  test('preserves directional types from both validators', () => {
+  test('combines representation schemas and explicit transforms into a codec', async () => {
+    const numberString = codec(z.string().regex(/^\d+$/), z.number().int(), {
+      decode: Number,
+      encode: String,
+    })
+
+    await expect(decodeSchema(numberString, '42')).resolves.toBe(42)
+    await expect(encodeSchema(numberString, 42)).resolves.toBe('42')
+    await expect(decodeSchema(numberString, '4.2')).rejects.toBeInstanceOf(SchemaValidationError)
+    await expect(encodeSchema(numberString, 4.2)).rejects.toBeInstanceOf(SchemaValidationError)
+    expectTypeOf<SchemaInput<typeof numberString>>().toEqualTypeOf<string>()
+    expectTypeOf<SchemaOutput<typeof numberString>>().toEqualTypeOf<number>()
+    expectTypeOf<SchemaOutbound<typeof numberString>>().toEqualTypeOf<number>()
+  })
+
+  test('supports codecs built from different Standard Schema vendors', async () => {
+    const date = codec(v.string(), v.date(), {
+      decode: (value) => new Date(value),
+      encode: (value) => value.toISOString(),
+    })
+    const value = new Date('2026-08-17T12:00:00.000Z')
+
+    await expect(decodeSchema(date, value.toISOString())).resolves.toEqual(value)
+    await expect(encodeSchema(date, value)).resolves.toBe(value.toISOString())
+  })
+
+  test('does not promote ordinary directional schemas to codecs', () => {
+    const directional = z.string().transform(Number)
+    const nativeZodCodec = z.codec(z.string(), z.number(), { decode: Number, encode: String })
+
+    expect(compileSchemaExecution(directional).encode).toBeUndefined()
+    expect(compileSchemaExecution(nativeZodCodec).encode).toBeUndefined()
+    expectTypeOf<SchemaOutbound<typeof directional>>().toEqualTypeOf<string>()
+    expectTypeOf<SchemaOutbound<typeof nativeZodCodec>>().toEqualTypeOf<string>()
+  })
+
+  test('requires identity representation schemas at codec endpoints', () => {
+    void (() => {
+      codec(
+        // @ts-expect-error Type-changing transforms belong in codec decode.
+        z.string().transform(Number),
+        z.number(),
+        { decode: Number, encode: String }
+      )
+
+      codec(
+        // @ts-expect-error Coercion belongs in codec decode.
+        z.coerce.number(),
+        z.number(),
+        { decode: Number, encode: Number }
+      )
+    })
+  })
+
+  test('preserves native Zod directional types', () => {
     expectTypeOf<SchemaInput<typeof zodDateCodec>>().toEqualTypeOf<{ createdAt: string }>()
     expectTypeOf<SchemaOutput<typeof zodDateCodec>>().toEqualTypeOf<{ createdAt: Date }>()
-    expectTypeOf<SchemaInput<typeof valibotDateCodec>>().toEqualTypeOf<{ createdAt: string }>()
-    expectTypeOf<SchemaOutput<typeof valibotDateCodec>>().toEqualTypeOf<{ createdAt: Date }>()
   })
 
   test('uses forward validation for plain identity Standard Schemas', async () => {
@@ -189,7 +179,6 @@ describe('Standard Schema validation', () => {
     )
 
     await expect(decodeSchema(upperCase, 'hello')).resolves.toBe('HELLO')
-    await expect(encodeSchema(upperCase, 'hello')).resolves.toBe('HELLO')
   })
 
   test.each(identitySchemas)('adds locations to $name issues without replacing their metadata', async ({ schema }) => {

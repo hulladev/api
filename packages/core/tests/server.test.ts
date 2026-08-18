@@ -1,7 +1,6 @@
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
 import { defineContract, type Contract } from '../src/contract'
-import { request } from '../src/request'
 import { response } from '../src/response'
 import { route } from '../src/route'
 import { router } from '../src/router'
@@ -15,16 +14,13 @@ import {
   type ServerRouteMetadata,
 } from '../src/server'
 import { createServerResponse } from '../src/server/response'
-import { zodCodecFixture } from './zod-fixture'
 
-const dateTime = zodCodecFixture(
-  z.codec(z.iso.datetime(), z.date(), {
-    decode: (value) => new Date(value),
-    encode: (value) => value.toISOString(),
-  })
-)
+const dateTime = z.codec(z.iso.datetime(), z.date(), {
+  decode: (value) => new Date(value),
+  encode: (value) => value.toISOString(),
+})
 
-const user = zodCodecFixture(z.object({ id: z.string(), organizationId: z.string(), createdAt: dateTime }))
+const user = z.object({ id: z.string(), organizationId: z.string(), createdAt: dateTime })
 const apiError = response.json(z.object({ code: z.enum(['CONFLICT', 'UNAUTHORIZED']), message: z.string().optional() }))
 
 const contract = defineContract({
@@ -36,29 +32,19 @@ const contract = defineContract({
       params: z.object({ organizationId: z.string() }),
       routes: {
         listUsers: route.get('/users', {
-          query: request.query(
-            zodCodecFixture(
-              z.object({ limit: z.codec(z.string(), z.number().int(), { decode: Number, encode: String }) })
-            ),
-            { repeated: [] }
-          ),
-          responses: { 200: response.json(zodCodecFixture(z.array(user))) },
+          query: z.object({ limit: z.codec(z.string(), z.number().int(), { decode: Number, encode: String }) }),
+          responses: { 200: response.json(z.array(user)) },
         }),
         createUser: route.post('/users/:userId', {
           params: z.object({ userId: z.string() }),
-          query: request.query(
-            zodCodecFixture(
-              z.object({
-                notify: z.codec(z.enum(['true', 'false']), z.boolean(), {
-                  decode: (value) => value === 'true',
-                  encode: (value) => (value ? 'true' : 'false'),
-                }),
-              })
-            ),
-            { repeated: [] }
-          ),
+          query: z.object({
+            notify: z.codec(z.enum(['true', 'false']), z.boolean(), {
+              decode: (value) => value === 'true',
+              encode: (value) => (value ? 'true' : 'false'),
+            }),
+          }),
           headers: z.object({ 'x-actor-id': z.string() }),
-          body: zodCodecFixture(z.object({ createdAt: dateTime })),
+          body: z.object({ createdAt: dateTime }),
           responses: {
             201: response.json(user, { headers: z.object({ etag: z.string() }) }),
             409: apiError,
@@ -85,7 +71,7 @@ function handlers() {
               body: {
                 id: input.params.userId,
                 organizationId: input.params.organizationId,
-                createdAt: input.body.createdAt,
+                createdAt: input.body.createdAt.toISOString(),
               },
               headers: { etag: input.params.userId },
             }
@@ -139,7 +125,7 @@ describe('defineServer', () => {
                 body: {
                   id: input.params.userId,
                   organizationId: input.params.organizationId,
-                  createdAt: input.body.createdAt,
+                  createdAt: input.body.createdAt.toISOString(),
                 },
                 headers: { etag: input.params.userId },
               }
@@ -266,7 +252,7 @@ describe('defineServer', () => {
     type Conflict = Extract<Result, { readonly status: 409 }>
 
     expectTypeOf<Result['status']>().toEqualTypeOf<201 | 409>()
-    expectTypeOf<Created['body']>().toEqualTypeOf<z.output<typeof user>>()
+    expectTypeOf<Created['body']>().toEqualTypeOf<z.input<typeof user>>()
     expectTypeOf<Created['headers']>().toEqualTypeOf<{ etag: string }>()
     expectTypeOf<Conflict['body']>().toEqualTypeOf<{
       code: 'CONFLICT' | 'UNAUTHORIZED'

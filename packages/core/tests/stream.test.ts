@@ -3,7 +3,7 @@ import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
 import { response } from '../src/response'
 import { defineStreamFormat, ndjson, sseJson, type StreamSource } from '../src/stream'
-import { codec, type SchemaInput, type SchemaOutput } from '../src/validation'
+import { codec, type SchemaInput, type SchemaOutbound, type SchemaOutput } from '../src/validation'
 
 async function collect<Value>(source: AsyncIterable<Value>): Promise<Value[]> {
   const values: Value[] = []
@@ -27,23 +27,14 @@ function chunks(value: string, offsets: readonly number[]): Uint8Array[] {
 
 describe('stream formats', () => {
   test('adds typed format and item schema metadata to stream responses', () => {
-    const schema = codec({
-      decode: v.object({
-        id: v.string(),
-        createdAt: v.pipe(
-          v.string(),
-          v.isoTimestamp(),
-          v.transform((value) => new Date(value))
-        ),
-      }),
-      encode: v.object({
-        id: v.string(),
-        createdAt: v.pipe(
-          v.date(),
-          v.transform((value) => value.toISOString())
-        ),
-      }),
-    })
+    const schema = codec(
+      z.object({ id: z.string(), createdAt: z.iso.datetime() }),
+      z.object({ id: z.string(), createdAt: z.date() }),
+      {
+        decode: (value) => ({ ...value, createdAt: new Date(value.createdAt) }),
+        encode: (value) => ({ ...value, createdAt: value.createdAt.toISOString() }),
+      }
+    )
     const headers = z.object({ etag: z.string() })
     const definition = ndjson(schema)
     const declaration = response.stream(definition, { headers })
@@ -68,6 +59,10 @@ describe('stream formats', () => {
       createdAt: string
     }>()
     expectTypeOf<SchemaOutput<typeof declaration.body.schema>>().toEqualTypeOf<{
+      id: string
+      createdAt: Date
+    }>()
+    expectTypeOf<SchemaOutbound<typeof declaration.body.schema>>().toEqualTypeOf<{
       id: string
       createdAt: Date
     }>()

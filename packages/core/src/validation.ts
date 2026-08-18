@@ -20,10 +20,7 @@ export type ObjectSchema = StandardSchemaV1<Readonly<Record<string, unknown>>, R
 
 declare const asyncSchemaType: unique symbol
 
-export type AsyncSchema<Schema extends AnySchema = AnySchema> = StandardSchemaV1<
-  SchemaInput<Schema>,
-  SchemaOutput<Schema>
-> & {
+export type AsyncSchema<Schema extends AnySchema = AnySchema> = Schema & {
   readonly [asyncSchemaType]: Schema
 }
 
@@ -32,7 +29,7 @@ export type SchemaStep<Value> = ExecutionStep<Value>
 
 export type SchemaExecutionPlan<Schema extends AnySchema = AnySchema> = {
   readonly decode: (value: unknown) => SchemaStep<SchemaOutput<Schema>>
-  readonly encode: (value: SchemaOutput<Schema>) => SchemaStep<SchemaInput<Schema>>
+  readonly encode?: (value: SchemaOutput<Schema>) => SchemaStep<SchemaInput<Schema>>
 }
 
 type HullaCodecProperties<Wire, Application> = {
@@ -40,24 +37,33 @@ type HullaCodecProperties<Wire, Application> = {
   readonly encode: StandardSchemaV1<Application, Wire>
 }
 
-export type CodecSchema<
-  Wire,
-  Application,
-  Decode extends StandardSchemaV1<Wire, Application> = StandardSchemaV1<Wire, Application>,
-> = Decode & {
+declare const codecSchemaType: unique symbol
+
+export type CodecSchema<Wire, Application> = StandardSchemaV1<Wire, Application> & {
   readonly '~hulla': HullaCodecProperties<Wire, Application>
+  readonly [codecSchemaType]: {
+    readonly wire: Wire
+    readonly application: Application
+  }
 }
 
 export type CodecOptions<Wire, Application> = {
-  readonly decode: StandardSchemaV1<Wire, Application>
-  readonly encode: StandardSchemaV1<Application, Wire>
+  readonly decode: (value: Wire) => SchemaStep<Application>
+  readonly encode: (value: Application) => SchemaStep<Wire>
 }
 
-export type SchemaDefinition<Value> = {
-  readonly name: string
-  readonly message?: string
-  readonly check: (value: unknown) => value is Value
+type IdentityCheckedSchema<Schema extends AnySchema> = [SchemaInput<Schema>] extends [SchemaOutput<Schema>]
+  ? [SchemaOutput<Schema>] extends [SchemaInput<Schema>]
+    ? Schema
+    : never
+  : never
+
+/** The value supplied at an outbound boundary: application values for codecs, schema inputs otherwise. */
+export type SchemaOutbound<Schema extends AnySchema> = Schema extends {
+  readonly [codecSchemaType]: unknown
 }
+  ? SchemaOutput<Schema>
+  : SchemaInput<Schema>
 
 export type SchemaValidationOptions = {
   readonly location?: APIErrorLocation
@@ -86,6 +92,55 @@ function isObject(value: unknown): value is Record<PropertyKey, unknown> {
   return typeof value === 'object' && value !== null
 }
 
+function codecValidation<Input, Output>(
+  source: StandardSchemaV1<Input, Input>,
+  target: StandardSchemaV1<Output, Output>,
+  transform: (value: Input) => SchemaStep<Output>
+): StandardSchemaV1<Input, Output>['~standard']['validate'] {
+  return (value: unknown) => {
+    const result = mapExecutionStep(source['~standard'].validate(value), (sourceResult) => {
+      if (sourceResult.issues !== undefined) return sourceResult
+      return mapExecutionStep(transform(sourceResult.value), (transformed) => target['~standard'].validate(transformed))
+    })
+    return isPromiseLike(result) ? Promise.resolve(result) : result
+  }
+}
+
+/** Defines an explicitly bidirectional mapping between wire and application representations. */
+export function codec<const WireSchema extends AnySchema, const ApplicationSchema extends AnySchema>(
+  wireSchema: IdentityCheckedSchema<WireSchema>,
+  applicationSchema: IdentityCheckedSchema<ApplicationSchema>,
+  options: CodecOptions<SchemaOutput<WireSchema>, SchemaOutput<ApplicationSchema>>
+): CodecSchema<SchemaOutput<WireSchema>, SchemaOutput<ApplicationSchema>> {
+  if (!isSchema(wireSchema) || !isSchema(applicationSchema)) {
+    throw new TypeError('Codec representations must be Standard Schemas')
+  }
+  if (typeof options !== 'object' || options === null) throw new TypeError('Codec options must be an object')
+  if (typeof options.decode !== 'function') throw new TypeError('Codec decode must be a function')
+  if (typeof options.encode !== 'function') throw new TypeError('Codec encode must be a function')
+
+  type Wire = SchemaOutput<WireSchema>
+  type Application = SchemaOutput<ApplicationSchema>
+  const wire = wireSchema as StandardSchemaV1<Wire, Wire>
+  const application = applicationSchema as StandardSchemaV1<Application, Application>
+  const encode: StandardSchemaV1<Application, Wire> = Object.freeze({
+    '~standard': Object.freeze({
+      version: 1 as const,
+      vendor: '@hulla/api',
+      validate: codecValidation(application, wire, options.encode),
+    }),
+  })
+
+  return Object.freeze({
+    '~standard': Object.freeze({
+      version: 1 as const,
+      vendor: '@hulla/api',
+      validate: codecValidation(wire, application, options.decode),
+    }),
+    '~hulla': Object.freeze({ version: 1 as const, encode }),
+  }) as CodecSchema<Wire, Application>
+}
+
 export function isSchema(value: unknown): value is AnySchema {
   if (!isObject(value)) return false
 
@@ -98,6 +153,10 @@ export function isSchema(value: unknown): value is AnySchema {
   )
 }
 
+function schemaSource<Schema extends AnySchema>(schema: Schema): AnySchema {
+  return asyncSchemaSources.get(schema as object) ?? schema
+}
+
 function isHullaCodec<Wire, Application>(
   schema: StandardSchemaV1<Wire, Application>
 ): schema is CodecSchema<Wire, Application> {
@@ -105,8 +164,17 @@ function isHullaCodec<Wire, Application>(
   return isObject(properties) && properties['version'] === 1 && isSchema(properties['encode'])
 }
 
-function schemaSource<Schema extends AnySchema>(schema: Schema): AnySchema {
-  return asyncSchemaSources.get(schema as object) ?? schema
+/** @internal Validates an outbound value and resolves it to the schema's application representation. */
+export function validateSchemaOutbound<const Schema extends AnySchema>(
+  schema: Schema,
+  value: SchemaOutbound<Schema>
+): StandardSchemaV1.Result<SchemaOutput<Schema>> | PromiseLike<StandardSchemaV1.Result<SchemaOutput<Schema>>> {
+  const source = schemaSource(schema) as StandardSchemaV1<SchemaInput<Schema>, SchemaOutput<Schema>>
+  if (!isHullaCodec(source)) return source['~standard'].validate(value)
+
+  return mapExecutionStep(source['~hulla'].encode['~standard'].validate(value), (encoded) =>
+    encoded.issues === undefined ? source['~standard'].validate(encoded.value) : encoded
+  )
 }
 
 export function isAsyncSchema(schema: AnySchema): schema is AsyncSchema {
@@ -152,7 +220,7 @@ function validateWithValue<Output>(
     : validationValue(result, options)
 }
 
-const schemaExecutionPlans = new WeakMap<object, Map<APIErrorLocation | undefined, object>>()
+const schemaExecutionPlans = new WeakMap<object, Map<APIErrorLocation | undefined, SchemaExecutionPlan>>()
 
 /** Compiles schema capability detection and boundary metadata once for repeated execution. */
 export function compileSchemaExecution<const Schema extends AnySchema>(
@@ -180,18 +248,10 @@ export function compileSchemaExecution<const Schema extends AnySchema>(
     encode = asynchronous
       ? (value) => Promise.resolve().then(() => validateWithValue(source['~hulla'].encode, value, options))
       : (value) => validateWithValue(source['~hulla'].encode, value, options)
-  } else {
-    // Standard Schema is directional. Without an explicit @hulla/api codec, the
-    // declaration is an identity schema and validates the same representation in
-    // both directions. Validator-specific reverse APIs must be adapted explicitly.
-    const identitySource = source as StandardSchemaV1<unknown, SchemaInput<Schema>>
-    encode = asynchronous
-      ? (value) => Promise.resolve().then(() => validateWithValue(identitySource, value, options))
-      : (value) => validateWithValue(identitySource, value, options)
   }
 
-  const plan = Object.freeze({ decode, encode }) as SchemaExecutionPlan<Schema>
-  plans.set(options.location, plan)
+  const plan = Object.freeze({ decode, ...(encode === undefined ? {} : { encode }) }) as SchemaExecutionPlan<Schema>
+  plans.set(options.location, plan as unknown as SchemaExecutionPlan)
   return plan
 }
 
@@ -202,15 +262,6 @@ export function decodeSchemaValue<const Schema extends AnySchema>(
   options?: SchemaValidationOptions
 ): SchemaStep<SchemaOutput<Schema>> {
   return compileSchemaExecution(schema, options).decode(value)
-}
-
-/** @internal Encodes an application value while preserving a validator's actual execution mode. */
-export function encodeSchemaValue<const Schema extends AnySchema>(
-  schema: Schema,
-  value: SchemaOutput<Schema>,
-  options?: SchemaValidationOptions
-): SchemaStep<SchemaInput<Schema>> {
-  return compileSchemaExecution(schema, options).encode(value)
 }
 
 /** Validates and transforms a wire value into its application representation. */
@@ -227,63 +278,16 @@ export function decodeSchema<const Schema extends AnySchema>(
 }
 
 /** Validates and transforms an application value into its wire representation. */
-export function encodeSchema<const Schema extends AnySchema>(
-  schema: Schema,
-  value: SchemaOutput<Schema>,
+export function encodeSchema<Wire, Application>(
+  schema: CodecSchema<Wire, Application>,
+  value: Application,
   options?: SchemaValidationOptions
-): Promise<SchemaInput<Schema>> {
+): Promise<Wire> {
   try {
-    return Promise.resolve(encodeSchemaValue(schema, value, options))
+    return Promise.resolve(compileSchemaExecution(schema, options).encode!(value) as Wire | PromiseLike<Wire>)
   } catch (error) {
     return Promise.reject(error)
   }
-}
-
-/** Combines two Standard Schemas into one bidirectional contract schema. */
-export function codec<const Wire, const Application, const Decode extends StandardSchemaV1<Wire, Application>>(
-  options: CodecOptions<Wire, Application> & { readonly decode: Decode }
-): CodecSchema<Wire, Application, Decode> {
-  const schema = Object.create(options.decode) as CodecSchema<Wire, Application, Decode>
-  Object.defineProperties(schema, {
-    '~standard': {
-      configurable: false,
-      enumerable: true,
-      value: options.decode['~standard'],
-      writable: false,
-    },
-    '~hulla': {
-      configurable: false,
-      enumerable: true,
-      value: Object.freeze({ version: 1 as const, encode: options.encode }),
-      writable: false,
-    },
-  })
-  // Keep validator-derived wrappers extensible. Libraries such as Zod lazily
-  // install method properties on first access; freezing the wrapper would make
-  // otherwise ordinary native schema APIs throw.
-  return schema
-}
-
-/** Creates a dependency-free identity schema for a value checked by a predicate. */
-export function defineSchema<const Value>(definition: SchemaDefinition<Value>): CodecSchema<Value, Value> {
-  const schema: StandardSchemaV1<Value, Value> = Object.freeze({
-    '~standard': Object.freeze({
-      version: 1 as const,
-      vendor: 'hulla',
-      validate: (value: unknown): StandardSchemaV1.Result<Value> =>
-        definition.check(value)
-          ? { value }
-          : {
-              issues: [
-                {
-                  message: definition.message ?? `Expected ${definition.name}`,
-                },
-              ],
-            },
-    }),
-  })
-
-  return codec({ decode: schema, encode: schema })
 }
 
 export const validation = /* @__PURE__ */ Object.freeze({ async: asyncSchema })

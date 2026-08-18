@@ -23,7 +23,7 @@ import { compileSchemaExecution, type AnySchema, type SchemaStep } from './valid
 type RuntimeQuery = AnyRequestQuery & { readonly transport: QueryTransportPlan }
 type RuntimeSchemaExecutionPlan = {
   readonly decode: (value: unknown) => SchemaStep<unknown>
-  readonly encode: (value: never) => SchemaStep<unknown>
+  readonly encode?: (value: unknown) => SchemaStep<unknown>
 }
 
 export type CanonicalRequestBodyPlan = {

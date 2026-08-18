@@ -1,5 +1,5 @@
 import type { Contract, ContractRoutes } from '../contract'
-import type { RouteInput } from '../input'
+import type { RouteInputSource } from '../input'
 import type { RouteResponses } from '../response'
 import type { Route } from '../route'
 import type { Router, RouterParamsForRoute } from '../router'
@@ -12,7 +12,7 @@ import type { ClientResponseResult } from './response'
 export type ClientRouteInput<
   RouteType extends Route,
   RouterParams extends ObjectSchema | undefined = RouterParamsForRoute<RouteType>,
-> = RouteInput<RouteType, RouterParams>
+> = RouteInputSource<RouteType, RouterParams>
 
 export type ClientRouteResult<ContractType extends Contract, RouteType extends Route> = RouteType extends {
   readonly responses: infer Responses extends RouteResponses

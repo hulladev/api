@@ -1,8 +1,9 @@
 import type { JsonValue, ResponseBody, ResponseHeaders, RouteResponse } from './response'
-import type { AnySchema, CodecSchema, IdentitySchema, NonSchemaOptions } from './validation'
+import type { AnySchema, NonSchemaOptions, SchemaInput } from './validation'
 
 export type StreamSource<Value> = AsyncIterable<Value> | Iterable<Value>
-export type StreamWireSchema<Wire> = CodecSchema<Wire, unknown> | IdentitySchema<Wire>
+export type StreamWireSchema<Wire, Schema extends AnySchema = AnySchema> =
+  SchemaInput<Schema> extends Wire ? Schema : never
 
 export type StreamFormatMetadata<Id extends string = string, ContentType extends string = string> = {
   readonly kind: 'stream-format'
@@ -67,8 +68,8 @@ export type StreamResponseFactory = {
 }
 
 export type StreamFormat<Wire, Id extends string = string, ContentType extends string = string> = {
-  <const Schema extends StreamWireSchema<Wire>>(
-    schema: Schema
+  <const Schema extends AnySchema>(
+    schema: StreamWireSchema<Wire, Schema>
   ): StreamDefinition<Schema, StreamFormat<Wire, Id, ContentType>>
   readonly kind: 'stream-format'
   readonly id: Id
@@ -88,8 +89,8 @@ export type StreamFormatOptions<Wire, Id extends string, ContentType extends str
 export function defineStreamFormat<Wire, const Id extends string, const ContentType extends string>(
   options: StreamFormatOptions<Wire, Id, ContentType>
 ): StreamFormat<Wire, Id, ContentType> {
-  const format = (<const Schema extends StreamWireSchema<Wire>>(
-    schema: Schema
+  const format = (<const Schema extends AnySchema>(
+    schema: StreamWireSchema<Wire, Schema>
   ): StreamDefinition<Schema, StreamFormat<Wire, Id, ContentType>> =>
     Object.freeze({
       kind: 'stream-definition',

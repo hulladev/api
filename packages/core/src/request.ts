@@ -2,8 +2,6 @@ import { bytesSchema, formDataSchema, jsonValueSchema, stringSchema, type JsonVa
 import {
   isSchema,
   type AnySchema,
-  type CodecSchema,
-  type IdentitySchema,
   type NonSchemaOptions,
   type ObjectSchema,
   type SchemaInput,
@@ -106,16 +104,16 @@ type RequestBodyOptions<ContentType extends string> = NonSchemaOptions & {
   readonly contentType?: ContentType
 }
 
-type WireSchema<Wire> = CodecSchema<Wire, unknown> | IdentitySchema<Wire>
+type CheckedWireSchema<Schema extends AnySchema, Wire> = SchemaInput<Schema> extends Wire ? Schema : never
 
 type RequestBodyFactory<
   Kind extends RequestBodyKind,
   Wire,
-  DefaultSchema extends WireSchema<Wire>,
+  DefaultSchema extends AnySchema,
   DefaultContentType extends string,
 > = {
-  <const Schema extends WireSchema<Wire>, const ContentType extends string = DefaultContentType>(
-    schema: Schema,
+  <const Schema extends AnySchema, const ContentType extends string = DefaultContentType>(
+    schema: CheckedWireSchema<Schema, Wire>,
     options?: RequestBodyOptions<ContentType>
   ): RequestBodyDefinition<Kind, Schema, ContentType>
   <const ContentType extends string = DefaultContentType>(
@@ -126,14 +124,14 @@ type RequestBodyFactory<
 function defineRequestBodyFactory<
   const Kind extends RequestBodyKind,
   Wire,
-  const DefaultSchema extends WireSchema<Wire>,
+  const DefaultSchema extends AnySchema,
   const DefaultContentType extends string,
 >(
   representation: Kind,
   defaultSchema: DefaultSchema,
   defaultContentType: DefaultContentType
 ): RequestBodyFactory<Kind, Wire, DefaultSchema, DefaultContentType> {
-  function requestBody<const Schema extends WireSchema<Wire>, const ContentType extends string = DefaultContentType>(
+  function requestBody<const Schema extends AnySchema, const ContentType extends string = DefaultContentType>(
     schemaOrOptions?: Schema | RequestBodyOptions<ContentType>,
     explicitOptions?: RequestBodyOptions<ContentType>
   ): RequestBodyDefinition<Kind, Schema | DefaultSchema, ContentType> {
