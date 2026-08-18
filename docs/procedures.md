@@ -2,13 +2,14 @@
 
 Procedures are optional application functions. They are not HTTP routes, client extensions, or server service locators. A procedure owns only the pieces it declares: input, output, context, middleware, and a handler.
 
-```ts
-import { defineProcedures, procedure } from '@hulla/api/procedure'
-```
-
-The default `procedure` builder is useful for one-off functions:
+Procedure scopes accept native Standard Schemas without validator configuration:
 
 ```ts
+import { defineProcedures } from '@hulla/api/procedure'
+import { z } from 'zod'
+
+const procedure = defineProcedures()
+
 export const fullName = procedure
   .input(z.object({ first: z.string(), last: z.string() }))
   .output(z.string())
@@ -23,30 +24,26 @@ One-off procedures are callable immediately and have no structural identity.
 
 `.input()` and `.output()` accept Standard Schemas only. Procedures never interpret HTTP request or response descriptors; that representation work belongs to the client and server.
 
-Use a validator-specific route input helper to compose a route's declared params, query, headers, and body. For Zod, `routeInput()` returns an ordinary `z.object()`. Use Zod's normal APIs to modify it when the procedure intentionally differs from the route:
+`contract.routeInput()` composes a route's declared params, query, headers, and body into a Standard Schema. Its input is the client-call shape and its output is the server-handler shape:
 
 ```ts
-import { procedure } from '@hulla/api/procedure'
-import { routeInput, routeOutput } from '@hulla/api-zod'
-
 const route = contract.routes.organizations.createUser
-const input = routeInput(route)
-// input.pick(...), input.omit(...), input.extend(...)
+const input = contract.routeInput(route)
 
 const createUser = procedure
   .input(input)
-  .output(routeOutput(route, 201))
+  .output(contract.routeOutput(route, 201))
   .handler(async ({ input }) => {
-    const result = await client.organizations.createUser(input)
-
-    if (result.status !== 201) throw new CreateUserError(result)
-    return result.body
+    const created = await userService.create(input)
+    return { id: created.id, createdAt: created.createdAt.toISOString() }
   })
 ```
 
-`routeOutput(route, status)` requires a status declared by that route and returns its exact body schema. The status is explicit because successful APIs are not limited to `200`. Empty, raw, and streaming responses do not have one schema representing their complete application value, so use a custom procedure output schema when needed.
+`contract.routeOutput(route, status)` requires a status declared by that route and returns its exact body schema. The status is explicit because successful APIs are not limited to `200`. Empty, raw, and streaming responses do not have one schema representing their complete application value, so use a custom procedure output schema when needed.
 
-Standard Schema standardizes validation, not object-schema composition. Other validation libraries can provide equivalent native helpers and retain their own modification APIs.
+The composed value is a portable Standard Schema rather than a library-native object schema. When a procedure needs `.pick()`, `.omit()`, or another library-specific composition operation, compose the original native schemas directly.
+
+Procedure calls follow the same directional rule. Callers provide the input schema's input type; handlers receive its output type. With a declared output, handlers return that schema's input type and callers receive its output type.
 
 The output declaration is optional. Without one, the return type is inferred from the handler. Declaring an output adds runtime validation and is useful at a deliberate application boundary.
 
@@ -73,7 +70,6 @@ Standard Schema deliberately does not describe whether a validator runs synchron
 
 ```ts
 import { validation } from '@hulla/api'
-import { procedure } from '@hulla/api/procedure'
 
 const availableName = validation.async(
   z.string().refine(async (name) => isNameAvailable(name))
@@ -124,7 +120,7 @@ const list = authenticated
   .handler(({ input, context }) => userService.list(context.session.user, input))
 
 const create = authenticated
-  .input(routeInput(contract.routes.organizations.createUser))
+  .input(contract.routeInput(contract.routes.organizations.createUser))
   .handler(({ input, context }) => userService.create(context.session.user, input))
 
 export const api = procedures.build({
@@ -165,6 +161,6 @@ HTTP vocabulary remains intact. Responses stay under `responses`, and reusable a
 type Input = ClientRouteInput<typeof contract.routes.organizations.createUser>
 type Created = RouteResponseBody<typeof contract.routes.organizations.createUser, 201>
 
-const inputSchema = routeInput(contract.routes.organizations.createUser)
-const createdSchema = routeOutput(contract.routes.organizations.createUser, 201)
+const inputSchema = contract.routeInput(contract.routes.organizations.createUser)
+const createdSchema = contract.routeOutput(contract.routes.organizations.createUser, 201)
 ```
