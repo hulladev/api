@@ -2,6 +2,8 @@ import type { ContextFrom } from '../context'
 import type { Contract, ContractRoutes } from '../contract'
 import { assertMiddleware, assertMiddlewares } from '../middleware'
 import { hasOwn, isRecord } from '../object'
+import { type APIPlugin, type APIServerPluginList } from '../plugin'
+import { normalizeAPIPlugins } from '../plugin-runtime'
 import { isRouter, routerRoutes } from '../router'
 import type { ServerContextInput } from './context'
 import { ServerImplementationError } from './errors'
@@ -83,40 +85,46 @@ function assertCompleteHandlers(contract: Contract, handlers: unknown): asserts 
   }
 }
 
-function createDefinition<ContractType extends Contract, Context extends object>(
+function createDefinition<ContractType extends Contract, Context extends object, Plugins extends APIServerPluginList>(
   contract: ContractType,
-  options: DefineServerOptions<Context, ContractType>,
+  options: DefineServerOptions<Context, ContractType, Plugins>,
+  plugins: Plugins,
   middlewares: readonly ServerMiddleware<Context, ContractType>[] = []
-): ServerDefinition<ContractType, Context> {
+): ServerDefinition<ContractType, Context, Plugins> {
   const middleware = (<const Handler extends ServerMiddlewareCandidate<Context, ContractType>>(handler: Handler) => {
     assertMiddleware('Server', handler)
     return handler
-  }) as ServerDefinition<ContractType, Context>['middleware']
+  }) as ServerDefinition<ContractType, Context, Plugins>['middleware']
 
   const use = (<const Middlewares extends readonly ServerMiddlewareCandidate<Context, ContractType>[]>(
     ...applied: Middlewares
   ) => {
     assertMiddlewares('Server', applied)
-    return createDefinition(contract, options, [
+    return createDefinition(contract, options, plugins, [
       ...middlewares,
       ...(applied as readonly ServerMiddleware<Context, ContractType>[]),
     ])
-  }) as ServerDefinition<ContractType, Context>['use']
+  }) as ServerDefinition<ContractType, Context, Plugins>['use']
 
   const build = ((handlers: object) => {
     assertCompleteHandlers(contract, handlers)
+    for (const plugin of plugins as readonly APIPlugin[]) {
+      plugin.server?.build?.({ contract, handlers: handlers as Readonly<Record<string, unknown>> })
+    }
     return {
       contract,
       handlers,
       context: options.context,
       middlewares,
+      plugins,
     }
-  }) as ServerDefinition<ContractType, Context>['build']
+  }) as ServerDefinition<ContractType, Context, Plugins>['build']
 
   return {
     contract,
     context: options.context,
     middlewares,
+    plugins,
     middleware,
     use,
     build,
@@ -126,18 +134,29 @@ function createDefinition<ContractType extends Contract, Context extends object>
 export function defineServer<
   const ContractType extends Contract,
   const Factory extends ContextFactoryShape<ContractType>,
+  const Plugins extends APIServerPluginList = readonly [],
 >(
   contract: ContractType,
   options: {
     readonly context: Factory
+    readonly plugins?: Plugins
   }
-): ServerDefinition<ContractType, ContextFrom<Factory>>
+): ServerDefinition<ContractType, ContextFrom<Factory>, Plugins>
 
-export function defineServer<const ContractType extends Contract>(
+export function defineServer<
+  const ContractType extends Contract,
+  const Plugins extends APIServerPluginList = readonly [],
+>(
   contract: ContractType,
-  options?: DefineServerOptions<EmptyServerContext, NoInfer<ContractType>> & { readonly context?: undefined }
-): ServerDefinition<ContractType, EmptyServerContext>
+  options?: DefineServerOptions<EmptyServerContext, NoInfer<ContractType>, Plugins> & {
+    readonly context?: undefined
+  }
+): ServerDefinition<ContractType, EmptyServerContext, Plugins>
 
-export function defineServer(contract: Contract, options: { readonly context?: unknown } = {}): unknown {
-  return createDefinition(contract, options as DefineServerOptions<object, Contract>)
+export function defineServer(
+  contract: Contract,
+  options: { readonly context?: unknown; readonly plugins?: readonly APIPlugin[] } = {}
+): unknown {
+  const plugins = normalizeAPIPlugins(options.plugins, 'server') as APIServerPluginList
+  return createDefinition(contract, options as DefineServerOptions<object, Contract, APIServerPluginList>, plugins)
 }

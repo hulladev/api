@@ -4,6 +4,13 @@ import type { Contract } from '../contract'
 import { isPromiseLike } from '../execution'
 import { assertMiddleware, assertMiddlewares, dispatchMiddlewares } from '../middleware'
 import { hasOwn, isRecord, setOwn } from '../object'
+import {
+  type APIClientPluginList,
+  type APIClientPluginRouteCall,
+  type APIClientPluginRouteKey,
+  type APIPlugin,
+} from '../plugin'
+import { normalizeAPIPlugins } from '../plugin-runtime'
 import { compileCanonicalContract } from '../route-plan'
 import type { ClientContextInput, ClientContractRouteMetadata } from './context'
 import type { ClientMiddleware, ClientMiddlewareCandidate, ClientMiddlewareInput } from './middleware'
@@ -110,11 +117,55 @@ function setClientRoute(target: Record<string, unknown>, key: readonly string[],
   setOwn(parent, routeKey, value)
 }
 
+function clientRouteKey(key: readonly string[]): APIClientPluginRouteKey {
+  const root = key.join('/')
+  return Object.freeze({
+    root,
+    full: (...args: readonly unknown[]) => [root, ...args] as readonly [string, ...unknown[]],
+  })
+}
+
+function attachClientPluginMembers(
+  call: APIClientPluginRouteCall,
+  plugin: APIPlugin,
+  members: Readonly<Record<string, unknown>>
+): void {
+  const namespace = `$${plugin.namespace ?? plugin.id}`
+  if (hasOwn(call, namespace)) throw new TypeError(`Client plugin "${plugin.id}" collides on namespace "${namespace}"`)
+
+  const extension = Object.create(null) as Record<string, unknown>
+  for (const [key, value] of Object.entries(members)) setOwn(extension, key, value)
+  Object.freeze(extension)
+  Object.defineProperty(call, namespace, { enumerable: true, value: extension })
+}
+
+function applyClientPlugins(
+  contract: Contract,
+  plan: ReturnType<typeof compileCanonicalContract>['routes'][number],
+  call: APIClientPluginRouteCall,
+  plugins: readonly APIPlugin[]
+): void {
+  const key = clientRouteKey(plan.compiled.key)
+  if (plugins.some((plugin) => plugin.routeKeys === true)) {
+    Object.defineProperty(call, '$key', { enumerable: true, value: key })
+  }
+
+  for (const plugin of plugins) {
+    const hook = plugin.client?.route
+    if (hook === undefined) continue
+    const members = hook({ contract, route: plan.compiled, call, hasInput: plan.hasInput, key })
+    if (members === undefined) continue
+    if (!isRecord(members)) throw new TypeError(`Client plugin "${plugin.id}" route hook must return an object`)
+    attachClientPluginMembers(call, plugin, members)
+  }
+}
+
 function buildClientRoutes(
   contract: Contract,
   transport: ClientTransportOptions,
   contextFactory: ((input: ClientContextInput) => object | PromiseLike<object>) | undefined,
-  middlewares: readonly ClientMiddleware<object, Contract>[]
+  middlewares: readonly ClientMiddleware<object, Contract>[],
+  plugins: readonly APIPlugin[]
 ): Readonly<Record<string, unknown>> {
   const tree: Record<string, unknown> = {}
   const contractPlan = compileCanonicalContract(contract)
@@ -151,21 +202,26 @@ function buildClientRoutes(
         : { responses }),
     }
 
-    setClientRoute(tree, compiled.key, (...args: readonly unknown[]) => {
+    const call = ((...args: readonly unknown[]) => {
       const input = (plan.hasInput ? args[0] : {}) as Readonly<Record<string, unknown>>
       const requestOptions = (plan.hasInput ? args[1] : args[0]) as ClientRequestOptions | undefined
       return executeRoute(runtime, transport, contextFactory, middlewares, input, requestOptions ?? {})
-    })
+    }) as APIClientPluginRouteCall
+    applyClientPlugins(contract, plan, call, plugins)
+    setClientRoute(tree, compiled.key, call)
   }
+
+  for (const plugin of plugins) plugin.client?.build?.({ contract, routes: tree })
 
   return tree
 }
 
-function createDefinition<ContractType extends Contract, Context extends object>(
+function createDefinition<ContractType extends Contract, Context extends object, Plugins extends APIClientPluginList>(
   contract: ContractType,
-  options: DefineClientOptions<Context, ContractType>,
+  options: DefineClientOptions<Context, ContractType, Plugins>,
+  plugins: Plugins,
   middlewares: readonly ClientMiddleware<Context, ContractType>[] = []
-): ClientDefinition<ContractType, Context> {
+): ClientDefinition<ContractType, Context, Plugins> {
   assertClientBaseUrl(options.baseUrl)
   const middlewareStack = [...middlewares]
   const transport = {
@@ -177,34 +233,36 @@ function createDefinition<ContractType extends Contract, Context extends object>
   const middleware = (<const Handler extends ClientMiddlewareCandidate<Context, ContractType>>(handler: Handler) => {
     assertMiddleware('Client', handler)
     return handler
-  }) as ClientDefinition<ContractType, Context>['middleware']
+  }) as ClientDefinition<ContractType, Context, Plugins>['middleware']
 
   const use = (<const Middlewares extends readonly ClientMiddlewareCandidate<Context, ContractType>[]>(
     ...applied: Middlewares
   ) => {
     assertMiddlewares('Client', applied)
 
-    return createDefinition(contract, options, [
+    return createDefinition(contract, options, plugins, [
       ...middlewareStack,
       ...(applied as readonly ClientMiddleware<Context, ContractType>[]),
     ])
-  }) as ClientDefinition<ContractType, Context>['use']
+  }) as ClientDefinition<ContractType, Context, Plugins>['use']
 
-  let builtClient: ClientRoutes<ContractType> | undefined
+  let builtClient: ClientRoutes<ContractType, ContractType['routes'], undefined, Plugins> | undefined
   const build = (() => {
     builtClient ??= buildClientRoutes(
       contract,
       transport,
       options.context as ((input: ClientContextInput) => object | PromiseLike<object>) | undefined,
-      middlewareStack as unknown as readonly ClientMiddleware<object, Contract>[]
-    ) as ClientRoutes<ContractType>
+      middlewareStack as unknown as readonly ClientMiddleware<object, Contract>[],
+      plugins
+    ) as ClientRoutes<ContractType, ContractType['routes'], undefined, Plugins>
     return builtClient
-  }) as ClientDefinition<ContractType, Context>['build']
+  }) as ClientDefinition<ContractType, Context, Plugins>['build']
 
   return {
     contract,
     context: options.context,
     middlewares: middlewareStack,
+    plugins,
     middleware,
     use,
     build,
@@ -214,16 +272,26 @@ function createDefinition<ContractType extends Contract, Context extends object>
 export function defineClient<
   const ContractType extends Contract,
   const Factory extends ContextFactoryShape<ContractType>,
+  const Plugins extends APIClientPluginList = readonly [],
 >(
   contract: ContractType,
-  options: ClientTransportOptions & { readonly context: Factory }
-): ClientDefinition<ContractType, ContextFrom<Factory>>
+  options: ClientTransportOptions & { readonly context: Factory; readonly plugins?: Plugins }
+): ClientDefinition<ContractType, ContextFrom<Factory>, Plugins>
 
-export function defineClient<const ContractType extends Contract>(
+export function defineClient<
+  const ContractType extends Contract,
+  const Plugins extends APIClientPluginList = readonly [],
+>(
   contract: ContractType,
-  options?: DefineClientOptions<EmptyClientContext, NoInfer<ContractType>> & { readonly context?: undefined }
-): ClientDefinition<ContractType, EmptyClientContext>
+  options?: DefineClientOptions<EmptyClientContext, NoInfer<ContractType>, Plugins> & {
+    readonly context?: undefined
+  }
+): ClientDefinition<ContractType, EmptyClientContext, Plugins>
 
-export function defineClient(contract: Contract, options: DefineClientOptions<object, Contract> = {}): unknown {
-  return createDefinition(contract, options)
+export function defineClient(
+  contract: Contract,
+  options: DefineClientOptions<object, Contract, APIClientPluginList> = {}
+): unknown {
+  const plugins = normalizeAPIPlugins(options.plugins, 'client') as APIClientPluginList
+  return createDefinition(contract, options, plugins)
 }

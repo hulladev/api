@@ -1,6 +1,7 @@
 import type { Contract, ContractRoute, ContractRoutes } from '../contract'
 import type { RouteInput } from '../input'
 import type { JoinRoutePaths } from '../paths'
+import type { APIServerPluginList } from '../plugin'
 import type { Route } from '../route'
 import type { Router } from '../router'
 import type { ObjectSchema } from '../validation'
@@ -108,26 +109,42 @@ export type ServerHandlers<
   BasePath extends string = string,
 > = HandlerTree<Routes, Context, BasePath>
 
-export type DefineServerOptions<Context extends object, ContractType extends Contract = Contract> = {
+export type DefineServerOptions<
+  Context extends object,
+  ContractType extends Contract = Contract,
+  Plugins extends APIServerPluginList = readonly [],
+> = {
   readonly context?: ServerContextFactory<Context, ContractType>
+  readonly plugins?: Plugins
 }
 
-export type ServerImplementation<ContractType extends Contract = Contract, Context extends object = object> = {
+export type ServerImplementation<
+  ContractType extends Contract = Contract,
+  Context extends object = object,
+  Plugins extends APIServerPluginList = readonly [],
+> = {
   readonly contract: ContractType
   readonly handlers: ServerHandlers<ContractType['routes'], Context, ContractType['basePath']>
-  readonly context: DefineServerOptions<Context, ContractType>['context']
+  readonly context: DefineServerOptions<Context, ContractType, Plugins>['context']
   readonly middlewares: readonly ServerMiddleware<Context, ContractType>[]
+  readonly plugins: Plugins
 }
 
-export type Server<ContractType extends Contract = Contract, Context extends object = object> = ServerImplementation<
-  ContractType,
-  Context
->
+export type Server<
+  ContractType extends Contract = Contract,
+  Context extends object = object,
+  Plugins extends APIServerPluginList = readonly [],
+> = ServerImplementation<ContractType, Context, Plugins>
 
-export type ServerDefinition<ContractType extends Contract, Context extends object> = {
+export type ServerDefinition<
+  ContractType extends Contract,
+  Context extends object,
+  Plugins extends APIServerPluginList = readonly [],
+> = {
   readonly contract: ContractType
-  readonly context: DefineServerOptions<Context, ContractType>['context']
+  readonly context: DefineServerOptions<Context, ContractType, Plugins>['context']
   readonly middlewares: readonly ServerMiddleware<Context, ContractType>[]
+  readonly plugins: Plugins
   readonly middleware: <const Handler extends ServerMiddlewareCandidate<NoInfer<Context>, NoInfer<ContractType>>>(
     middleware: Handler
   ) => Handler
@@ -135,13 +152,13 @@ export type ServerDefinition<ContractType extends Contract, Context extends obje
     const Middlewares extends readonly ServerMiddlewareCandidate<NoInfer<Context>, NoInfer<ContractType>>[],
   >(
     ...middlewares: Middlewares
-  ) => ServerDefinition<ContractType, Context>
+  ) => ServerDefinition<ContractType, Context, Plugins>
   readonly build: <const Handlers extends ServerHandlers<ContractType['routes'], Context, ContractType['basePath']>>(
     handlers: Handlers & CheckedHandlerTree<ContractType['routes'], Handlers>
-  ) => ServerImplementation<ContractType, Context>
+  ) => ServerImplementation<ContractType, Context, Plugins>
 }
 
 export type ServerHandlersOf<Definition> =
-  Definition extends ServerDefinition<infer ContractType, infer Context>
+  Definition extends ServerDefinition<infer ContractType, infer Context, infer _Plugins>
     ? ServerHandlers<ContractType['routes'], Context, ContractType['basePath']>
     : never

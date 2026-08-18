@@ -9,6 +9,7 @@ export default defineConfig({
     'src/compiler.ts',
     'src/errors.ts',
     'src/integration.ts',
+    'src/plugin.ts',
     'src/procedure.ts',
     'src/server/index.ts',
     { wire: 'src/server/runtime.ts' },
