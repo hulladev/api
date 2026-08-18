@@ -21,7 +21,7 @@
     "bench": "bun run build && bun run --cwd benchmarks bench",
     "build": "turbo run build",
     "check": "bun run fmt && bun run lint && bun run typecheck && bun run test && bun run build && bun run check:package",
-    "check:package": "turbo run check:package --filter=@hulla/api --filter=@hulla/api-zod",
+    "check:package": "turbo run check:package --filter=@hulla/api",
     "clean": "turbo run clean && rm -rf .turbo",
     "dev": "turbo run dev",
     "fmt": "oxfmt --check .",

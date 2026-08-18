@@ -26,7 +26,6 @@
       "devDependencies": {
         "@hono/zod-validator": "^0.9.0",
         "@hulla/api": "workspace:*",
-        "@hulla/api-zod": "workspace:*",
         "@orpc/client": "^1.15.0",
         "@orpc/server": "^1.15.0",
         "@trpc/client": "^11.18.0",
@@ -46,21 +45,6 @@
       "devDependencies": {
         "valibot": "^1.4.2",
         "zod": "^4.4.3",
-      },
-    },
-    "packages/zod": {
-      "name": "@hulla/api-zod",
-      "version": "2.0.0",
-      "dependencies": {
-        "@hulla/api": "workspace:*",
-        "@standard-schema/spec": "^1.1.0",
-      },
-      "devDependencies": {
-        "valibot": "^1.4.2",
-        "zod": "^4.4.3",
-      },
-      "peerDependencies": {
-        "zod": "^4.1.0",
       },
     },
   },
@@ -174,8 +158,6 @@
     "@hulla/api": ["@hulla/api@workspace:packages/core"],
 
     "@hulla/api-benchmarks": ["@hulla/api-benchmarks@workspace:benchmarks"],
-
-    "@hulla/api-zod": ["@hulla/api-zod@workspace:packages/zod"],
 
     "@inquirer/confirm": ["@inquirer/confirm@3.1.17", "", { "dependencies": { "@inquirer/core": "9.0.5", "@inquirer/type": "1.5.1" } }, "sha512-qCpt/AABzPynz8tr69VDvhcjwmzAryipWXtW8Vi6m651da4H/d0Bdn55LkxXD7Rp2gfgxvxzTdb66AhIA8gzBA=="],
 
