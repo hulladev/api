@@ -12,15 +12,15 @@ import {
 import {
   compileQueryDecoder,
   compileQueryEncoder,
+  normalizeRequestQuery,
   type QueryDecoder,
   type QueryEncoder,
-  type QueryTransportPlan,
 } from './query'
 import { mimeEssence, type AnyRequestBody, type AnyRequestQuery } from './request'
 import type { AnyRouteResponse } from './response'
 import { compileSchemaExecution, type AnySchema, type SchemaStep } from './validation'
 
-type RuntimeQuery = AnyRequestQuery & { readonly transport: QueryTransportPlan }
+type RuntimeQuery = AnyRequestQuery
 type RuntimeSchemaExecutionPlan = {
   readonly decode: (value: unknown) => SchemaStep<unknown>
   readonly encode?: (value: unknown) => SchemaStep<unknown>
@@ -96,7 +96,7 @@ function compileResponses(responses: Readonly<Record<number, AnyRouteResponse>>)
 
 function compileRoutePlan(compiled: CompiledContractRoute): CanonicalRoutePlan {
   const route = compiled.route
-  const query = 'query' in route ? (route.query as RuntimeQuery) : undefined
+  const query = 'query' in route ? (normalizeRequestQuery(route.query as AnyRequestQuery) as RuntimeQuery) : undefined
   const body = 'body' in route ? route.body : undefined
   const hasPathParameters = compiled.pathParameters.length > 0
 
@@ -136,7 +136,6 @@ export function compileCanonicalContract(contract: Contract): CanonicalContractP
   const routes = compileContractRoutes(contract)
   const state = getContractState(contract)
   if (state.canonical !== undefined) return state.canonical as CanonicalContractPlan
-
   const plan = {
     routes: routes.map(compileRoutePlan),
     errors: compileResponses(contract.errors),

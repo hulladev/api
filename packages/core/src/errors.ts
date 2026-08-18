@@ -14,12 +14,7 @@ export type APIErrorIssue = StandardSchemaV1.Issue & {
 
 export type ClientResponseErrorCode = 'content-type-mismatch' | 'missing-body' | 'unexpected-status'
 
-export type QueryTransportErrorCode =
-  | 'duplicate-query-value'
-  | 'empty-query-array'
-  | 'invalid-query-value'
-  | 'mixed-query-cardinality'
-  | 'unsupported-query-schema'
+export type QueryTransportErrorCode = 'empty-query-array' | 'invalid-query-value'
 
 export type SchemaValidationErrorCode = 'schema-validation'
 

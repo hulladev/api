@@ -6,11 +6,8 @@ import {
   isRequestBodyDefinition,
   json as jsonRequest,
   type AnyRequestBody,
-  type AnyRequestQuery,
-  type AnyRepeatedQueryKeys,
   type QueryWireObject,
   type RequestBodyDefinition,
-  type RequestQueryDefinition,
   type TextWireObject,
 } from './request'
 import type { RouteResponses } from './response'
@@ -21,35 +18,26 @@ export type RouteHeaders = ObjectSchema
 
 export type RouteParams<Path extends string> = PathParams<Path>
 
-type RouteQueryInput = ObjectSchema | AnyRequestQuery
+type RouteQueryInput = ObjectSchema
 type RouteBodyInput = AnySchema | AnyRequestBody
 
 type RouteBodyOptions<Method extends HttpMethod, Body extends RouteBodyInput | undefined> = Method extends 'GET'
   ? { readonly body?: never }
   : { readonly body?: CheckedBody<Body> }
 
-type QuerySchema<Declaration> =
-  Declaration extends RequestQueryDefinition<infer Schema>
-    ? Schema
-    : Declaration extends ObjectSchema
-      ? Declaration
-      : never
+type QuerySchema<Declaration> = Declaration extends ObjectSchema ? Declaration : never
 
 type CheckedQuery<Declaration> = Declaration extends RouteQueryInput
-  ? SchemaInput<QuerySchema<Declaration>> extends QueryWireObject
-    ? Declaration extends RequestQueryDefinition
-      ? Declaration
-      : AnyRepeatedQueryKeys<QuerySchema<Declaration>> extends never
-        ? Declaration
-        : never
+  ? SchemaInput<Declaration> extends QueryWireObject
+    ? Declaration
     : never
   : never
 
-type CheckedHeaders<Schema> = Schema extends ObjectSchema
+type CheckedHeaders<Schema> = Schema extends RouteHeaders
   ? SchemaInput<Schema> extends TextWireObject
     ? Schema
     : never
-  : Schema
+  : never
 
 type CheckedBody<Body> = Body extends AnyRequestBody
   ? Body

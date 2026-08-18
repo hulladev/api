@@ -52,13 +52,4 @@ describe('request declarations', () => {
     expect(body.contentType).toBe('application/problem+json')
     expectTypeOf(body.contentType).toEqualTypeOf<'application/problem+json'>()
   })
-
-  test.each([
-    { name: 'Zod', schema: z.object({ tags: z.array(z.string()) }) },
-    { name: 'Valibot', schema: v.object({ tags: v.array(v.string()) }) },
-  ])('rejects malformed repeated query metadata for $name schemas', ({ schema }) => {
-    expect(() => request.query(schema, { repeated: ['tags', 'tags'] })).toThrow(
-      'Request query repeated key "tags" is declared more than once'
-    )
-  })
 })

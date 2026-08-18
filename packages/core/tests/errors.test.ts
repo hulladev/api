@@ -10,7 +10,7 @@ describe('structured API errors', () => {
     const schema = new SchemaValidationError([{ message: 'Expected a string', path: ['profile', { key: 'name' }] }], {
       location: 'body',
     })
-    const query = new QueryTransportError('duplicate-query-value', 'Query field must occur once', 'search')
+    const query = new QueryTransportError('invalid-query-value', 'Query field must be flat', 'search')
     const server = new ServerImplementationError('missing-handler', ['organizations.list'], 'Missing handler')
 
     for (const error of [schema, query, server]) {
@@ -27,9 +27,9 @@ describe('structured API errors', () => {
       issues: [{ code: 'schema-validation', location: 'body', message: 'Expected a string' }],
     })
     expect(query).toMatchObject({
-      code: 'duplicate-query-value',
+      code: 'invalid-query-value',
       key: 'search',
-      issues: [{ code: 'duplicate-query-value', location: 'query', path: ['search'] }],
+      issues: [{ code: 'invalid-query-value', location: 'query', path: ['search'] }],
     })
     expect(server.issues).toMatchObject([{ code: 'missing-handler', handlerKey: 'organizations.list' }])
 

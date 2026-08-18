@@ -1,10 +1,9 @@
 import * as v from 'valibot'
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
-import { request } from '../src/request'
 import { response } from '../src/response'
 import { route, type Route, type RouteParams, type RouteQuery } from '../src/route'
-import { codec, type SchemaInput, type SchemaOutput } from '../src/validation'
+import { codec, type SchemaInput, type SchemaOutbound, type SchemaOutput } from '../src/validation'
 
 const responses = {
   200: response.json(
@@ -143,7 +142,7 @@ describe('route declaration', () => {
     })
   })
 
-  test('enforces text-first params, query, and headers', () => {
+  test('enforces textual wire schemas for params, query, and headers', () => {
     route.get('/:id', {
       responses,
       // @ts-expect-error Path parameters must accept text on the wire.
@@ -152,13 +151,13 @@ describe('route declaration', () => {
 
     route.get('/users', {
       responses,
-      // @ts-expect-error Query fields must accept text or repeated text on the wire.
+      // @ts-expect-error Query fields must accept strings or repeated strings on the wire.
       query: z.object({ page: z.number() }),
     })
 
     route.get('/users', {
       responses,
-      // @ts-expect-error Headers must accept text on the wire.
+      // @ts-expect-error Header fields must accept strings on the wire.
       headers: z.object({ enabled: z.boolean() }),
     })
 
@@ -170,50 +169,29 @@ describe('route declaration', () => {
 
     route.get('/users', {
       responses,
-      // @ts-expect-error Valibot query fields must also accept text on the wire.
+      // @ts-expect-error Valibot query fields must also accept textual wire values.
       query: v.object({ page: v.number() }),
     })
 
     route.get('/users', {
       responses,
-      // @ts-expect-error Valibot headers must also accept text on the wire.
+      // @ts-expect-error Valibot headers must also accept textual wire values.
       headers: v.object({ enabled: v.boolean() }),
     })
 
     const declaration = route.get('/:id', {
       responses,
-      params: codec({
-        decode: v.object({
-          id: v.pipe(
-            v.string(),
-            v.transform((value) => Number(value))
-          ),
-        }),
-        encode: v.object({
-          id: v.pipe(
-            v.number(),
-            v.transform((value) => String(value))
-          ),
-        }),
+      params: codec(z.object({ id: z.string() }), z.object({ id: z.number() }), {
+        decode: ({ id }) => ({ id: Number(id) }),
+        encode: ({ id }) => ({ id: String(id) }),
       }),
-      query: request.query(
-        codec({
-          decode: v.object({
-            page: v.pipe(
-              v.string(),
-              v.transform((value) => Number(value))
-            ),
-            tags: v.array(v.string()),
-          }),
-          encode: v.object({
-            page: v.pipe(
-              v.number(),
-              v.transform((value) => String(value))
-            ),
-            tags: v.array(v.string()),
-          }),
-        }),
-        { repeated: ['tags'] }
+      query: codec(
+        z.object({ page: z.string(), tags: z.array(z.string()) }),
+        z.object({ page: z.number(), tags: z.array(z.string()) }),
+        {
+          decode: ({ page, tags }) => ({ page: Number(page), tags }),
+          encode: ({ page, tags }) => ({ page: String(page), tags }),
+        }
       ),
     })
 
@@ -222,38 +200,20 @@ describe('route declaration', () => {
       page: number
       tags: string[]
     }>()
+    expectTypeOf<SchemaOutbound<typeof declaration.params>>().toEqualTypeOf<{ id: number }>()
+    expectTypeOf<SchemaOutbound<typeof declaration.query.schema>>().toEqualTypeOf<{
+      page: number
+      tags: string[]
+    }>()
   })
 
-  test('requires explicit repeated metadata for non-Zod query schemas', () => {
-    const schema = v.object({ search: v.string(), tags: v.array(v.string()) })
-
-    void (() => {
-      route.get('/users', {
-        responses,
-        // @ts-expect-error Opaque Standard Schemas must declare repeated query keys.
-        query: schema,
-      })
-
-      // @ts-expect-error Every repeated input key must be listed.
-      request.query(schema, { repeated: [] })
-
-      // @ts-expect-error Singular input keys cannot be marked as repeated.
-      request.query(schema, { repeated: ['search'] })
-
-      // @ts-expect-error Unknown input keys cannot be marked as repeated.
-      request.query(schema, { repeated: ['missing'] })
-
-      const ambiguous = v.object({ value: v.union([v.string(), v.array(v.string())]) })
-      // @ts-expect-error Opaque query fields cannot mix singular and repeated wire inputs.
-      request.query(ambiguous, { repeated: [] })
-    })
-
+  test('accepts native array query schemas without transport metadata', () => {
+    const schema = z.object({ search: z.string(), tags: z.array(z.string()) })
     const declaration = route.get('/users', {
       responses,
-      query: request.query(schema, { repeated: ['tags'] }),
+      query: schema,
     })
 
-    expect(declaration.query.repeated).toEqual(['tags'])
     expectTypeOf(declaration.query.schema).toEqualTypeOf<typeof schema>()
   })
 

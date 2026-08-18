@@ -1,23 +1,18 @@
 import { annotateAPIErrorIssues, type APIError, type APIErrorIssue, type QueryTransportErrorCode } from './errors'
 import { type ExecutionStep, mapExecutionStep } from './execution'
-import { hasOwn, setOwn } from './object'
+import { hasOwn, isPlainRecord, setOwn } from './object'
 import { isRequestQueryDefinition, type AnyRequestQuery, type RequestQueryDefinition } from './request'
-import { compileSchemaExecution, isSchema, type ObjectSchema, type SchemaOutput } from './validation'
+import {
+  compileSchemaExecution,
+  isSchema,
+  type ObjectSchema,
+  type SchemaOutbound,
+  type SchemaOutput,
+} from './validation'
 
 export type { QueryTransportErrorCode } from './errors'
 
-export type QueryCardinality = 'repeated' | 'single'
-
-export type QueryTransportPlan = {
-  readonly fields: Readonly<Record<string, QueryCardinality>>
-}
-
-export type NormalizedRequestQuery<Schema extends ObjectSchema = ObjectSchema> = RequestQueryDefinition<
-  Schema,
-  readonly string[]
-> & {
-  readonly transport: QueryTransportPlan
-}
+export type NormalizedRequestQuery<Schema extends ObjectSchema = ObjectSchema> = RequestQueryDefinition<Schema>
 
 export type QueryTransportIssue = APIErrorIssue & {
   readonly location: 'query'
@@ -34,145 +29,88 @@ export class QueryTransportError extends TypeError implements APIError<QueryTran
     super(message)
     this.name = 'QueryTransportError'
     this.code = code
-    this.issues = annotateAPIErrorIssues(
-      [
-        {
-          message,
-          ...(key === undefined ? {} : { key, path: [key] }),
-        },
-      ],
-      { code, location: 'query' }
-    ) as readonly QueryTransportIssue[]
+    this.issues = annotateAPIErrorIssues([{ message, ...(key === undefined ? {} : { key, path: [key] }) }], {
+      code,
+      location: 'query',
+    }) as readonly QueryTransportIssue[]
     if (key !== undefined) this.key = key
   }
 }
 
-function explicitPlan(repeated: readonly string[]): QueryTransportPlan {
-  const fields: Record<string, QueryCardinality> = {}
-  for (const key of repeated) setOwn(fields, key, 'repeated')
-  return Object.freeze({ fields: Object.freeze(fields) })
-}
-
 export function normalizeRequestQuery<const Schema extends ObjectSchema>(
-  declaration: Schema | RequestQueryDefinition<Schema, readonly string[]>
+  declaration: Schema | RequestQueryDefinition<Schema>
 ): NormalizedRequestQuery<Schema> {
-  if (isRequestQueryDefinition(declaration)) {
-    return Object.freeze({
-      ...declaration,
-      transport: explicitPlan(declaration.repeated),
-    }) as NormalizedRequestQuery<Schema>
-  }
-
-  if (!isSchema(declaration)) throw new TypeError('Request query must be declared with an object Standard Schema')
-
-  const transport = explicitPlan([])
-  const repeated = Object.freeze([])
-  return Object.freeze({
-    kind: 'request-query',
-    schema: declaration,
-    repeated,
-    transport,
-  }) as NormalizedRequestQuery<Schema>
+  const schema = isRequestQueryDefinition(declaration) ? declaration.schema : declaration
+  if (!isSchema(schema)) throw new TypeError('Request query must be declared with an object Standard Schema')
+  return Object.freeze({ kind: 'request-query', schema })
 }
 
-function recordValue(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-export type QueryEncoder<Query extends AnyRequestQuery & { readonly transport: QueryTransportPlan }> = (
-  value: SchemaOutput<Query['schema']>
+export type QueryEncoder<Query extends AnyRequestQuery> = (
+  value: SchemaOutbound<Query['schema']>
 ) => ExecutionStep<URLSearchParams>
 
-export type QueryDecoder<Query extends AnyRequestQuery & { readonly transport: QueryTransportPlan }> = (
+export type QueryDecoder<Query extends AnyRequestQuery> = (
   parameters: URLSearchParams
 ) => ExecutionStep<SchemaOutput<Query['schema']>>
 
-function encodedQuery(query: AnyRequestQuery & { readonly transport: QueryTransportPlan }, encoded: unknown) {
-  if (!recordValue(encoded)) {
-    throw new QueryTransportError('invalid-query-value', 'Encoded query must be an object')
-  }
+function scalarText(value: unknown, key: string): string {
+  if (typeof value === 'string') return value
+  throw new QueryTransportError(
+    'invalid-query-value',
+    `Query field "${key}" must be a string, flat string array, or undefined`,
+    key
+  )
+}
+
+function encodedQuery(value: unknown): URLSearchParams {
+  if (!isPlainRecord(value)) throw new QueryTransportError('invalid-query-value', 'Encoded query must be an object')
 
   const parameters = new URLSearchParams()
-
-  for (const [key, fieldValue] of Object.entries(encoded)) {
-    if (fieldValue === undefined) continue
-
-    const cardinality = query.transport.fields[key] ?? 'single'
-    if (cardinality === 'repeated') {
-      if (!Array.isArray(fieldValue) || !fieldValue.every((item) => typeof item === 'string')) {
-        throw new QueryTransportError(
-          'invalid-query-value',
-          `Repeated query field "${key}" must encode to an array or tuple of strings`,
-          key
-        )
-      }
-      if (fieldValue.length === 0) {
-        throw new QueryTransportError('empty-query-array', `Query field "${key}" cannot encode an empty array`, key)
-      }
-      for (const item of fieldValue) parameters.append(key, item)
+  for (const [key, field] of Object.entries(value)) {
+    if (field === undefined) continue
+    if (!Array.isArray(field)) {
+      parameters.append(key, scalarText(field, key))
       continue
     }
-
-    if (typeof fieldValue !== 'string') {
-      const suffix = Array.isArray(fieldValue)
-        ? '; non-Zod repeated fields require request.query(schema, { repeated: [...] })'
-        : ''
-      throw new QueryTransportError('invalid-query-value', `Query field "${key}" must encode to a string${suffix}`, key)
+    if (field.length === 0) {
+      throw new QueryTransportError('empty-query-array', `Query field "${key}" cannot encode an empty array`, key)
     }
-    parameters.set(key, fieldValue)
+    for (const item of field) parameters.append(key, scalarText(item, key))
   }
-
   return parameters
 }
 
-function queryInput(query: AnyRequestQuery & { readonly transport: QueryTransportPlan }, parameters: URLSearchParams) {
+function queryInput(parameters: URLSearchParams): Readonly<Record<string, string | string[]>> {
   const input: Record<string, string | string[]> = {}
-
   for (const [key, value] of parameters) {
-    if (query.transport.fields[key] === 'repeated') {
-      if (hasOwn(input, key)) (input[key] as string[]).push(value)
-      else if (key === '__proto__') setOwn(input, key, [value])
-      else input[key] = [value]
-      continue
-    }
-
-    if (hasOwn(input, key)) {
-      throw new QueryTransportError(
-        'duplicate-query-value',
-        `Query field "${key}" must not be provided more than once`,
-        key
-      )
-    }
-
-    if (key === '__proto__') setOwn(input, key, value)
-    else input[key] = value
+    const existing = input[key]
+    if (existing === undefined && !hasOwn(input, key)) setOwn(input, key, value)
+    else if (Array.isArray(existing)) existing.push(value)
+    else setOwn(input, key, [existing as string, value])
   }
-
   return input
 }
 
-export function compileQueryEncoder<const Query extends AnyRequestQuery & { readonly transport: QueryTransportPlan }>(
-  query: Query
-): QueryEncoder<Query> {
+export function compileQueryEncoder<const Query extends AnyRequestQuery>(query: Query): QueryEncoder<Query> {
   const encode = compileSchemaExecution(query.schema, { location: 'query' }).encode
-  return (value) => mapExecutionStep(encode(value), (encoded) => encodedQuery(query, encoded))
+  return encode === undefined
+    ? (encodedQuery as QueryEncoder<Query>)
+    : (value) => mapExecutionStep(encode(value), encodedQuery)
 }
 
-export function compileQueryDecoder<const Query extends AnyRequestQuery & { readonly transport: QueryTransportPlan }>(
-  query: Query
-): QueryDecoder<Query> {
+export function compileQueryDecoder<const Query extends AnyRequestQuery>(query: Query): QueryDecoder<Query> {
   const decode = compileSchemaExecution(query.schema, { location: 'query' }).decode
-  return (parameters) => decode(queryInput(query, parameters))
+  return (parameters) => decode(queryInput(parameters))
 }
 
-export async function encodeQuery<const Query extends AnyRequestQuery & { readonly transport: QueryTransportPlan }>(
+export async function encodeQuery<const Query extends AnyRequestQuery>(
   query: Query,
-  value: SchemaOutput<Query['schema']>
+  value: SchemaOutbound<Query['schema']>
 ): Promise<URLSearchParams> {
   return compileQueryEncoder(query)(value)
 }
 
-export async function decodeQuery<const Query extends AnyRequestQuery & { readonly transport: QueryTransportPlan }>(
+export async function decodeQuery<const Query extends AnyRequestQuery>(
   query: Query,
   parameters: URLSearchParams
 ): Promise<SchemaOutput<Query['schema']>> {

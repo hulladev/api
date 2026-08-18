@@ -1,29 +1,23 @@
 import { bytesSchema, formDataSchema, jsonValueSchema, stringSchema, type JsonValue } from './representation'
-import {
-  isSchema,
-  type AnySchema,
-  type NonSchemaOptions,
-  type ObjectSchema,
-  type SchemaInput,
-} from './validation'
+import { isSchema, type AnySchema, type NonSchemaOptions, type ObjectSchema, type SchemaInput } from './validation'
 
 export type QueryWireValue = string | readonly string[] | undefined
 export type QueryWireObject = Readonly<Record<string, QueryWireValue>>
 export type TextWireObject = Readonly<Record<string, string | undefined>>
 
-/** Narrows an encoded header-like value to the string wire object used by HTTP. */
+/** Serializes a header-like input object into the string values used by HTTP. */
 export function textWireObject(value: unknown, name: string): TextWireObject {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     throw new TypeError(`Encoded ${name} must be an object`)
   }
 
+  const encoded: Record<string, string | undefined> = {}
   for (const [key, field] of Object.entries(value)) {
-    if (field !== undefined && typeof field !== 'string') {
-      throw new TypeError(`Encoded ${name} field "${key}" must be a string or undefined`)
-    }
+    if (field === undefined || typeof field === 'string') encoded[key] = field
+    else throw new TypeError(`${name} field "${key}" must be a string or undefined`)
   }
 
-  return value as TextWireObject
+  return encoded
 }
 
 export type RequestBodyKind = 'bytes' | 'form-data' | 'json' | 'text'
@@ -43,62 +37,12 @@ export type RequestBodyDefinition<
 
 export type AnyRequestBody = RequestBodyDefinition<RequestBodyKind, AnySchema, string>
 
-export type RequestQueryDefinition<
-  Schema extends ObjectSchema = ObjectSchema,
-  Repeated extends readonly string[] = readonly string[],
-> = {
+export type RequestQueryDefinition<Schema extends ObjectSchema = ObjectSchema> = {
   readonly kind: 'request-query'
   readonly schema: Schema
-  readonly repeated: Repeated
 }
 
-export type AnyRequestQuery = RequestQueryDefinition<ObjectSchema, readonly string[]>
-
-type Defined<Value> = Exclude<Value, undefined>
-
-type RepeatedPart<Value> = Extract<Defined<Value>, readonly string[]>
-type SingularPart<Value> = Exclude<Defined<Value>, readonly string[]>
-
-export type RepeatedQueryKeys<Schema extends AnySchema> =
-  SchemaInput<Schema> extends infer Input extends object
-    ? {
-        [Key in keyof Input]-?: [RepeatedPart<Input[Key]>] extends [never]
-          ? never
-          : [SingularPart<Input[Key]>] extends [never]
-            ? Key
-            : never
-      }[keyof Input] &
-        string
-    : never
-
-export type AnyRepeatedQueryKeys<Schema extends AnySchema> =
-  SchemaInput<Schema> extends infer Input extends object
-    ? {
-        [Key in keyof Input]-?: [RepeatedPart<Input[Key]>] extends [never] ? never : Key
-      }[keyof Input] &
-        string
-    : never
-
-type AmbiguousQueryKeys<Schema extends AnySchema> = Exclude<AnyRepeatedQueryKeys<Schema>, RepeatedQueryKeys<Schema>>
-
-type MissingRepeatedKeys<Schema extends AnySchema, Repeated extends readonly string[]> = Exclude<
-  RepeatedQueryKeys<Schema>,
-  Repeated[number]
->
-
-type CompleteRepeatedKeys<Schema extends AnySchema, Repeated extends readonly string[]> = [
-  MissingRepeatedKeys<Schema, Repeated>,
-] extends [never]
-  ? object
-  : {
-      readonly 'repeated must include every array or tuple query key': MissingRepeatedKeys<Schema, Repeated>
-    }
-
-type UnambiguousRepeatedKeys<Schema extends AnySchema> = [AmbiguousQueryKeys<Schema>] extends [never]
-  ? object
-  : {
-      readonly 'query fields cannot mix scalar and repeated inputs': AmbiguousQueryKeys<Schema>
-    }
+export type AnyRequestQuery = RequestQueryDefinition<ObjectSchema>
 
 type RequestBodyOptions<ContentType extends string> = NonSchemaOptions & {
   readonly contentType?: ContentType
@@ -177,31 +121,6 @@ export const formData = /* @__PURE__ */ defineRequestBodyFactory<
   'multipart/form-data'
 >('form-data', formDataSchema, 'multipart/form-data')
 
-export function query<const Schema extends ObjectSchema, const Repeated extends readonly RepeatedQueryKeys<Schema>[]>(
-  schema: Schema,
-  options: { readonly repeated: Repeated } & CompleteRepeatedKeys<Schema, Repeated> & UnambiguousRepeatedKeys<Schema>
-): RequestQueryDefinition<Schema, Repeated> {
-  if (!isSchema(schema)) throw new TypeError('Request query schema must be a Standard Schema')
-  if (typeof options !== 'object' || options === null || !Array.isArray(options.repeated)) {
-    throw new TypeError('Request query repeated keys must be an array')
-  }
-
-  const repeated = new Set<string>()
-  for (const key of options.repeated) {
-    if (typeof key !== 'string' || key.length === 0) {
-      throw new TypeError('Request query repeated keys must be non-empty strings')
-    }
-    if (repeated.has(key)) throw new TypeError(`Request query repeated key "${key}" is declared more than once`)
-    repeated.add(key)
-  }
-
-  return Object.freeze({
-    kind: 'request-query',
-    schema,
-    repeated: Object.freeze([...options.repeated]) as unknown as Repeated,
-  })
-}
-
 export function isRequestBodyDefinition(value: unknown): value is AnyRequestBody {
   const declaration = value as Partial<AnyRequestBody>
   return (
@@ -220,8 +139,7 @@ export function isRequestQueryDefinition(value: unknown): value is AnyRequestQue
     typeof value === 'object' &&
     value !== null &&
     (value as Partial<AnyRequestQuery>).kind === 'request-query' &&
-    isSchema((value as Partial<AnyRequestQuery>).schema) &&
-    Array.isArray((value as Partial<AnyRequestQuery>).repeated)
+    isSchema((value as Partial<AnyRequestQuery>).schema)
   )
 }
 
@@ -233,4 +151,4 @@ export function mimeEssence(contentType: string): string {
     .toLowerCase()
 }
 
-export const request = /* @__PURE__ */ Object.freeze({ query, json, text, bytes, formData })
+export const request = /* @__PURE__ */ Object.freeze({ json, text, bytes, formData })
