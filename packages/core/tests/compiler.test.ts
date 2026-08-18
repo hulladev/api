@@ -16,10 +16,7 @@ const organizations = router('/organizations/:organizationId', {
     }),
   },
 })
-const contract = defineContract({
-  basePath: '/api',
-  routes: { health, organizations },
-})
+const contract = defineContract({ basePath: '/api', routes: { health, organizations } })
 
 describe('contract compiler', () => {
   test('produces a frozen flat manifest in declaration order', () => {

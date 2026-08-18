@@ -1,9 +1,10 @@
 import type { CompiledContractRoute, CompiledPathParameters } from './compiler'
 import { getContractState } from './contract-state'
 import { HTTP_METHODS, type HttpMethod } from './http'
+import { routeInput } from './input'
 import { isRecord } from './object'
 import { assertBasePath, joinRoutePaths, pathParamNames, routePathShape } from './paths'
-import type { RouteResponses } from './response'
+import { routeOutput, type RouteResponses } from './response'
 import type { Route } from './route'
 import { isRouter, routerEntries, type AnyRouter } from './router'
 import type { ObjectSchema } from './validation'
@@ -21,6 +22,8 @@ export type Contract<
   readonly basePath: BasePath
   readonly routes: Readonly<Routes>
   readonly errors: Readonly<Errors>
+  readonly routeInput: typeof routeInput
+  readonly routeOutput: typeof routeOutput
 }
 
 export type ContractOptions<
@@ -219,7 +222,10 @@ export function defineContract(options: ContractOptions): Contract {
     basePath,
     routes,
     errors,
+    routeInput,
+    routeOutput,
   })
-  getContractState(contract).routes = compiledRoutes
+  const state = getContractState(contract)
+  state.routes = compiledRoutes
   return contract
 }

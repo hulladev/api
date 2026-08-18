@@ -27,14 +27,10 @@ export type { HttpMethod } from './http'
 export { QueryTransportError } from './query'
 export { codec, validation } from './validation'
 export type { AsyncSchema, CodecOptions, CodecSchema, IdentitySchema, ObjectSchema, SchemaOutbound } from './validation'
+export type { RouteInput, RouteInputSchema, RouteInputSource } from './input'
 export { request } from './request'
-export type {
-  AnyRequestBody,
-  RequestBodyDefinition,
-  RequestBodyKind,
-  TextWireObject,
-} from './request'
-export { response, routeOutput } from './response'
+export type { AnyRequestBody, RequestBodyDefinition, RequestBodyKind, TextWireObject } from './request'
+export { response } from './response'
 export type {
   AnyResponseBody,
   AnyRouteResponse,

@@ -15,6 +15,13 @@ const users = router('/users', {
 })
 
 describe('contract declaration', () => {
+  test('uses Standard Schema without validator configuration', () => {
+    const define = defineContract as (options: unknown) => unknown
+
+    expect(() => define({ routes: { health } })).not.toThrow()
+    expectTypeOf(defineContract({ routes: { health } }).routeInput).toBeFunction()
+  })
+
   test('returns an immutable contract whose routes contain route and router definitions', () => {
     const routes = { health, users }
     const contract = defineContract({ basePath: '/api', routes })
@@ -24,6 +31,8 @@ describe('contract declaration', () => {
       basePath: '/api',
       routes,
       errors: {},
+      routeInput: contract.routeInput,
+      routeOutput: contract.routeOutput,
     })
     expect(contract.routes).not.toBe(routes)
     expect(Object.isFrozen(contract)).toBe(true)
