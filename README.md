@@ -1,8 +1,8 @@
 # @hulla/api
 
-Greenfield implementation of a small directional contract layer for TypeScript APIs. Ordinary Standard Schemas validate identity representations; explicit codecs map between wire and application values. Fetch client/server support is built in, while validator-specific mechanics remain optional.
+Greenfield implementation of a small directional contract layer for TypeScript APIs. Contracts accept any Standard Schema directly for one-way validation and expose an explicit validator-neutral codec when client and server should share an application value. Fetch client/server support is built in without validator-specific adapters.
 
-The active workspace contains the batteries-included [`@hulla/api`](./packages/core) package plus the optional [`@hulla/api-zod`](./packages/zod) integration. The previous implementation remains in [`legacy`](./legacy) for behavioral reference and is excluded from the active workspace.
+The active workspace contains the batteries-included [`@hulla/api`](./packages/core) package. Zod, Valibot, and other Standard Schema implementations remain application dependencies. The previous implementation remains in [`legacy`](./legacy) for behavioral reference and is excluded from the active workspace.
 
 ## Start here
 
@@ -18,15 +18,15 @@ The first vertical slice includes:
 
 - `defineContract`, `router`, and method-specific route declarations
 - a canonical immutable compiled route manifest for runtimes, adapters, and generators
-- Standard Schema identity validation and explicit directional codecs
+- native directional Standard Schemas and explicit bidirectional codecs without validator configuration
 - a built-in Fetch client and server handler over a compiled host-parsed wire runtime
-- an advanced `@hulla/api/wire` server-adapter boundary and optional Zod integration package
+- an advanced `@hulla/api/wire` server-adapter boundary
 - optional `@hulla/api/procedure` functions with exact sync/async return types, validation, context, middleware, and structurally identified callable trees
-- normalized contract problems and a nested `Date` codec round-trip test
+- normalized contract problems and bidirectional codec coverage across every HTTP representation
 
 See [`docs/architecture.md`](./docs/architecture.md) for the boundary and request call graph, and
 [`docs/server-authoring.md`](./docs/server-authoring.md) for the modular server implementation API. The text-first
-request model, repeated query behavior, and Zod codecs are documented in
+request model, flat and repeated query behavior, and codecs are documented in
 [`docs/request-transport.md`](./docs/request-transport.md). Client call syntax and its intentionally small transport
 boundary are covered in [`docs/client-authoring.md`](./docs/client-authoring.md).
 Standalone procedure composition and route-derived schema helpers are covered in
@@ -48,7 +48,7 @@ packages/core/
     middleware.ts   shared middleware primitives and runtime guards
     object.ts       safe record and tree utilities
     parameters.ts   shared client/server path parameter transport
-    query.ts        normalized query cardinality and transport
+    query.ts        schema-neutral flat query transport
     request.ts      request representations and MIME normalization
     representation.ts shared intrinsic wire schemas
     response.ts     response representation declarations
@@ -64,11 +64,8 @@ packages/core/
       errors.ts     internal server and validation errors
       fetch.ts      built-in Request/Response adapter
       runtime.ts    standard-Request wire execution, published as the advanced adapter entry point
-    validation.ts   Standard Schema validation and directional codecs
+    validation.ts   Standard Schema execution plans and explicit codecs
   tests/            Contract laws and vertical-slice tests
-
-packages/zod/
-  src/              explicit Zod codecs, query inference, and schema composition
 ```
 
-The publishable packages use the next major version while the root workspace and benchmarks remain private.
+The publishable package uses the next major version while the root workspace and benchmarks remain private.

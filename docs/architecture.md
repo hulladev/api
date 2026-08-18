@@ -1,6 +1,6 @@
 # Greenfield boundary
 
-An ordinary Standard Schema declares one identity representation and validates the same value in both directions. When wire and application values differ, an explicit @hulla/api codec pairs a wire-to-application Standard Schema with its application-to-wire counterpart. `@hulla/api-zod` adapts native Zod codecs and owns Zod query cardinality inference; core never inspects validator-specific properties.
+Contracts consume Standard Schema directly. An ordinary schema is one-way: its input is supplied at the outbound application boundary and its output is received at the opposite boundary. An explicit `codec(wireSchema, applicationSchema, { decode, encode })` makes both applications use the application representation while HTTP uses the wire representation. No validator selection or schema-library introspection is required.
 
 The active milestone centers on the Fetch vertical slice. Framework adapters, generators, query integrations, and database integrations should only return after the directional core proves their required public seams. Procedures remain a small optional application layer and do not participate in HTTP routing. A built procedure tree supplies structural identity for future integrations without introducing a separate declaration/implementation contract.
 
@@ -8,20 +8,20 @@ The active milestone centers on the Fetch vertical slice. Framework adapters, ge
 
 ```text
 application input
-  -> schema.encode
+  -> codec.encode when explicitly declared
   -> representation-specific request serialization
   -> adapter extracts raw request values
   -> core query/body transport normalization
   -> schema.decode
   -> typed handler
-  -> server response schema.encode
+  -> response codec.encode or ordinary schema input validation
   -> Response JSON serialization
   -> response.json
   -> client response schema.decode
   -> application output
 ```
 
-Each arrow exists once per boundary. The server binding contains one complete handler tree, inferred context, and one contract-scoped middleware stack. The core runtime compiles route matching, schema capabilities, request decoding, header handling, middleware execution, response encoding, and client response decoding once when a binding is built. Hot calls execute those plans instead of rediscovering schema or representation behavior. Backend integrations may wrap either the standard `(Request) => Promise<Response>` boundary or the lower-level wire dispatcher. They remain responsible only for host-specific concerns such as producing the standard `Request`, extracting already-parsed wire values, framework lifecycle, connection metadata, and deployment configuration. Handlers, context, and middleware always observe that same `Request` API regardless of the backend integration. Route handlers and middleware return status-discriminated response values directly.
+For an ordinary request schema, the client accepts the schema input and the server receives its validated output. For a codec, both accept the application representation and the client encodes it before transport. Responses reverse the application roles: handlers return an ordinary response schema's input or a codec's application value, while clients always receive the validated application output. The server binding contains one complete handler tree, inferred context, and one contract-scoped middleware stack. Route matching, validation, representation handling, middleware, and response dispatch are compiled once when a binding is built.
 
 `compileContract()` from `@hulla/api/compiler` is the canonical reflection boundary for integrations. It returns a cached, immutable flat manifest in declaration order. Every entry correlates its structural key, method, fully joined path, accumulated router and route parameter declarations, and original route declaration. A single internal `ContractState` owns that manifest and the transport-neutral client/server route plan, so core runtimes and external adapters or generators cannot drift or repeat the contract walk. Only compilation is cached; requests, responses, and application results are not.
 
@@ -41,4 +41,4 @@ Router children are direct properties, matching the contract, built client, and 
 
 ## Dependency rule
 
-The public contract depends only on the Standard Schema specification. `@hulla/api-zod` owns the optional Zod peer, explicit reversible-schema adaptation, query inference, text codecs, and route-schema composition. `@hulla/api` includes its broadly portable Fetch client and handler behind dedicated subpath exports. `@hulla/api/wire` exposes the normalized server-adapter boundary for framework-specific integrations without making ordinary users install another package.
+The transport core depends only on the Standard Schema specification. Schema libraries such as Zod and Valibot are neither dependencies nor peers of `@hulla/api`; applications install and import whichever implementation they use. `@hulla/api` includes its broadly portable Fetch client and handler behind dedicated subpath exports. `@hulla/api/wire` exposes the normalized server-adapter boundary for framework-specific integrations.

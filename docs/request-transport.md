@@ -1,75 +1,99 @@
 # Request transport
 
-@hulla/api treats every request schema directionally: schema input is the HTTP wire value and schema output is the value exposed to application code.
+@hulla/api treats an ordinary request schema directionally: its input is supplied to the client and its validated output is exposed to server code. Use an explicit codec when client and server should instead share one application representation.
 
-## Text-first URL values
+## URL and header values
 
-Path parameters, headers, and query values arrive as text. Keep values as strings with normal Zod schemas, or use the optional Zod integration when the application needs a richer value:
+Path parameters, query fields, and headers cross HTTP as text. Their wire schemas must therefore accept strings; query arrays and tuples accept repeated strings. A one-way schema transform keeps the client textual while giving the handler a richer value:
 
 ```ts
 import { z } from 'zod'
-import { codec, query, text } from '@hulla/api-zod'
 
-const searchQuery = query(z.object({
-  search: z.string().optional(),
-  page: text.integer().optional(),
-  active: text.boolean().optional(),
-  cursor: text.bigint().optional(),
-  since: text.datetime().optional(),
-  tags: z.array(z.string()).min(1).optional(),
-}))
+const oneWayQuery = z.object({
+  page: z.string().regex(/^\d+$/).transform(Number),
+})
 ```
 
-`text.*` values retain their native Zod APIs while carrying explicit @hulla/api codec metadata. Wrap custom reversible Zod declarations with `codec(z.codec(...))`; ordinary identity schemas need no wrapper. Use `query(schema)` when Zod should infer repeated URL fields.
+With this declaration the client supplies `{ page: string }` and the handler receives `{ page: number }`.
 
-Using `z.number()` or `z.boolean()` directly in params, headers, or query fields is a type error because those schemas expect a non-text wire value. They remain appropriate for JSON bodies.
-
-## Query cardinality
-
-Zod query arrays and tuples use repeated keys:
-
-```text
-?tags=admin&tags=author&coordinate=50.08&coordinate=14.43
-```
-
-A scalar may occur once. Arrays and tuples may occur one or more times, preserving order. Empty arrays have no query-string representation: the client encoder rejects them, while an absent defaulted schema may still produce `[]` during decoding.
-
-Standard Schema does not expose runtime structure. Other validators therefore declare repeated keys explicitly:
+Use `codec()` when both applications should use the richer representation:
 
 ```ts
-query: request.query(
-  v.object({
-    search: v.optional(v.string()),
-    tags: v.array(v.string()),
+import { codec, defineContract, response, route } from '@hulla/api'
+import { z } from 'zod'
+
+const sharedQuery = codec(
+  z.object({
+    page: z.string().regex(/^\d+$/),
+    active: z.enum(['true', 'false']),
+    tags: z.array(z.string()).optional(),
   }),
-  { repeated: ['tags'] },
+  z.object({
+    page: z.number().int(),
+    active: z.boolean(),
+    tags: z.array(z.string()).optional(),
+  }),
+  {
+    decode: ({ page, active, tags }) => ({ page: Number(page), active: active === 'true', tags }),
+    encode: ({ page, active, tags }) => ({
+      page: String(page),
+      active: active ? 'true' : 'false',
+      tags,
+    }),
+  },
 )
+
+const contract = defineContract({
+  routes: {
+    search: route.get('/search', {
+      query: sharedQuery,
+      responses: { 200: response.empty() },
+    }),
+  },
+})
 ```
 
-The repeated list is checked against the schema input type and compiled into frozen route metadata. Runtime parsing never probes a schema with candidate values.
+Here the client and handler both use `{ page: number; active: boolean; tags?: string[] }`. The codec alone converts that application value to and from the textual HTTP representation.
 
-## Built-in text codecs
+Plain `z.number()` and `z.boolean()` are invalid query, path, and header wire schemas because HTTP delivers those values as text. Values are not implicitly stringified. Use a textual one-way transform when the client should remain wire-shaped, or a codec when both applications should use the richer type.
 
-The focused initial catalog is:
+Codec endpoint schemas describe stable representations. Type-changing transforms and coercions belong in `decode` and `encode`; same-type normalization such as trimming remains valid when it is safe to apply repeatedly.
 
-- `text.integer()` for strict safe base-10 integers;
-- `text.number()` for finite JSON-number text;
-- `text.bigint()` for arbitrary base-10 integers;
-- `text.boolean()` for exact `true` and `false` text;
-- `text.datetime()` for offset-qualified ISO instants represented as `Date`;
-- `text.json(schema)` for a structured value stored in one textual field.
+## Query values
 
-Values that remain text continue to use Zod directly, including UUIDs, email addresses, URLs, ISO calendar dates, durations, and enums.
+Query transport is intentionally flat. Scalars use one key and arrays or tuples repeat the key:
+
+```text
+?search=Ada&tags=admin&tags=author
+```
+
+On input, one occurrence is passed to the schema as a string and repeated occurrences are passed as a string array. The schema owns singleton-versus-array normalization when both forms are valid. `undefined` fields are omitted and explicit empty arrays are rejected. An absent field may still become `[]` when the schema declares a default.
+
+Nested objects and nested arrays are rejected. There is no built-in bracket parser or JSON query mode: those formats introduce transport policy, ambiguity, and parser-safety concerns that are better kept out of the default contract model.
 
 ## Request bodies
 
-A naked body schema is JSON shorthand:
+A naked body schema is JSON shorthand. JSON bodies retain their natural JSON types:
 
 ```ts
 body: z.object({
   title: z.string(),
-  createdAt: text.datetime(),
+  count: z.number().int(),
+  active: z.boolean(),
 })
+```
+
+A codec is needed when JSON cannot directly represent the application value, or when client and server should share a transformed value:
+
+```ts
+const datedBody = codec(
+  z.object({ createdAt: z.iso.datetime() }),
+  z.object({ createdAt: z.date() }),
+  {
+    decode: ({ createdAt }) => ({ createdAt: new Date(createdAt) }),
+    encode: ({ createdAt }) => ({ createdAt: createdAt.toISOString() }),
+  },
+)
 ```
 
 Explicit representations use the request namespace:
@@ -85,4 +109,4 @@ Each helper also has a representation-appropriate identity schema when the schem
 
 ## Adapter boundary
 
-Adapters provide a standard `Request`, then extract raw text occurrences, headers, path values, and the selected raw body representation. They must not perform numeric, boolean, date, JSON, or collection coercion. Query and body transport helpers in core perform normalization before Standard Schema validation runs once. This keeps handler, context, and middleware request semantics identical across the built-in Fetch handler and framework integrations.
+Adapters provide a standard `Request`, then extract raw path strings, flat query parameters, headers, and the selected body representation. Repeated query keys become arrays before Standard Schema validation. Codecs are compiled into the shared client/server route plan, so framework adapters do not implement validator-specific encoding.

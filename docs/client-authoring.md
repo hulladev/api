@@ -67,7 +67,7 @@ Client middleware can also stop every route with a contract-level error through 
 
 ## Transport boundary
 
-Each client leaf performs exactly one Fetch call. It encodes application values through the request schemas, serializes their declared HTTP representations, and decodes the selected response declaration back into application values.
+Each client leaf performs exactly one Fetch call. Ordinary schemas expose their input types directly; explicit codecs encode shared application values before the declared HTTP representation is serialized. The selected response declaration is then decoded back into its application value.
 
 Like Fetch, the client does not throw merely because a response has a 4xx or 5xx status. Route responses and contract-level middleware errors are returned as a status-discriminated union. Network failures, schema failures, content-type mismatches, and statuses absent from both response maps reject the call.
 

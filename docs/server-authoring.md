@@ -80,7 +80,7 @@ Each handler receives only one input object:
 
 The status discriminates the complete response envelope. An empty response forbids `body`; a raw response requires `Response` and forbids separate headers; schema-backed response headers are required and typed when declared.
 
-Handlers must cover every status declared by their route. Runtime execution also rejects undeclared statuses and encodes the selected body and headers through their directional schemas.
+Handlers must cover every status declared by their route. Runtime execution also rejects undeclared statuses, validates ordinary response inputs, and encodes codec application values before serializing the selected body and headers.
 
 ## Organizing handlers across modules
 

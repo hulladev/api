@@ -2,24 +2,24 @@
 
 This private workspace measures complete in-memory client-to-server calls without adding benchmark dependencies or code to the core package. It reports deliberately separate profiles for Direct Fetch, @hulla/api, tRPC, oRPC, ts-rest, and Hono RPC.
 
-The equivalent-guarantee strict-parity profile is reported first because it is the closest feature-parity comparison. It applies the same applicable identity-schema boundaries to every implementation:
+The historical strict-parity profile is reported first as the closest validation comparison. Each implementation follows its public boundary model:
 
 - static JSON GET with server and client output validation;
-- small JSON POST with validation at all four client/server boundaries;
-- large JSON POST with the same four validation boundaries.
+- small JSON POST with request and response validation;
+- large JSON POST with the same boundary behavior.
 
 The native validated profile uses each package's simplest practical path while retaining its normally supported validation. The guarantees therefore differ and are reported as behavior, not as an equal-capability ranking:
 
 | Runtime | Native request validation | Native response validation |
 |---|---|---|
 | Direct Fetch | Server receive | Client receive |
-| @hulla/api | Client send + server receive | Server send + client receive |
+| @hulla/api | Server receive | Server send input validation + client receive |
 | tRPC | Server receive | Server output |
 | oRPC | Server receive | Server output |
 | ts-rest + Zod 4 bridge | Server receive | Client receive |
 | Hono RPC | Server receive through `zValidator` | Type-only |
 
-Identity schemas use ordinary forward validation at outgoing boundaries; they are not forced through Zod's reverse-codec path. A separate transformed-Date scenario measures genuine codec encode/decode work at all four boundaries.
+Schemas use ordinary forward validation at inbound boundaries. A separate transformed-Date scenario measures an explicit core codec that preserves `Date` application values while encoding ISO strings at both HTTP send boundaries.
 
 The separately labeled focused diagnostics compare @hulla/api with equivalent direct implementations for host-parsed wire dispatch, static and parameterized dispatch through 256-route tables, dynamic path/query/header transport, client and server middleware/context, invalid-input serialization, codecs, and ten-chunk NDJSON streaming. They isolate @hulla/api feature costs and are not cross-package rankings. Network and socket costs are deliberately excluded; `Direct Fetch` is the lower-level baseline rather than a competing contract library.
 
