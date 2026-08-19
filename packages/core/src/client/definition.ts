@@ -45,6 +45,11 @@ type RuntimeRoute = {
   readonly responses?: ReadonlyMap<number, ClientResponseDecoder>
 }
 
+type RuntimeRouter = {
+  readonly key: readonly string[]
+  readonly target: Record<string, unknown>
+}
+
 function responseDecoder(runtime: RuntimeRoute, response: Response): ClientResponseDecoder {
   const decoder =
     runtime.responseStatus === response.status ? runtime.responseDecoder : runtime.responses?.get(response.status)
@@ -91,7 +96,12 @@ async function executeRoute(
   )
 }
 
-function setClientRoute(target: Record<string, unknown>, key: readonly string[], value: unknown): void {
+function setClientRoute(
+  target: Record<string, unknown>,
+  key: readonly string[],
+  value: unknown,
+  routers: RuntimeRouter[]
+): void {
   if (key.length === 1) {
     setOwn(target, key[0]!, value)
     return
@@ -99,7 +109,7 @@ function setClientRoute(target: Record<string, unknown>, key: readonly string[],
 
   let parent = target
 
-  for (const segment of key.slice(0, -1)) {
+  for (const [index, segment] of key.slice(0, -1).entries()) {
     const existing = hasOwn(parent, segment) ? parent[segment] : undefined
     if (existing !== undefined) {
       if (!isRecord(existing)) throw new TypeError(`Compiled client key "${key.join('.')}" collides with a route`)
@@ -109,6 +119,7 @@ function setClientRoute(target: Record<string, unknown>, key: readonly string[],
 
     const nested: Record<string, unknown> = {}
     setOwn(parent, segment, nested)
+    routers.push({ key: key.slice(0, index + 1), target: nested })
     parent = nested
   }
 
@@ -118,25 +129,46 @@ function setClientRoute(target: Record<string, unknown>, key: readonly string[],
 }
 
 function clientRouteKey(key: readonly string[]): APIClientPluginRouteKey {
-  const root = key.join('/')
+  const prefix = Object.freeze([...key])
   return Object.freeze({
-    root,
-    full: (...args: readonly unknown[]) => [root, ...args] as readonly [string, ...unknown[]],
+    prefix,
+    full: (...args: readonly unknown[]) => [...prefix, ...args],
   })
 }
 
 function attachClientPluginMembers(
-  call: APIClientPluginRouteCall,
+  target: object,
   plugin: APIPlugin,
-  members: Readonly<Record<string, unknown>>
+  members: Readonly<Record<string, unknown>>,
+  owners: Map<string, string>,
+  targetKind: 'route' | 'router'
 ): void {
-  const namespace = `$${plugin.namespace ?? plugin.id}`
-  if (hasOwn(call, namespace)) throw new TypeError(`Client plugin "${plugin.id}" collides on namespace "${namespace}"`)
+  for (const [key, value] of Object.entries(members)) {
+    if (key.startsWith('$')) {
+      throw new TypeError(
+        `Client plugin "${plugin.id}" ${targetKind} member "${key}" must omit the framework-owned "$" prefix`
+      )
+    }
 
-  const extension = Object.create(null) as Record<string, unknown>
-  for (const [key, value] of Object.entries(members)) setOwn(extension, key, value)
-  Object.freeze(extension)
-  Object.defineProperty(call, namespace, { enumerable: true, value: extension })
+    const publicKey = `$${key}`
+    if (publicKey === '$meta')
+      throw new TypeError(`Client plugin "${plugin.id}" ${targetKind} member "$meta" is reserved by @hulla/api`)
+
+    const owner = owners.get(publicKey)
+    if (owner !== undefined) {
+      throw new TypeError(
+        `Client plugin "${plugin.id}" ${targetKind} member "${publicKey}" collides with plugin "${owner}"`
+      )
+    }
+    if (publicKey in target) {
+      throw new TypeError(
+        `Client plugin "${plugin.id}" ${targetKind} member "${publicKey}" collides with the client ${targetKind}`
+      )
+    }
+
+    Object.defineProperty(target, publicKey, { enumerable: true, value })
+    owners.set(publicKey, plugin.id)
+  }
 }
 
 function applyClientPlugins(
@@ -146,9 +178,7 @@ function applyClientPlugins(
   plugins: readonly APIPlugin[]
 ): void {
   const key = clientRouteKey(plan.compiled.key)
-  if (plugins.some((plugin) => plugin.routeKeys === true)) {
-    Object.defineProperty(call, '$key', { enumerable: true, value: key })
-  }
+  const owners = new Map<string, string>()
 
   for (const plugin of plugins) {
     const hook = plugin.client?.route
@@ -156,7 +186,21 @@ function applyClientPlugins(
     const members = hook({ contract, route: plan.compiled, call, hasInput: plan.hasInput, key })
     if (members === undefined) continue
     if (!isRecord(members)) throw new TypeError(`Client plugin "${plugin.id}" route hook must return an object`)
-    attachClientPluginMembers(call, plugin, members)
+    attachClientPluginMembers(call, plugin, members, owners, 'route')
+  }
+}
+
+function applyClientRouterPlugins(contract: Contract, router: RuntimeRouter, plugins: readonly APIPlugin[]): void {
+  const key = clientRouteKey(router.key)
+  const owners = new Map<string, string>()
+
+  for (const plugin of plugins) {
+    const hook = plugin.client?.router
+    if (hook === undefined) continue
+    const members = hook({ contract, key })
+    if (members === undefined) continue
+    if (!isRecord(members)) throw new TypeError(`Client plugin "${plugin.id}" router hook must return an object`)
+    attachClientPluginMembers(router.target, plugin, members, owners, 'router')
   }
 }
 
@@ -168,6 +212,7 @@ function buildClientRoutes(
   plugins: readonly APIPlugin[]
 ): Readonly<Record<string, unknown>> {
   const tree: Record<string, unknown> = {}
+  const routers: RuntimeRouter[] = []
   const contractPlan = compileCanonicalContract(contract)
   let errorResponses: ReadonlyMap<number, ClientResponseDecoder> | undefined
   if (contractPlan.errors.length > 0) {
@@ -208,8 +253,10 @@ function buildClientRoutes(
       return executeRoute(runtime, transport, contextFactory, middlewares, input, requestOptions ?? {})
     }) as APIClientPluginRouteCall
     applyClientPlugins(contract, plan, call, plugins)
-    setClientRoute(tree, compiled.key, call)
+    setClientRoute(tree, compiled.key, call, routers)
   }
+
+  for (const router of routers) applyClientRouterPlugins(contract, router, plugins)
 
   for (const plugin of plugins) plugin.client?.build?.({ contract, routes: tree })
 
@@ -292,6 +339,6 @@ export function defineClient(
   contract: Contract,
   options: DefineClientOptions<object, Contract, APIClientPluginList> = {}
 ): unknown {
-  const plugins = normalizeAPIPlugins(options.plugins, 'client') as APIClientPluginList
+  const plugins = normalizeAPIPlugins(options.plugins, 'client')
   return createDefinition(contract, options, plugins)
 }

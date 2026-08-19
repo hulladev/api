@@ -1,33 +1,42 @@
 import { definePlugin } from '@hulla/api/plugin'
 import type {
-  APIClientPluginHooks,
-  APIClientPluginRouteContext,
+  APIClientPluginRouteHook,
+  APIClientPluginRouterHook,
   APIClientRouteArgs,
   APIClientRouteIfInput,
   APIClientRouteKey,
-  APIClientRouteKeyRoot,
+  APIClientRouteKeyPrefix,
   APIClientRouteOverloads,
   APIClientRouteResult,
-  APIPlugin,
   APIPluginTypeOpaque,
+  APIProcedureArgs,
+  APIProcedureIfInput,
+  APIProcedureKey,
+  APIProcedureKeyPrefix,
+  APIProcedureOverloads,
+  APIProcedurePluginHook,
+  APIProcedurePluginRouterHook,
+  APIProcedureResult,
 } from '@hulla/api/plugin'
-
-export type TanStackQueryPluginConfig<Namespace extends string = 'tanstack'> = {
-  readonly namespace?: Namespace
-}
 
 export type TanStackQueryFunctionContext = {
   readonly signal?: AbortSignal
 }
 
-type QueryProcedureTypeHook = {
+type QueryClientRouteTypes = {
+  readonly queryKey: APIClientRouteIfInput<
+    APIClientRouteOverloads<
+      readonly [(...args: APIClientRouteArgs) => APIClientRouteKey, () => APIClientRouteKeyPrefix]
+    >,
+    () => APIClientRouteKeyPrefix
+  >
   readonly queryOptions: APIClientRouteIfInput<
     (...args: APIClientRouteArgs) => {
       readonly queryKey: APIClientRouteKey
       readonly queryFn: (context?: APIPluginTypeOpaque<TanStackQueryFunctionContext>) => APIClientRouteResult
     },
     () => {
-      readonly queryKey: readonly [APIClientRouteKeyRoot]
+      readonly queryKey: APIClientRouteKeyPrefix
       readonly queryFn: (context?: APIPluginTypeOpaque<TanStackQueryFunctionContext>) => APIClientRouteResult
     }
   >
@@ -39,48 +48,80 @@ type QueryProcedureTypeHook = {
           readonly mutationFn: () => APIClientRouteResult
         },
         () => {
-          readonly mutationKey: readonly [APIClientRouteKeyRoot]
+          readonly mutationKey: APIClientRouteKeyPrefix
           readonly mutationFn: (...args: APIClientRouteArgs) => APIClientRouteResult
         },
       ]
     >,
     () => {
-      readonly mutationKey: readonly [APIClientRouteKeyRoot]
+      readonly mutationKey: APIClientRouteKeyPrefix
       readonly mutationFn: () => APIClientRouteResult
     }
   >
 }
 
-type QueryHook = (context: APIClientPluginRouteContext) => {
-  readonly queryOptions: (...args: readonly unknown[]) => unknown
-  readonly mutationOptions: (...args: readonly unknown[]) => unknown
+type QueryClientRouteHook = APIClientPluginRouteHook<QueryClientRouteTypes>
+
+type QueryClientRouterTypes = {
+  readonly queryKey: () => APIClientRouteKeyPrefix
 }
 
-type QueryPlugin<Namespace extends string> = APIPlugin<
-  'tanstackQuery',
-  'client',
-  Namespace,
-  APIClientPluginHooks<QueryHook, QueryProcedureTypeHook>
-> & {
-  readonly routeKeys: true
-  readonly client: APIClientPluginHooks<QueryHook, QueryProcedureTypeHook>
+type QueryClientRouterHook = APIClientPluginRouterHook<QueryClientRouterTypes>
+
+type QueryProcedureTypes = {
+  readonly queryKey: APIProcedureIfInput<
+    APIProcedureOverloads<readonly [(...args: APIProcedureArgs) => APIProcedureKey, () => APIProcedureKeyPrefix]>,
+    () => APIProcedureKeyPrefix
+  >
+  readonly queryOptions: APIProcedureIfInput<
+    (...args: APIProcedureArgs) => {
+      readonly queryKey: APIProcedureKey
+      readonly queryFn: (context?: APIPluginTypeOpaque<TanStackQueryFunctionContext>) => APIProcedureResult
+    },
+    () => {
+      readonly queryKey: APIProcedureKeyPrefix
+      readonly queryFn: (context?: APIPluginTypeOpaque<TanStackQueryFunctionContext>) => APIProcedureResult
+    }
+  >
+  readonly mutationOptions: APIProcedureIfInput<
+    APIProcedureOverloads<
+      readonly [
+        (...args: APIProcedureArgs) => {
+          readonly mutationKey: APIProcedureKey
+          readonly mutationFn: () => APIProcedureResult
+        },
+        () => {
+          readonly mutationKey: APIProcedureKeyPrefix
+          readonly mutationFn: (...args: APIProcedureArgs) => APIProcedureResult
+        },
+      ]
+    >,
+    () => {
+      readonly mutationKey: APIProcedureKeyPrefix
+      readonly mutationFn: () => APIProcedureResult
+    }
+  >
 }
 
-export function tanstackQueryPlugin(
-  config?: TanStackQueryPluginConfig<'tanstack'> & { readonly namespace?: undefined }
-): QueryPlugin<'tanstack'>
-export function tanstackQueryPlugin<const Namespace extends string>(
-  config: TanStackQueryPluginConfig<Namespace> & { readonly namespace: Namespace }
-): QueryPlugin<Namespace>
-export function tanstackQueryPlugin(config: TanStackQueryPluginConfig<string> = {}): QueryPlugin<string> {
-  const route: QueryHook = (context) => {
+type QueryProcedureHook = APIProcedurePluginHook<QueryProcedureTypes>
+
+type QueryProcedureRouterTypes = {
+  readonly queryKey: () => APIProcedureKeyPrefix
+}
+
+type QueryProcedureRouterHook = APIProcedurePluginRouterHook<QueryProcedureRouterTypes>
+
+export function tanstackQueryPlugin() {
+  const route: QueryClientRouteHook = (context) => {
+    const queryKey = (...args: readonly unknown[]) => context.key.full(...args)
+
     const queryOptions = (...args: readonly unknown[]) => {
       if (context.hasInput && args.length === 0) {
-        throw new TypeError('queryOptions() requires the route input so its query can be executed deterministically.')
+        throw new TypeError('$queryOptions() requires the route input so its query can be executed deterministically.')
       }
 
       return {
-        queryKey: context.key.full(...args),
+        queryKey: queryKey(...args),
         queryFn: (queryContext?: TanStackQueryFunctionContext) =>
           context.hasInput
             ? context.call(args[0], { signal: queryContext?.signal })
@@ -91,7 +132,7 @@ export function tanstackQueryPlugin(config: TanStackQueryPluginConfig<string> = 
     const mutationOptions = (...args: readonly unknown[]) => {
       if (context.hasInput && args.length === 0) {
         return {
-          mutationKey: [context.key.root] as const,
+          mutationKey: context.key.prefix,
           mutationFn: (...nextArgs: readonly unknown[]) => context.call(nextArgs[0]),
         }
       }
@@ -102,17 +143,59 @@ export function tanstackQueryPlugin(config: TanStackQueryPluginConfig<string> = 
       }
     }
 
-    return { queryOptions, mutationOptions }
+    return { queryKey, queryOptions, mutationOptions }
   }
+
+  const router: QueryClientRouterHook = (context) => ({
+    queryKey: () => context.key.full(),
+  })
+
+  const procedure: QueryProcedureHook = (context) => {
+    const queryKey = (...args: readonly unknown[]) => context.key.full(...args)
+
+    const queryOptions = (...args: readonly unknown[]) => {
+      if (context.hasInput && args.length === 0) {
+        throw new TypeError(
+          '$queryOptions() requires the procedure input so its query can be executed deterministically.'
+        )
+      }
+
+      return {
+        queryKey: queryKey(...args),
+        queryFn: () => (context.hasInput ? context.call(args[0]) : context.call()),
+      }
+    }
+
+    const mutationOptions = (...args: readonly unknown[]) => {
+      if (context.hasInput && args.length === 0) {
+        return {
+          mutationKey: context.key.prefix,
+          mutationFn: (...nextArgs: readonly unknown[]) => context.call(nextArgs[0]),
+        }
+      }
+
+      return {
+        mutationKey: context.key.full(...args),
+        mutationFn: () => (context.hasInput ? context.call(args[0]) : context.call()),
+      }
+    }
+
+    return { queryKey, queryOptions, mutationOptions }
+  }
+
+  const procedureRouter: QueryProcedureRouterHook = (context) => ({
+    queryKey: () => context.key.full(),
+  })
 
   return definePlugin({
     id: 'tanstackQuery',
-    target: 'client',
-    namespace: config.namespace ?? 'tanstack',
-    routeKeys: true,
     client: {
       route,
-      routeTypes: undefined as unknown as QueryProcedureTypeHook,
+      router,
     },
-  }) as QueryPlugin<string>
+    procedures: {
+      procedure,
+      router: procedureRouter,
+    },
+  })
 }

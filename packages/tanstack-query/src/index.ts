@@ -1,2 +1,2 @@
 export { tanstackQueryPlugin } from './query'
-export type { TanStackQueryPluginConfig } from './query'
+export type { TanStackQueryFunctionContext } from './query'

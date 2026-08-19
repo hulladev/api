@@ -8,6 +8,20 @@ import {
   type MiddlewareOptions,
 } from './middleware'
 import { isPlainRecord, isRecord, setOwn } from './object'
+import type {
+  APIPlugin,
+  APIPluginTypeOpaque,
+  APIProcedureArgs,
+  APIProcedureIfInput,
+  APIProcedureKey,
+  APIProcedureKeyPrefix,
+  APIProcedureOverloads,
+  APIProcedurePluginCall,
+  APIProcedurePluginKey,
+  APIProcedurePluginList,
+  APIProcedureResult,
+} from './plugin'
+import { normalizeAPIPlugins } from './plugin-runtime'
 import {
   compileSchemaExecution,
   isAsyncSchema,
@@ -47,8 +61,13 @@ export type ProcedureContextInput = {
 
 export type ProcedureContextFactory<Context extends object> = (input: ProcedureContextInput) => Awaitable<Context>
 
-export type DefineProceduresOptions<Context extends object> = {
+function isProcedureContextFactory(value: unknown): value is ProcedureContextFactory<object> {
+  return typeof value === 'function'
+}
+
+export type DefineProceduresOptions<Context extends object, Plugins extends APIProcedurePluginList = readonly []> = {
   readonly context?: ProcedureContextFactory<Context>
+  readonly plugins?: Plugins
 }
 
 type SchemaIsAsync<Schema extends AnySchema> = Schema extends AsyncSchema ? true : false
@@ -91,26 +110,155 @@ export type AnyProcedure = (...args: never[]) => unknown
 export type BoundProcedure<
   ProcedureType extends AnyProcedure = AnyProcedure,
   Key extends readonly string[] = readonly string[],
+  Plugins extends APIProcedurePluginList = readonly [],
 > = ProcedureType & {
   readonly $meta: Readonly<ProcedureMetadata<Key>>
-}
+} & ProcedurePluginExtensions<Plugins, ProcedureType, Key>
 
 export type ProcedureTree = {
   readonly [key: string]: AnyProcedure | ProcedureTree
 }
 
-export type BuiltProcedureTree<Tree extends ProcedureTree, Prefix extends readonly string[] = readonly []> = Readonly<{
+export type BuiltProcedureTree<
+  Tree extends ProcedureTree,
+  Prefix extends readonly string[] = readonly [],
+  Plugins extends APIProcedurePluginList = readonly [],
+> = Readonly<{
   [Key in keyof Tree]: Tree[Key] extends AnyProcedure
-    ? BoundProcedure<Tree[Key], readonly [...Prefix, Extract<Key, string>]>
+    ? BoundProcedure<Tree[Key], readonly [...Prefix, Extract<Key, string>], Plugins>
     : Tree[Key] extends ProcedureTree
-      ? BuiltProcedureTree<Tree[Key], readonly [...Prefix, Extract<Key, string>]>
+      ? BuiltProcedureTree<Tree[Key], readonly [...Prefix, Extract<Key, string>], Plugins> &
+          ProcedurePluginRouterExtensions<Plugins, readonly [...Prefix, Extract<Key, string>]>
       : never
 }>
+
+type ResolveProcedurePluginArguments<Arguments, ProcedureType extends AnyProcedure, Key extends readonly string[]> = [
+  Arguments,
+] extends [APIProcedureArgs]
+  ? Parameters<ProcedureType>
+  : Arguments extends readonly unknown[]
+    ? {
+        [Index in keyof Arguments]: ResolveProcedurePluginType<Arguments[Index], ProcedureType, Key>
+      }
+    : never
+
+type ResolveProcedurePluginType<Value, ProcedureType extends AnyProcedure, Key extends readonly string[]> = [
+  Value,
+] extends [APIProcedureArgs]
+  ? Parameters<ProcedureType>
+  : [Value] extends [APIProcedureIfInput<infer WhenInput, infer WhenNoInput>]
+    ? Parameters<ProcedureType> extends readonly []
+      ? ResolveProcedurePluginType<WhenNoInput, ProcedureType, Key>
+      : ResolveProcedurePluginType<WhenInput, ProcedureType, Key>
+    : [Value] extends [APIProcedureOverloads<readonly [infer First, infer Second]>]
+      ? ResolveProcedurePluginType<First, ProcedureType, Key> extends (
+          ...args: infer FirstArguments
+        ) => infer FirstResult
+        ? ResolveProcedurePluginType<Second, ProcedureType, Key> extends (
+            ...args: infer SecondArguments
+          ) => infer SecondResult
+          ? {
+              (...args: SecondArguments): SecondResult
+              (...args: FirstArguments): FirstResult
+            }
+          : never
+        : never
+      : [Value] extends [APIProcedureKey]
+        ? readonly [...Key, ...Parameters<ProcedureType>]
+        : [Value] extends [APIProcedureKeyPrefix]
+          ? readonly [...Key]
+          : [Value] extends [APIProcedureResult]
+            ? ReturnType<ProcedureType>
+            : Value extends APIPluginTypeOpaque<infer Opaque>
+              ? Opaque
+              : Value extends (...args: infer Arguments) => infer Result
+                ? (
+                    ...args: ResolveProcedurePluginArguments<Arguments, ProcedureType, Key>
+                  ) => ResolveProcedurePluginType<Result, ProcedureType, Key>
+                : Value extends readonly unknown[]
+                  ? {
+                      [Index in keyof Value]: ResolveProcedurePluginType<Value[Index], ProcedureType, Key>
+                    }
+                  : Value extends object
+                    ? {
+                        [Member in keyof Value]: ResolveProcedurePluginType<Value[Member], ProcedureType, Key>
+                      }
+                    : Value
+
+type HookTypeMap<Hook, Marker extends PropertyKey> = Marker extends keyof Hook
+  ? Exclude<Hook[Marker], undefined>
+  : never
+
+type PluginProcedureTypes<Plugin> = Plugin extends { readonly procedures?: infer Procedures }
+  ? Exclude<Procedures, undefined> extends { readonly procedure?: infer Hook }
+    ? HookTypeMap<Exclude<Hook, undefined>, 'hulla.api.procedurePluginTypes'>
+    : never
+  : never
+
+type PrefixPluginMembers<Value> = Value extends object
+  ? {
+      readonly [Member in keyof Value as Member extends string ? `$${Member}` : never]: Value[Member]
+    }
+  : object
+
+type PluginProcedureExtension<Plugin, ProcedureType extends AnyProcedure, Key extends readonly string[]> = [
+  PluginProcedureTypes<Plugin>,
+] extends [never]
+  ? object
+  : PrefixPluginMembers<ResolveProcedurePluginType<PluginProcedureTypes<Plugin>, ProcedureType, Key>>
+
+type UnionToIntersection<Union> = (Union extends unknown ? (value: Union) => void : never) extends (
+  value: infer Intersection
+) => void
+  ? Intersection
+  : never
+
+type ProcedurePluginExtensions<
+  Plugins extends APIProcedurePluginList,
+  ProcedureType extends AnyProcedure,
+  Key extends readonly string[],
+> = UnionToIntersection<
+  Plugins[number] extends infer Plugin ? PluginProcedureExtension<Plugin, ProcedureType, Key> : never
+>
+
+type ResolveProcedurePluginRouterType<Value, Key extends readonly string[]> = [Value] extends [APIProcedureKeyPrefix]
+  ? readonly [...Key]
+  : Value extends APIPluginTypeOpaque<infer Opaque>
+    ? Opaque
+    : Value extends (...args: infer Arguments) => infer Result
+      ? (...args: Arguments) => ResolveProcedurePluginRouterType<Result, Key>
+      : Value extends readonly unknown[]
+        ? {
+            [Index in keyof Value]: ResolveProcedurePluginRouterType<Value[Index], Key>
+          }
+        : Value extends object
+          ? {
+              [Member in keyof Value]: ResolveProcedurePluginRouterType<Value[Member], Key>
+            }
+          : Value
+
+type PluginProcedureRouterTypes<Plugin> = Plugin extends { readonly procedures?: infer Procedures }
+  ? Exclude<Procedures, undefined> extends { readonly router?: infer Hook }
+    ? HookTypeMap<Exclude<Hook, undefined>, 'hulla.api.procedurePluginRouterTypes'>
+    : never
+  : never
+
+type PluginProcedureRouterExtension<Plugin, Key extends readonly string[]> = [
+  PluginProcedureRouterTypes<Plugin>,
+] extends [never]
+  ? object
+  : PrefixPluginMembers<ResolveProcedurePluginRouterType<PluginProcedureRouterTypes<Plugin>, Key>>
+
+type ProcedurePluginRouterExtensions<
+  Plugins extends APIProcedurePluginList,
+  Key extends readonly string[],
+> = UnionToIntersection<Plugins[number] extends infer Plugin ? PluginProcedureRouterExtension<Plugin, Key> : never>
 
 type ProcedureExecution = (args: readonly unknown[], metadata: ProcedureMetadata) => unknown
 
 type ProcedureRuntime = {
   readonly execute: ProcedureExecution
+  readonly hasInput: boolean
   readonly owner: object
 }
 
@@ -132,13 +280,15 @@ export type ProcedureBuilder<
   Input extends AnySchema | undefined = undefined,
   Output extends AnySchema | undefined = undefined,
   Async extends boolean = false,
+  Plugins extends APIProcedurePluginList = readonly [],
 > = {
+  readonly plugins: Plugins
   readonly input: <const Schema extends AnySchema>(
     schema: Schema
-  ) => ProcedureBuilder<Context, Schema, Output, EitherIsAsync<Async, SchemaIsAsync<Schema>>>
+  ) => ProcedureBuilder<Context, Schema, Output, EitherIsAsync<Async, SchemaIsAsync<Schema>>, Plugins>
   readonly output: <const Schema extends AnySchema>(
     schema: Schema
-  ) => ProcedureBuilder<Context, Input, Schema, EitherIsAsync<Async, SchemaIsAsync<Schema>>>
+  ) => ProcedureBuilder<Context, Input, Schema, EitherIsAsync<Async, SchemaIsAsync<Schema>>, Plugins>
   readonly handler: [Output] extends [undefined]
     ? <const Handler extends (args: ProcedureHandlerInput<Context, Input>) => unknown>(
         handler: Handler
@@ -157,8 +307,8 @@ export type ProcedureBuilder<
   ) => Middleware
   readonly use: <const Middlewares extends readonly ProcedureMiddleware<NoInfer<Context>, MiddlewareValue<Input>>[]>(
     ...middlewares: Middlewares
-  ) => ProcedureBuilder<Context, Input, Output, EitherIsAsync<Async, AnyMiddlewareIsAsync<Middlewares>>>
-  readonly build: <const Tree extends ProcedureTree>(tree: Tree) => BuiltProcedureTree<Tree>
+  ) => ProcedureBuilder<Context, Input, Output, EitherIsAsync<Async, AnyMiddlewareIsAsync<Middlewares>>, Plugins>
+  readonly build: <const Tree extends ProcedureTree>(tree: Tree) => BuiltProcedureTree<Tree, readonly [], Plugins>
 }
 
 function validateApplicationSchema(
@@ -179,7 +329,93 @@ function registerProcedure(procedure: AnyProcedure, runtime: ProcedureRuntime, m
   if (metadata !== undefined) Object.defineProperty(procedure, '$meta', { value: metadata })
 }
 
-function bindProcedure(procedure: AnyProcedure, owner: object, key: readonly string[]): BoundProcedure<AnyProcedure> {
+function procedurePluginKey(key: readonly string[]): APIProcedurePluginKey {
+  const prefix = Object.freeze([...key])
+  return Object.freeze({
+    prefix,
+    full: (...args: readonly unknown[]) => [...prefix, ...args],
+  })
+}
+
+function attachProcedurePluginMembers(
+  target: object,
+  plugin: APIPlugin,
+  members: Readonly<Record<string, unknown>>,
+  owners: Map<string, string>,
+  targetKind: 'procedure' | 'router'
+): void {
+  for (const [key, value] of Object.entries(members)) {
+    if (key.startsWith('$')) {
+      throw new TypeError(
+        `Procedure plugin "${plugin.id}" ${targetKind} member "${key}" must omit the framework-owned "$" prefix`
+      )
+    }
+
+    const publicKey = `$${key}`
+    if (publicKey === '$meta') {
+      throw new TypeError(`Procedure plugin "${plugin.id}" ${targetKind} member "$meta" is reserved by @hulla/api`)
+    }
+
+    const owner = owners.get(publicKey)
+    if (owner !== undefined) {
+      throw new TypeError(
+        `Procedure plugin "${plugin.id}" ${targetKind} member "${publicKey}" collides with plugin "${owner}"`
+      )
+    }
+    if (publicKey in target) {
+      throw new TypeError(
+        `Procedure plugin "${plugin.id}" ${targetKind} member "${publicKey}" collides with the ${targetKind}`
+      )
+    }
+
+    Object.defineProperty(target, publicKey, { enumerable: true, value })
+    owners.set(publicKey, plugin.id)
+  }
+}
+
+function applyProcedurePlugins(
+  call: APIProcedurePluginCall,
+  hasInput: boolean,
+  key: readonly string[],
+  plugins: readonly APIPlugin[]
+): void {
+  const pluginKey = procedurePluginKey(key)
+  const owners = new Map<string, string>()
+
+  for (const plugin of plugins) {
+    const hook = plugin.procedures?.procedure
+    if (hook === undefined) continue
+    const members = hook({ call, hasInput, key: pluginKey })
+    if (members === undefined) continue
+    if (!isRecord(members)) throw new TypeError(`Procedure plugin "${plugin.id}" hook must return an object`)
+    attachProcedurePluginMembers(call, plugin, members, owners, 'procedure')
+  }
+}
+
+function applyProcedureRouterPlugins(
+  router: Record<string, unknown>,
+  key: readonly string[],
+  plugins: readonly APIPlugin[]
+): void {
+  const pluginKey = procedurePluginKey(key)
+  const owners = new Map<string, string>()
+
+  for (const plugin of plugins) {
+    const hook = plugin.procedures?.router
+    if (hook === undefined) continue
+    const members = hook({ key: pluginKey })
+    if (members === undefined) continue
+    if (!isRecord(members)) throw new TypeError(`Procedure plugin "${plugin.id}" router hook must return an object`)
+    attachProcedurePluginMembers(router, plugin, members, owners, 'router')
+  }
+}
+
+function bindProcedure(
+  procedure: AnyProcedure,
+  owner: object,
+  key: readonly string[],
+  plugins: readonly APIPlugin[]
+): BoundProcedure<AnyProcedure> {
   const runtime = procedureRuntimes.get(procedure)
   if (runtime === undefined) {
     throw new TypeError(`Procedure tree member "${key.join('.')}" must be a procedure or nested object`)
@@ -189,8 +425,10 @@ function bindProcedure(procedure: AnyProcedure, owner: object, key: readonly str
   }
 
   const metadata = Object.freeze({ kind: 'procedure' as const, key: Object.freeze([...key]) })
-  const callable = ((...args: readonly unknown[]) => runtime.execute(args, metadata)) as unknown as AnyProcedure
+  const call = (...args: readonly unknown[]) => runtime.execute(args, metadata)
+  const callable = call as unknown as AnyProcedure
   registerProcedure(callable, runtime, metadata)
+  applyProcedurePlugins(call, runtime.hasInput, key, plugins)
   return Object.freeze(callable) as unknown as BoundProcedure<AnyProcedure>
 }
 
@@ -199,7 +437,8 @@ function buildProcedureTree(
   owner: object,
   prefix: readonly string[],
   trees: Map<object, string>,
-  procedures: Map<AnyProcedure, string>
+  procedures: Map<AnyProcedure, string>,
+  plugins: readonly APIPlugin[]
 ): Readonly<Record<string, unknown>> {
   if (!isPlainRecord(tree)) throw new TypeError('Procedure tree must be a plain object')
 
@@ -233,16 +472,17 @@ function buildProcedureTree(
         )
       }
       procedures.set(value as AnyProcedure, childLocation)
-      setOwn(result, key, bindProcedure(executable, owner, childKey))
+      setOwn(result, key, bindProcedure(executable, owner, childKey, plugins))
       continue
     }
 
     if (!isPlainRecord(value)) {
       throw new TypeError(`Procedure tree member "${childLocation}" must be a procedure or nested object`)
     }
-    setOwn(result, key, buildProcedureTree(value as ProcedureTree, owner, childKey, trees, procedures))
+    setOwn(result, key, buildProcedureTree(value as ProcedureTree, owner, childKey, trees, procedures, plugins))
   }
 
+  if (prefix.length > 0) applyProcedureRouterPlugins(result, prefix, plugins)
   return Object.freeze(result)
 }
 
@@ -251,34 +491,36 @@ function createBuilder<
   Input extends AnySchema | undefined = undefined,
   Output extends AnySchema | undefined = undefined,
   Async extends boolean = false,
+  Plugins extends APIProcedurePluginList = readonly [],
 >(
   owner: object,
   contextFactory: ProcedureContextFactory<Context> | undefined,
   middlewares: readonly ProcedureMiddleware<Context>[],
+  plugins: Plugins,
   inputSchema?: Input,
   outputSchema?: Output
-): ProcedureBuilder<Context, Input, Output, Async> {
+): ProcedureBuilder<Context, Input, Output, Async, Plugins> {
   const middlewareStack = [...middlewares]
 
   const input = (<const Schema extends AnySchema>(schema: Schema) => {
     if (!isSchema(schema)) throw new TypeError('Procedure input must be a Standard Schema')
-    return createBuilder(owner, contextFactory, middlewareStack, schema, outputSchema)
-  }) as ProcedureBuilder<Context, Input, Output, Async>['input']
+    return createBuilder(owner, contextFactory, middlewareStack, plugins, schema, outputSchema)
+  }) as ProcedureBuilder<Context, Input, Output, Async, Plugins>['input']
 
   const output = (<const Schema extends AnySchema>(schema: Schema) => {
     if (!isSchema(schema)) throw new TypeError('Procedure output must be a Standard Schema')
-    return createBuilder(owner, contextFactory, middlewareStack, inputSchema, schema)
-  }) as ProcedureBuilder<Context, Input, Output, Async>['output']
+    return createBuilder(owner, contextFactory, middlewareStack, plugins, inputSchema, schema)
+  }) as ProcedureBuilder<Context, Input, Output, Async, Plugins>['output']
 
   const middleware = (<const Middleware extends ProcedureMiddleware<Context>>(handler: Middleware) => {
     assertMiddleware('Procedure', handler)
     return handler
-  }) as ProcedureBuilder<Context, Input, Output, Async>['middleware']
+  }) as ProcedureBuilder<Context, Input, Output, Async, Plugins>['middleware']
 
   const use = (<const Middlewares extends readonly ProcedureMiddleware<Context>[]>(...applied: Middlewares) => {
     assertMiddlewares('Procedure', applied)
-    return createBuilder(owner, contextFactory, [...middlewareStack, ...applied], inputSchema, outputSchema)
-  }) as ProcedureBuilder<Context, Input, Output, Async>['use']
+    return createBuilder(owner, contextFactory, [...middlewareStack, ...applied], plugins, inputSchema, outputSchema)
+  }) as ProcedureBuilder<Context, Input, Output, Async, Plugins>['use']
 
   const handler = ((implementation: (args: ProcedureHandlerInput<Context, Input>) => Awaitable<unknown>) => {
     if (typeof implementation !== 'function') throw new TypeError('Procedure handler must be a function')
@@ -325,29 +567,37 @@ function createBuilder<
 
     const metadata = Object.freeze({ kind: 'procedure' as const, key: Object.freeze([]) })
     const callable = ((...args: readonly unknown[]) => execute(args, metadata)) as unknown as AnyProcedure
-    registerProcedure(callable, { execute, owner })
+    registerProcedure(callable, { execute, hasInput: inputSchema !== undefined, owner })
     return Object.freeze(callable)
-  }) as unknown as ProcedureBuilder<Context, Input, Output, Async>['handler']
+  }) as unknown as ProcedureBuilder<Context, Input, Output, Async, Plugins>['handler']
 
-  const build = (<const Tree extends ProcedureTree>(tree: Tree): BuiltProcedureTree<Tree> => {
-    return buildProcedureTree(tree, owner, [], new Map(), new Map()) as BuiltProcedureTree<Tree>
-  }) as ProcedureBuilder<Context, Input, Output, Async>['build']
+  const build = (<const Tree extends ProcedureTree>(tree: Tree): BuiltProcedureTree<Tree, readonly [], Plugins> => {
+    const procedures = buildProcedureTree(tree, owner, [], new Map(), new Map(), plugins)
+    for (const plugin of plugins) plugin.procedures?.build?.({ procedures })
+    return procedures as BuiltProcedureTree<Tree, readonly [], Plugins>
+  }) as ProcedureBuilder<Context, Input, Output, Async, Plugins>['build']
 
-  return Object.freeze({ input, output, handler, middleware, use, build })
+  return Object.freeze({ plugins, input, output, handler, middleware, use, build })
 }
 
-export function defineProcedures(options?: {}): ProcedureBuilder<EmptyProcedureContext>
+export function defineProcedures<const Plugins extends APIProcedurePluginList = readonly []>(options?: {
+  readonly context?: undefined
+  readonly plugins?: Plugins
+}): ProcedureBuilder<EmptyProcedureContext, undefined, undefined, false, Plugins>
 export function defineProcedures<
   const Factory extends (input: ProcedureContextInput) => object | PromiseLike<object>,
+  const Plugins extends APIProcedurePluginList = readonly [],
 >(options: {
   readonly context: Factory
-}): ProcedureBuilder<Awaited<ReturnType<Factory>>, undefined, undefined, ValueIsAsync<ReturnType<Factory>>>
+  readonly plugins?: Plugins
+}): ProcedureBuilder<Awaited<ReturnType<Factory>>, undefined, undefined, ValueIsAsync<ReturnType<Factory>>, Plugins>
 export function defineProcedures(
-  options: DefineProceduresOptions<object> = {}
-): ProcedureBuilder<object, undefined, undefined, boolean> {
+  options: { readonly context?: unknown; readonly plugins?: APIProcedurePluginList } = {}
+): unknown {
   if (!isRecord(options)) throw new TypeError('Procedure options must be an object')
-  if (options.context !== undefined && typeof options.context !== 'function') {
+  if (options.context !== undefined && !isProcedureContextFactory(options.context)) {
     throw new TypeError('Procedure context must be a function')
   }
-  return createBuilder<object, undefined, undefined, boolean>({}, options.context, [])
+  const plugins = normalizeAPIPlugins(options.plugins, 'procedures')
+  return createBuilder<object, undefined, undefined, boolean, APIProcedurePluginList>({}, options.context, [], plugins)
 }

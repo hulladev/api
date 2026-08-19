@@ -2,7 +2,7 @@ import type { ContextFrom } from '../context'
 import type { Contract, ContractRoutes } from '../contract'
 import { assertMiddleware, assertMiddlewares } from '../middleware'
 import { hasOwn, isRecord } from '../object'
-import { type APIPlugin, type APIServerPluginList } from '../plugin'
+import type { APIServerPluginList } from '../plugin'
 import { normalizeAPIPlugins } from '../plugin-runtime'
 import { isRouter, routerRoutes } from '../router'
 import type { ServerContextInput } from './context'
@@ -108,7 +108,7 @@ function createDefinition<ContractType extends Contract, Context extends object,
 
   const build = ((handlers: object) => {
     assertCompleteHandlers(contract, handlers)
-    for (const plugin of plugins as readonly APIPlugin[]) {
+    for (const plugin of plugins) {
       plugin.server?.build?.({ contract, handlers: handlers as Readonly<Record<string, unknown>> })
     }
     return {
@@ -155,8 +155,8 @@ export function defineServer<
 
 export function defineServer(
   contract: Contract,
-  options: { readonly context?: unknown; readonly plugins?: readonly APIPlugin[] } = {}
+  options: { readonly context?: unknown; readonly plugins?: APIServerPluginList } = {}
 ): unknown {
-  const plugins = normalizeAPIPlugins(options.plugins, 'server') as APIServerPluginList
+  const plugins = normalizeAPIPlugins(options.plugins, 'server')
   return createDefinition(contract, options as DefineServerOptions<object, Contract, APIServerPluginList>, plugins)
 }

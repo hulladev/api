@@ -1,14 +1,11 @@
 import type { CompiledContractRoute } from './compiler'
 import type { Contract } from './contract'
 
-export type APIPluginTarget = 'client' | 'server' | 'universal'
-export type APIPluginRuntimeTarget = Exclude<APIPluginTarget, 'universal'>
-
 export type APIClientPluginRouteCall = (...args: readonly unknown[]) => Promise<unknown>
 
 export type APIClientPluginRouteKey = {
-  readonly root: string
-  readonly full: (...args: readonly unknown[]) => readonly [string, ...unknown[]]
+  readonly prefix: readonly string[]
+  readonly full: (...args: readonly unknown[]) => readonly unknown[]
 }
 
 export type APIClientPluginRouteContext = {
@@ -16,6 +13,11 @@ export type APIClientPluginRouteContext = {
   readonly route: CompiledContractRoute
   readonly call: APIClientPluginRouteCall
   readonly hasInput: boolean
+  readonly key: APIClientPluginRouteKey
+}
+
+export type APIClientPluginRouterContext = {
+  readonly contract: Contract
   readonly key: APIClientPluginRouteKey
 }
 
@@ -29,17 +31,63 @@ export type APIServerPluginBuildContext = {
   readonly handlers: Readonly<Record<string, unknown>>
 }
 
-export type APIClientPluginRouteHook = (
+export type APIProcedurePluginCall = (...args: readonly unknown[]) => unknown
+
+export type APIProcedurePluginKey = {
+  readonly prefix: readonly string[]
+  readonly full: (...args: readonly unknown[]) => readonly unknown[]
+}
+
+export type APIProcedurePluginContext = {
+  readonly call: APIProcedurePluginCall
+  readonly hasInput: boolean
+  readonly key: APIProcedurePluginKey
+}
+
+export type APIProcedurePluginRouterContext = {
+  readonly key: APIProcedurePluginKey
+}
+
+export type APIProcedurePluginBuildContext = {
+  readonly procedures: Readonly<Record<string, unknown>>
+}
+
+type APIClientPluginRouteHookFunction = (
   context: APIClientPluginRouteContext
 ) => Readonly<Record<string, unknown>> | undefined
 
+type APIClientPluginRouterHookFunction = (
+  context: APIClientPluginRouterContext
+) => Readonly<Record<string, unknown>> | undefined
+
+export type APIClientPluginRouteHook<RouteTypes extends Record<string, unknown> = Record<string, unknown>> = ((
+  context: APIClientPluginRouteContext
+) =>
+  | Readonly<{
+      [Member in keyof RouteTypes]: unknown
+    }>
+  | undefined) & {
+  /** Type-only map resolved against each route. This property does not exist at runtime. */
+  readonly 'hulla.api.clientPluginRouteTypes'?: RouteTypes
+}
+
+export type APIClientPluginRouterHook<RouterTypes extends Record<string, unknown> = Record<string, unknown>> = ((
+  context: APIClientPluginRouterContext
+) =>
+  | Readonly<{
+      [Member in keyof RouterTypes]: unknown
+    }>
+  | undefined) & {
+  /** Type-only map resolved against each router. This property does not exist at runtime. */
+  readonly 'hulla.api.clientPluginRouterTypes'?: RouterTypes
+}
+
 export type APIClientPluginHooks<
-  RouteHook extends APIClientPluginRouteHook | undefined = APIClientPluginRouteHook | undefined,
-  RouteTypes extends Record<string, unknown> | undefined = Record<string, unknown> | undefined,
+  RouteHook extends APIClientPluginRouteHookFunction | undefined = APIClientPluginRouteHookFunction | undefined,
+  RouterHook extends APIClientPluginRouterHookFunction | undefined = APIClientPluginRouterHookFunction | undefined,
 > = {
   readonly route?: RouteHook
-  /** Type-only counterpart of the members returned by `route`. */
-  readonly routeTypes?: RouteTypes
+  readonly router?: RouterHook
   readonly build?: (context: APIClientPluginBuildContext) => void
 }
 
@@ -47,28 +95,68 @@ export type APIServerPluginHooks = {
   readonly build?: (context: APIServerPluginBuildContext) => void
 }
 
-export type APIPlugin<
-  Id extends string = string,
-  Target extends APIPluginTarget = APIPluginTarget,
-  Namespace extends string = Id,
-  ClientHooks extends APIClientPluginHooks | undefined = APIClientPluginHooks | undefined,
-  ServerHooks extends APIServerPluginHooks | undefined = APIServerPluginHooks | undefined,
-> = {
-  readonly id: Id
-  readonly target: Target
-  /** Namespace for route extensions. Core exposes it with a `$` prefix and defaults it to `id`. */
-  readonly namespace?: Namespace
-  /** Requests the shared `$key` helper on compatible client route calls. */
-  readonly routeKeys?: boolean
-  readonly client?: ClientHooks
-  readonly server?: ServerHooks
+type APIProcedurePluginHookFunction = (
+  context: APIProcedurePluginContext
+) => Readonly<Record<string, unknown>> | undefined
+
+type APIProcedurePluginRouterHookFunction = (
+  context: APIProcedurePluginRouterContext
+) => Readonly<Record<string, unknown>> | undefined
+
+export type APIProcedurePluginHook<ProcedureTypes extends Record<string, unknown> = Record<string, unknown>> = ((
+  context: APIProcedurePluginContext
+) =>
+  | Readonly<{
+      [Member in keyof ProcedureTypes]: unknown
+    }>
+  | undefined) & {
+  /** Type-only map resolved against each procedure. This property does not exist at runtime. */
+  readonly 'hulla.api.procedurePluginTypes'?: ProcedureTypes
 }
 
+export type APIProcedurePluginRouterHook<RouterTypes extends Record<string, unknown> = Record<string, unknown>> = ((
+  context: APIProcedurePluginRouterContext
+) =>
+  | Readonly<{
+      [Member in keyof RouterTypes]: unknown
+    }>
+  | undefined) & {
+  /** Type-only map resolved against each procedure router. This property does not exist at runtime. */
+  readonly 'hulla.api.procedurePluginRouterTypes'?: RouterTypes
+}
+
+export type APIProcedurePluginHooks<
+  ProcedureHook extends APIProcedurePluginHookFunction | undefined = APIProcedurePluginHookFunction | undefined,
+  RouterHook extends APIProcedurePluginRouterHookFunction | undefined =
+    | APIProcedurePluginRouterHookFunction
+    | undefined,
+> = {
+  readonly procedure?: ProcedureHook
+  readonly router?: RouterHook
+  readonly build?: (context: APIProcedurePluginBuildContext) => void
+}
+
+type APIPluginShape = {
+  readonly id: string
+  readonly client?: APIClientPluginHooks
+  readonly server?: APIServerPluginHooks
+  readonly procedures?: APIProcedurePluginHooks
+}
+
+export type APIPlugin = APIPluginShape &
+  (
+    | { readonly client: APIClientPluginHooks }
+    | { readonly server: APIServerPluginHooks }
+    | { readonly procedures: APIProcedurePluginHooks }
+  )
+
 export type APIPluginList = readonly APIPlugin[]
-export type APIClientPlugin = APIPlugin<string, 'client' | 'universal'>
-export type APIServerPlugin = APIPlugin<string, 'server' | 'universal'>
+export type APIClientPlugin = APIPlugin & { readonly client: APIClientPluginHooks }
+export type APIServerPlugin = APIPlugin & { readonly server: APIServerPluginHooks }
+export type APIProcedurePlugin = APIPlugin & { readonly procedures: APIProcedurePluginHooks }
 export type APIClientPluginList = readonly APIClientPlugin[]
 export type APIServerPluginList = readonly APIServerPlugin[]
+export type APIProcedurePluginList = readonly APIProcedurePlugin[]
 
 export type APIClientRouteArgs = readonly [
   {
@@ -80,8 +168,8 @@ export type APIClientRouteKey = readonly [string] & {
   readonly 'hulla.api.clientRouteKey': 'key'
 }
 
-export type APIClientRouteKeyRoot = string & {
-  readonly 'hulla.api.clientRouteKeyRoot': 'key-root'
+export type APIClientRouteKeyPrefix = readonly string[] & {
+  readonly 'hulla.api.clientRouteKeyPrefix': 'key-prefix'
 }
 
 export type APIClientRouteResult = {
@@ -97,6 +185,35 @@ export type APIClientRouteIfInput<WhenInput, WhenNoInput> = {
 
 export type APIClientRouteOverloads<Overloads extends readonly unknown[]> = {
   readonly 'hulla.api.clientRouteOverloads': Overloads
+}
+
+export type APIProcedureArgs = readonly [
+  {
+    readonly 'hulla.api.procedureArgs': 'args'
+  },
+]
+
+export type APIProcedureKey = readonly [string] & {
+  readonly 'hulla.api.procedureKey': 'key'
+}
+
+export type APIProcedureKeyPrefix = readonly string[] & {
+  readonly 'hulla.api.procedureKeyPrefix': 'key-prefix'
+}
+
+export type APIProcedureResult = {
+  readonly 'hulla.api.procedureResult': 'result'
+}
+
+export type APIProcedureIfInput<WhenInput, WhenNoInput> = {
+  readonly 'hulla.api.procedureIfInput': {
+    readonly input: WhenInput
+    readonly noInput: WhenNoInput
+  }
+}
+
+export type APIProcedureOverloads<Overloads extends readonly unknown[]> = {
+  readonly 'hulla.api.procedureOverloads': Overloads
 }
 
 /** Keeps a third-party type opaque while core resolves a route type hook. */

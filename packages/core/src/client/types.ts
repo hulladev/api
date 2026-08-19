@@ -5,7 +5,7 @@ import type {
   APIClientRouteArgs,
   APIClientRouteIfInput,
   APIClientRouteKey,
-  APIClientRouteKeyRoot,
+  APIClientRouteKeyPrefix,
   APIClientRouteOverloads,
   APIClientRouteResult,
   APIPluginTypeOpaque,
@@ -35,15 +35,6 @@ type ClientCallArguments<Input extends object> = keyof Input extends never
   : readonly [input: Input, options?: ClientRequestOptions]
 
 type PluginCallArguments<Input extends object> = keyof Input extends never ? readonly [] : readonly [input: Input]
-
-type JoinRouteKey<Key extends readonly string[]> = Key extends readonly [
-  infer Head extends string,
-  ...infer Tail extends readonly string[],
-]
-  ? Tail extends readonly []
-    ? Head
-    : `${Head}/${JoinRouteKey<Tail>}`
-  : never
 
 type ResolvePluginArguments<
   Arguments,
@@ -85,9 +76,9 @@ type ResolvePluginRouteType<
           : never
         : never
       : [Value] extends [APIClientRouteKey]
-        ? readonly [JoinRouteKey<Key>, ...PluginCallArguments<ClientRouteInput<RouteType, RouterParams>>]
-        : [Value] extends [APIClientRouteKeyRoot]
-          ? JoinRouteKey<Key>
+        ? readonly [...Key, ...PluginCallArguments<ClientRouteInput<RouteType, RouterParams>>]
+        : [Value] extends [APIClientRouteKeyPrefix]
+          ? readonly [...Key]
           : [Value] extends [APIClientRouteResult]
             ? Promise<ClientRouteResult<ContractType, RouteType>>
             : Value extends APIPluginTypeOpaque<infer Opaque>
@@ -118,17 +109,21 @@ type ResolvePluginRouteType<
                       }
                     : Value
 
-type PluginNamespace<Plugin> = Plugin extends { readonly namespace?: infer Namespace extends string }
-  ? `$${Namespace}`
-  : Plugin extends { readonly id: infer Id extends string }
-    ? `$${Id}`
-    : never
+type HookTypeMap<Hook, Marker extends PropertyKey> = Marker extends keyof Hook
+  ? Exclude<Hook[Marker], undefined>
+  : never
 
 type PluginRouteTypes<Plugin> = Plugin extends { readonly client?: infer Client }
-  ? Exclude<Client, undefined> extends { readonly routeTypes?: infer RouteTypes }
-    ? Exclude<RouteTypes, undefined>
+  ? Exclude<Client, undefined> extends { readonly route?: infer Hook }
+    ? HookTypeMap<Exclude<Hook, undefined>, 'hulla.api.clientPluginRouteTypes'>
     : never
   : never
+
+type PrefixPluginMembers<Value> = Value extends object
+  ? {
+      readonly [Member in keyof Value as Member extends string ? `$${Member}` : never]: Value[Member]
+    }
+  : object
 
 type PluginRouteExtension<
   Plugin,
@@ -138,15 +133,33 @@ type PluginRouteExtension<
   Key extends readonly string[],
 > = [PluginRouteTypes<Plugin>] extends [never]
   ? object
-  : {
-      readonly [Namespace in PluginNamespace<Plugin>]: ResolvePluginRouteType<
-        PluginRouteTypes<Plugin>,
-        ContractType,
-        RouteType,
-        RouterParams,
-        Key
-      >
-    }
+  : PrefixPluginMembers<ResolvePluginRouteType<PluginRouteTypes<Plugin>, ContractType, RouteType, RouterParams, Key>>
+
+type ResolvePluginRouterType<Value, Key extends readonly string[]> = [Value] extends [APIClientRouteKeyPrefix]
+  ? readonly [...Key]
+  : Value extends APIPluginTypeOpaque<infer Opaque>
+    ? Opaque
+    : Value extends (...args: infer Arguments) => infer Result
+      ? (...args: Arguments) => ResolvePluginRouterType<Result, Key>
+      : Value extends readonly unknown[]
+        ? {
+            [Index in keyof Value]: ResolvePluginRouterType<Value[Index], Key>
+          }
+        : Value extends object
+          ? {
+              [Member in keyof Value]: ResolvePluginRouterType<Value[Member], Key>
+            }
+          : Value
+
+type PluginRouterTypes<Plugin> = Plugin extends { readonly client?: infer Client }
+  ? Exclude<Client, undefined> extends { readonly router?: infer Hook }
+    ? HookTypeMap<Exclude<Hook, undefined>, 'hulla.api.clientPluginRouterTypes'>
+    : never
+  : never
+
+type PluginRouterExtension<Plugin, Key extends readonly string[]> = [PluginRouterTypes<Plugin>] extends [never]
+  ? object
+  : PrefixPluginMembers<ResolvePluginRouterType<PluginRouterTypes<Plugin>, Key>>
 
 type UnionToIntersection<Union> = (Union extends unknown ? (value: Union) => void : never) extends (
   value: infer Intersection
@@ -166,22 +179,9 @@ type PluginRouteExtensions<
     : never
 >
 
-type PluginRouteKeyExtension<
-  Plugins extends APIClientPluginList,
-  RouteType extends Route,
-  RouterParams extends ObjectSchema | undefined,
-  Key extends readonly string[],
-> =
-  Extract<Plugins[number], { readonly routeKeys: true }> extends never
-    ? object
-    : {
-        readonly $key: {
-          readonly root: JoinRouteKey<Key>
-          readonly full: (
-            ...args: PluginCallArguments<ClientRouteInput<RouteType, RouterParams>>
-          ) => readonly [JoinRouteKey<Key>, ...PluginCallArguments<ClientRouteInput<RouteType, RouterParams>>]
-        }
-      }
+type PluginRouterExtensions<Plugins extends APIClientPluginList, Key extends readonly string[]> = UnionToIntersection<
+  Plugins[number] extends infer Plugin ? PluginRouterExtension<Plugin, Key> : never
+>
 
 export type ClientRouteCall<
   ContractType extends Contract,
@@ -198,7 +198,6 @@ type ClientRouteWithPlugins<
   Plugins extends APIClientPluginList,
   Key extends readonly string[],
 > = ClientRouteCall<ContractType, RouteType, RouterParams> &
-  PluginRouteKeyExtension<Plugins, RouteType, RouterParams, Key> &
   PluginRouteExtensions<Plugins, ContractType, RouteType, RouterParams, Key>
 
 export type ClientRoutes<
@@ -217,7 +216,8 @@ export type ClientRoutes<
         readonly [...KeyPrefix, Extract<Key, string>]
       >
     : Routes[Key] extends Router<string, infer NestedRoutes, infer NestedParams>
-      ? ClientRoutes<ContractType, NestedRoutes, NestedParams, Plugins, readonly [...KeyPrefix, Extract<Key, string>]>
+      ? ClientRoutes<ContractType, NestedRoutes, NestedParams, Plugins, readonly [...KeyPrefix, Extract<Key, string>]> &
+          PluginRouterExtensions<Plugins, readonly [...KeyPrefix, Extract<Key, string>]>
       : never
 }
 

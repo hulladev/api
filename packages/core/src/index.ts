@@ -25,7 +25,7 @@ export type {
 } from './errors'
 export type { HttpMethod } from './http'
 export { definePlugin } from './plugin'
-export type { APIPlugin, APIPluginTarget } from './plugin'
+export type { APIPlugin } from './plugin'
 export { QueryTransportError } from './query'
 export { codec, validation } from './validation'
 export type { AsyncSchema, CodecOptions, CodecSchema, IdentitySchema, ObjectSchema, SchemaOutbound } from './validation'
