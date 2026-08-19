@@ -144,6 +144,16 @@ A procedure may appear only once in a built tree, giving it one canonical identi
 
 The built tree is an executable registry, not a separate declaration/implementation contract. Schemas and handlers stay colocated on each procedure.
 
+Procedure-capable plugins register on the authoring scope and apply when a tree is built. Standalone procedures remain unchanged because they have no structural identity:
+
+```ts
+const procedures = defineProcedures({ plugins: [tanstackQueryPlugin()] })
+const api = procedures.build({ users: { list, create } })
+
+api.users.$queryKey()
+api.users.list.$queryOptions(input)
+```
+
 On the server, call application services directly. Defining a server-side procedure is reasonable when it independently benefits from procedure validation or middleware, but the library does not manufacture HTTP context or route server calls through the client contract.
 
 ## Contract references and types

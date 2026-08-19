@@ -2,7 +2,7 @@
 
 Contracts consume Standard Schema directly. An ordinary schema is one-way: its input is supplied at the outbound application boundary and its output is received at the opposite boundary. An explicit `codec(wireSchema, applicationSchema, { decode, encode })` makes both applications use the application representation while HTTP uses the wire representation. No validator selection or schema-library introspection is required.
 
-The active milestone centers on the Fetch vertical slice. Framework adapters, generators, and database integrations should only return after the directional core proves their required public seams. Query integrations attach to the built Fetch client through target-aware plugins. Procedures remain a small optional application layer and do not participate in HTTP routing. A built procedure tree supplies structural identity for future integrations without introducing a separate declaration/implementation contract.
+The active milestone centers on the Fetch vertical slice. Framework adapters, generators, and database integrations should only return after the directional core proves their required public seams. Query integrations attach to built Fetch clients and procedure trees through capability-inferred plugins. Procedures remain a small optional application layer and do not participate in HTTP routing. Their built trees supply the structural identity required by integrations without introducing a separate declaration/implementation contract.
 
 ## Request call graph
 

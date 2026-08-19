@@ -20,7 +20,7 @@ The first vertical slice includes:
 - a canonical immutable compiled route manifest for runtimes, adapters, and generators
 - native directional Standard Schemas and explicit bidirectional codecs without validator configuration
 - a built-in Fetch client and server handler over a compiled host-parsed wire runtime
-- target-aware client/server plugins plus TanStack Query and SWR client helpers
+- capability-inferred client/server/procedure plugins plus TanStack Query and SWR helpers
 - an advanced `@hulla/api/wire` server-adapter boundary
 - optional `@hulla/api/procedure` functions with exact sync/async return types, validation, context, middleware, and structurally identified callable trees
 - normalized contract problems and bidirectional codec coverage across every HTTP representation
