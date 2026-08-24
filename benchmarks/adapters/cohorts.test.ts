@@ -3,6 +3,8 @@ import type { Benchmark } from '../harness'
 import { adapterCohorts, selectAdapterCohortBenchmarks } from './cohorts'
 
 const source = [
+  { runtime: 'Direct Cloudflare Workers', scenario: 'cloudflare-adapter-static-dispatch' },
+  { runtime: '@hulla/api Cloudflare Workers', scenario: 'cloudflare-adapter-static-dispatch' },
   { runtime: 'Direct Fetch', scenario: 'fetch-adapter-static-dispatch' },
   { runtime: '@hulla/api Fetch', scenario: 'fetch-adapter-static-dispatch' },
   { runtime: 'ts-rest Fetch', scenario: 'fetch-adapter-static-dispatch' },
@@ -32,6 +34,7 @@ describe('adapter benchmark cohorts', () => {
   test('isolates every competitor with direct and Hulla baselines', () => {
     for (const cohort of adapterCohorts) {
       const adapterSource = source.filter(({ scenario }) => {
+        if (cohort.adapter === 'cloudflare') return scenario.startsWith('cloudflare-adapter-')
         if (cohort.adapter === 'fetch') return scenario.startsWith('fetch-adapter-')
         if (cohort.adapter === 'next') return scenario.startsWith('next-adapter-')
         if (cohort.adapter === 'tanstack-start') return scenario.startsWith('tanstack-start-adapter-')

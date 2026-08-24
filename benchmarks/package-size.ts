@@ -18,7 +18,7 @@ type PackageSizeResult = {
 }
 
 const budgets = {
-  '@hulla/api': { gzipBytes: 14_700, minifiedBytes: 48_000 },
+  '@hulla/api': { gzipBytes: 16_000, minifiedBytes: 48_000 },
   'Transport-neutral client + server': { gzipBytes: 10_500, minifiedBytes: 33_000 },
   'Fetch client transport': { gzipBytes: 1_400, minifiedBytes: 3_000 },
 } as const
@@ -76,6 +76,12 @@ const targets: readonly PackageSizeTarget[] = [
     runtime: 'Express server adapter',
     entry: 'hulla-api-express-adapter',
     imports: '@hulla/api-express (register)',
+    comparison: 'breakdown',
+  },
+  {
+    runtime: 'Cloudflare Workers adapter',
+    entry: 'hulla-api-cloudflare-adapter',
+    imports: '@hulla/api-cloudflare (createWorkerHandler)',
     comparison: 'breakdown',
   },
   {

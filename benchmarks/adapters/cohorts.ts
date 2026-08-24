@@ -1,11 +1,12 @@
 import type { Benchmark } from '../harness'
 
 export type AdapterCohort = {
-  readonly adapter: 'express' | 'fetch' | 'next' | 'tanstack-start'
+  readonly adapter: 'cloudflare' | 'express' | 'fetch' | 'next' | 'tanstack-start'
   readonly competitor: 'direct' | 'hono' | 'orpc' | 'trpc' | 'ts-rest'
 }
 
 export const adapterCohorts: readonly AdapterCohort[] = [
+  { adapter: 'cloudflare', competitor: 'direct' },
   { adapter: 'fetch', competitor: 'ts-rest' },
   { adapter: 'fetch', competitor: 'trpc' },
   { adapter: 'fetch', competitor: 'orpc' },
@@ -49,15 +50,17 @@ export function selectAdapterCohortBenchmarks(
 
 export async function adapterCohortBenchmarks(cohort: AdapterCohort): Promise<readonly Benchmark[]> {
   const source =
-    cohort.adapter === 'fetch'
-      ? (await import('./fetch')).fetchAdapterBenchmarks
-      : cohort.adapter === 'express'
-        ? (await import('./express')).adapterRuntimeBenchmarks
-        : (await import('./frameworks')).frameworkAdapterBenchmarks.filter(({ scenario }) =>
-            cohort.adapter === 'next'
-              ? scenario.startsWith('next-adapter-')
-              : scenario.startsWith('tanstack-start-adapter-')
-          )
+    cohort.adapter === 'cloudflare'
+      ? (await import('./cloudflare')).cloudflareAdapterBenchmarks
+      : cohort.adapter === 'fetch'
+        ? (await import('./fetch')).fetchAdapterBenchmarks
+        : cohort.adapter === 'express'
+          ? (await import('./express')).adapterRuntimeBenchmarks
+          : (await import('./frameworks')).frameworkAdapterBenchmarks.filter(({ scenario }) =>
+              cohort.adapter === 'next'
+                ? scenario.startsWith('next-adapter-')
+                : scenario.startsWith('tanstack-start-adapter-')
+            )
   return selectAdapterCohortBenchmarks(source, cohort)
 }
 
