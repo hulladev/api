@@ -27,9 +27,9 @@
   },
   "dependencies": {
     "@standard-schema/spec": "^1.1.0",
-    "jiti": "^2.6.1",
-    "typescript": "^5.9.3",
-    "yaml": "^2.8.1"
+    "jiti": "^2.7.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@hulla/api": "workspace:*",
