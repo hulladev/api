@@ -1,0 +1,44 @@
+{
+  "name": "@hulla/api-tanstack-start",
+  "version": "2.0.0",
+  "description": "TanStack Start server route integration for @hulla/api",
+  "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "import": "./dist/server.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "clean": "rm -rf dist coverage",
+    "test": "bun run build && vitest run",
+    "test:coverage": "bun run build && vitest run --coverage",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@hulla/api": "workspace:*",
+    "@tanstack/react-router": "^1.170.17",
+    "@tanstack/react-start": "^1.168.40",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "vite": "^8.1.3",
+    "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "@hulla/api": "^2.0.0",
+    "@tanstack/react-start": "^1.160.0"
+  }
+}
