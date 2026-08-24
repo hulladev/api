@@ -1,17 +1,25 @@
 import { createAdapterHandler } from './adapters/runtime'
-import type { ClientTransport, ClientTransportResponse } from './client/request'
+import type { ClientTransport, ClientTransportRequest, ClientTransportResponse } from './client/request'
 import type { Contract } from './contract'
-import { assertServerContextAdapter } from './server/context'
-import type { ServerExecutable } from './server/types'
+import { assertServerAdapter, createServerAdapter, type ServerAdapter } from './server/adapter'
+import type { ServerExecutableFor } from './server/types'
+
+export type InProcessAdapter = ServerAdapter<'in-process', { readonly request: ClientTransportRequest }>
+
+const inProcessAdapterDescriptor = /* @__PURE__ */ createServerAdapter('in-process') as InProcessAdapter
+
+export function inProcessAdapter(): InProcessAdapter {
+  return inProcessAdapterDescriptor
+}
 
 /**
  * Creates a transport for clients and servers that share one JavaScript process.
  * It crosses the same encoded client/server boundary without constructing Fetch objects.
  */
 export function inProcessTransport<const ContractType extends Contract, const Context extends object>(
-  implementation: ServerExecutable<ContractType, Context>
+  implementation: ServerExecutableFor<ContractType, Context, InProcessAdapter>
 ): ClientTransport {
-  assertServerContextAdapter(implementation.context, 'in-process')
+  assertServerAdapter(implementation.adapter, inProcessAdapterDescriptor)
   const dispatch = createAdapterHandler(implementation)
 
   return async (request): Promise<ClientTransportResponse> => {

@@ -7,9 +7,10 @@ import { describe, expect, expectTypeOf, test, vi } from 'vitest'
 import { z } from 'zod'
 import {
   createServerRouteHandlers,
-  withContext,
+  tanStackStartAdapter,
   type TanStackStartContextInput,
   type TanStackStartHandlerInput,
+  type TanStackStartServerErrorInput,
 } from '../src'
 
 const contract = defineContract({
@@ -86,17 +87,16 @@ describe('TanStack Start integration', () => {
   test('exposes native Start state without replacing contract route metadata', async () => {
     let contextInput: TanStackStartContextInput<typeof contract, StartContext, StartParams> | undefined
     const implementation = defineServer(contract, {
-      context: withContext<StartContext, StartParams>()(
-        ({ request, route: routeMetadata, startContext, startParams }) => {
-          contextInput = {
-            request,
-            route: routeMetadata,
-            startContext,
-            startParams,
-          } as TanStackStartContextInput<typeof contract, StartContext, StartParams>
-          return { session: startContext.session, splat: startParams._splat }
-        }
-      ),
+      adapter: tanStackStartAdapter<StartContext, StartParams>(),
+      context: ({ request, route: routeMetadata, startContext, startParams }) => {
+        contextInput = {
+          request,
+          route: routeMetadata,
+          startContext,
+          startParams,
+        } as TanStackStartContextInput<typeof contract, StartContext, StartParams>
+        return { session: startContext.session, splat: startParams._splat }
+      },
     }).implement({
       health: ({ context }) => ({ status: 200, body: context.session === 'session-1' ? 'ok' : 'ok' }),
       users: {
@@ -112,16 +112,18 @@ describe('TanStack Start integration', () => {
     expect(contextInput?.startContext).toEqual({ session: 'session-1' })
     expect(contextInput?.startParams).toEqual({ _splat: 'health' })
     expect(contextInput?.route).toEqual({ key: ['health'], method: 'GET', path: '/api/health' })
-    expect(() => inProcessTransport(implementation)).toThrow(
-      'Server context requires the tanstack-start adapter, but was mounted with in-process'
+    expect(() => inProcessTransport(implementation as never)).toThrow(
+      'Server requires the tanstack-start adapter, but was mounted with in-process'
     )
   })
 
   test('forwards protocol-safe errors to the adapter error hook', async () => {
-    const onError = vi.fn(({ defaultResponse }) =>
-      Response.json({ replaced: true }, { status: defaultResponse.status })
+    const onError = vi.fn<(input: TanStackStartServerErrorInput<StartContext, StartParams>) => Response>(
+      ({ defaultResponse }) => Response.json({ replaced: true }, { status: defaultResponse.status })
     )
-    const implementation = defineServer(contract).implement({
+    const implementation = defineServer(contract, {
+      adapter: tanStackStartAdapter<StartContext, StartParams>(),
+    }).implement({
       health: (): { readonly body: 'ok'; readonly status: 200 } => {
         throw new Error('failure')
       },
@@ -131,12 +133,20 @@ describe('TanStack Start integration', () => {
     })
     const handlers = createServerRouteHandlers(implementation, { onError })
     const request = new Request('https://example.com/api/health')
-    const result = await handlers.GET!({ context: undefined, params: { _splat: 'health' }, request })
+    const startContext = { session: 'session-1' }
+    const startParams = { _splat: 'health' }
+    const result = await handlers.GET!({ context: startContext, params: startParams, request })
 
     expect(result.status).toBe(500)
     await expect(result.json()).resolves.toEqual({ replaced: true })
     expect(onError).toHaveBeenCalledWith(
-      expect.objectContaining({ phase: 'handler', request, route: expect.objectContaining({ key: ['health'] }) })
+      expect.objectContaining({
+        phase: 'handler',
+        request,
+        startContext,
+        startParams,
+        route: expect.objectContaining({ key: ['health'] }),
+      })
     )
   })
 

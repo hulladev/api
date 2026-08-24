@@ -5,6 +5,7 @@ import type { JoinRoutePaths } from '../paths'
 import type { Route } from '../route'
 import type { AnyRouter, RouterChildrenFor, RouterParamsForRoute } from '../router'
 import type { ObjectSchema } from '../validation'
+import type { ServerAdapter } from './adapter'
 import type { Awaitable, RouteMetadata, ServerContextFactory } from './context'
 import type { ServerMiddleware, ServerMiddlewareCandidate } from './middleware'
 import type { ServerResponseFactory, ServerResponseResult } from './response'
@@ -192,7 +193,8 @@ type FragmentKey<Fragment> =
     infer _Context,
     infer Key,
     infer _Handlers,
-    infer _Node
+    infer _Node,
+    infer _Adapter
   >
     ? Key
     : never
@@ -200,7 +202,15 @@ type FragmentKey<Fragment> =
 type CompleteImplementationFragments<
   ContractType extends Contract,
   Context extends object,
-  Fragments extends readonly ServerImplementationFragment<ContractType, Context, readonly string[]>[],
+  Adapter extends ServerAdapter | undefined,
+  Fragments extends readonly ServerImplementationFragment<
+    ContractType,
+    Context,
+    readonly string[],
+    unknown,
+    ContractNodeFor<ContractType>,
+    Adapter
+  >[],
 > =
   Exclude<ContractHandlerKey<ContractType['routes']>, FragmentKey<Fragments[number]>> extends never
     ? Fragments
@@ -231,14 +241,24 @@ export type ServerHandlersForNode<
   Node extends ContractNodeFor<ContractType>,
 > = NodeHandlers<ContractType, Context, Node>
 
-export type DefineServerOptions<Context extends object, ContractType extends Contract = Contract> = {
-  readonly context?: ServerContextFactory<Context, ContractType>
+export type DefineServerOptions<
+  Context extends object,
+  ContractType extends Contract = Contract,
+  Adapter extends ServerAdapter | undefined = undefined,
+> = {
+  readonly adapter?: Adapter
+  readonly context?: ServerContextFactory<Context, ContractType, Adapter>
 }
 
-export type ServerImplementation<ContractType extends Contract = Contract, Context extends object = object> = {
+export type ServerImplementation<
+  ContractType extends Contract = Contract,
+  Context extends object = object,
+  Adapter extends ServerAdapter | undefined = undefined,
+> = {
+  readonly adapter: Adapter
   readonly contract: ContractType
   readonly handlers: ServerHandlers<ContractType['routes'], Context, ContractType['basePath'], ContractType['errors']>
-  readonly context: DefineServerOptions<Context, ContractType>['context']
+  readonly context: DefineServerOptions<Context, ContractType, Adapter>['context']
   readonly middlewares: readonly ServerMiddleware<Context, ContractType>[]
 }
 
@@ -248,29 +268,52 @@ export type ServerImplementationFragment<
   Key extends readonly string[] = readonly string[],
   Handlers = unknown,
   Node extends ContractNodeFor<ContractType> = ContractNodeFor<ContractType>,
+  Adapter extends ServerAdapter | undefined = undefined,
 > = {
+  readonly adapter: Adapter
   readonly kind: 'server-implementation-fragment'
   readonly contract: ContractType
   readonly handlers: Handlers
   readonly node: Node
-  readonly context: DefineServerOptions<Context, ContractType>['context']
+  readonly context: DefineServerOptions<Context, ContractType, Adapter>['context']
   readonly middlewares: readonly ServerMiddleware<Context, ContractType>[]
   /** Type-only union of the structurally selected handler keys. */
   readonly 'hulla.api.serverFragmentKey'?: Key
 }
 
-export type ServerExecutable<ContractType extends Contract = Contract, Context extends object = object> =
-  | ServerImplementation<ContractType, Context>
-  | ServerImplementationFragment<ContractType, Context, readonly string[]>
+export type ServerExecutable<
+  ContractType extends Contract = Contract,
+  Context extends object = object,
+  Adapter extends ServerAdapter | undefined = undefined,
+> =
+  | ServerImplementation<ContractType, Context, Adapter>
+  | ServerImplementationFragment<
+      ContractType,
+      Context,
+      readonly string[],
+      unknown,
+      ContractNodeFor<ContractType>,
+      Adapter
+    >
 
-export type Server<ContractType extends Contract = Contract, Context extends object = object> = ServerImplementation<
-  ContractType,
-  Context
->
+export type ServerExecutableFor<ContractType extends Contract, Context extends object, Adapter extends ServerAdapter> =
+  | ServerExecutable<ContractType, Context, undefined>
+  | ServerExecutable<ContractType, Context, Adapter>
 
-export type ServerDefinition<ContractType extends Contract, Context extends object> = {
+export type Server<
+  ContractType extends Contract = Contract,
+  Context extends object = object,
+  Adapter extends ServerAdapter | undefined = undefined,
+> = ServerImplementation<ContractType, Context, Adapter>
+
+export type ServerDefinition<
+  ContractType extends Contract,
+  Context extends object,
+  Adapter extends ServerAdapter | undefined = undefined,
+> = {
+  readonly adapter: Adapter
   readonly contract: ContractType
-  readonly context: DefineServerOptions<Context, ContractType>['context']
+  readonly context: DefineServerOptions<Context, ContractType, Adapter>['context']
   readonly middlewares: readonly ServerMiddleware<Context, ContractType>[]
   readonly middleware: <const Handler extends ServerMiddlewareCandidate<NoInfer<Context>, NoInfer<ContractType>>>(
     middleware: Handler
@@ -278,38 +321,52 @@ export type ServerDefinition<ContractType extends Contract, Context extends obje
   readonly use: {
     <const Middleware extends ServerMiddlewareCandidate<NoInfer<Context>, NoInfer<ContractType>>>(
       middleware: Middleware
-    ): ServerDefinition<ContractType, Context>
+    ): ServerDefinition<ContractType, Context, Adapter>
     <
       const Node extends Exclude<ContractNodeFor<ContractType>, ContractType>,
       const Middleware extends ServerMiddlewareCandidate<NoInfer<Context>, NoInfer<ContractType>>,
     >(
       node: Node,
       middleware: Middleware
-    ): ServerDefinition<ContractType, Context>
+    ): ServerDefinition<ContractType, Context, Adapter>
   }
   readonly implement: {
     <const Handlers extends NodeHandlers<ContractType, Context, ContractType>>(
       handlers: Handlers & CheckedNodeHandlers<ContractType, Handlers>
-    ): ServerImplementation<ContractType, Context>
+    ): ServerImplementation<ContractType, Context, Adapter>
     <
       const Node extends Exclude<ContractNodeFor<ContractType>, ContractType>,
       const Handlers extends NodeHandlers<ContractType, Context, Node>,
     >(
       node: Node,
       handlers: Handlers & CheckedNodeHandlers<Node, Handlers>
-    ): ServerImplementationFragment<ContractType, Context, NodeHandlerKey<ContractType, Node>, Handlers, Node>
+    ): ServerImplementationFragment<ContractType, Context, NodeHandlerKey<ContractType, Node>, Handlers, Node, Adapter>
     <
       const Fragments extends readonly [
-        ServerImplementationFragment<ContractType, Context, readonly string[]>,
-        ...ServerImplementationFragment<ContractType, Context, readonly string[]>[],
+        ServerImplementationFragment<
+          ContractType,
+          Context,
+          readonly string[],
+          unknown,
+          ContractNodeFor<ContractType>,
+          Adapter
+        >,
+        ...ServerImplementationFragment<
+          ContractType,
+          Context,
+          readonly string[],
+          unknown,
+          ContractNodeFor<ContractType>,
+          Adapter
+        >[],
       ],
     >(
-      ...fragments: CompleteImplementationFragments<ContractType, Context, Fragments>
-    ): ServerImplementation<ContractType, Context>
+      ...fragments: CompleteImplementationFragments<ContractType, Context, Adapter, Fragments>
+    ): ServerImplementation<ContractType, Context, Adapter>
   }
 }
 
 export type ServerHandlersOf<Definition> =
-  Definition extends ServerDefinition<infer ContractType, infer Context>
+  Definition extends ServerDefinition<infer ContractType, infer Context, infer _Adapter>
     ? ServerHandlers<ContractType['routes'], Context, ContractType['basePath'], ContractType['errors']>
     : never

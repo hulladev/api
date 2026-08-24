@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest'
 import { z } from 'zod'
 import { defineClient } from '../src/client'
 import { defineContract } from '../src/contract'
-import { withFetchContext } from '../src/fetch'
+import { fetchAdapter } from '../src/fetch'
 import { inProcessTransport } from '../src/in-process'
 import { response } from '../src/response'
 import { route } from '../src/route'
@@ -60,13 +60,20 @@ describe('inProcessTransport', () => {
       },
     })
     const implementation = defineServer(contract, {
-      context: withFetchContext(({ request }) => ({ method: request.method })),
+      adapter: fetchAdapter(),
+      context: ({ request }) => ({ method: request.method }),
     }).implement({
       health: ({ context }) => ({ status: 200, body: context.method }),
     })
 
-    expect(() => inProcessTransport(implementation)).toThrow(
-      'Server context requires the fetch adapter, but was mounted with in-process'
+    const invalidMount = () => {
+      // @ts-expect-error A Fetch-bound implementation cannot be mounted in process.
+      inProcessTransport(implementation)
+    }
+    expect(invalidMount).toBeTypeOf('function')
+
+    expect(() => inProcessTransport(implementation as never)).toThrow(
+      'Server requires the fetch adapter, but was mounted with in-process'
     )
   })
 })

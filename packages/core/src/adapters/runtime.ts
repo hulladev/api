@@ -17,6 +17,7 @@ import {
   type CanonicalResponsePlan,
   type CanonicalRoutePlan,
 } from '../route-plan'
+import type { ServerAdapter } from '../server/adapter'
 import { ServerRuntimeError } from '../server/errors'
 import type { ServerHandlerBinding } from '../server/implementation'
 import type { ServerMiddleware } from '../server/middleware'
@@ -41,6 +42,8 @@ export type AdapterResponse = {
 export type AdapterErrorInput = {
   readonly defaultResponse: AdapterResponse
   readonly error: unknown
+  /** Adapter-specific invocation state forwarded only to adapter error hooks. */
+  readonly hostContext?: unknown
   readonly phase: AdapterPhase
   /** The adapter's native request or event value. */
   readonly request: unknown
@@ -62,6 +65,8 @@ export type AdapterBody = {
 export type AdapterRouteInput = {
   /** The adapter's native request or event value, forwarded only to adapter error hooks. */
   readonly request: unknown
+  /** Adapter-specific invocation state forwarded only to adapter error hooks. */
+  readonly hostContext?: unknown
   /** Adapter-specific values made available to an adapter context helper. */
   readonly contextInput?: Readonly<Record<string, unknown>>
   /** Parameters extracted by the host router or by the shared adapter matcher. */
@@ -759,6 +764,7 @@ async function executeRuntimeRoute(
       error: caughtError,
       phase,
       request,
+      ...(input.hostContext === undefined ? {} : { hostContext: input.hostContext }),
       route: runtime.metadata,
       defaultResponse: fallback,
     })
@@ -767,8 +773,12 @@ async function executeRuntimeRoute(
 }
 
 /** Compiles a transport-neutral executor for every route selected by an implementation or fragment. */
-export function createAdapterRuntime<const ContractType extends Contract, const Context extends object>(
-  implementation: ServerExecutable<ContractType, Context>,
+export function createAdapterRuntime<
+  const ContractType extends Contract,
+  const Context extends object,
+  const Adapter extends ServerAdapter | undefined,
+>(
+  implementation: ServerExecutable<ContractType, Context, Adapter>,
   options: AdapterRuntimeOptions = {}
 ): AdapterRuntime {
   const compiledImplementation = compileAdapterImplementation(implementation)
@@ -794,8 +804,12 @@ export function createAdapterRuntime<const ContractType extends Contract, const 
 }
 
 /** Creates a catch-all dispatcher by composing the shared matcher with the route-level adapter runtime. */
-export function createAdapterHandler<const ContractType extends Contract, const Context extends object>(
-  implementation: ServerExecutable<ContractType, Context>,
+export function createAdapterHandler<
+  const ContractType extends Contract,
+  const Context extends object,
+  const Adapter extends ServerAdapter | undefined,
+>(
+  implementation: ServerExecutable<ContractType, Context, Adapter>,
   options: AdapterRuntimeOptions = {}
 ): AdapterHandler {
   const { routes, server } = compileAdapterImplementation(implementation)
@@ -824,6 +838,7 @@ export function createAdapterHandler<const ContractType extends Contract, const 
         error,
         phase: 'routing',
         request,
+        ...(input.hostContext === undefined ? {} : { hostContext: input.hostContext }),
         defaultResponse: fallback,
       })
       return replacement ?? fallback

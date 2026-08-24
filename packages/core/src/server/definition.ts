@@ -13,15 +13,16 @@ import {
 } from '../middleware'
 import { hasOwn, isRecord, setOwn } from '../object'
 import { isRouter, routerRoutes, type AnyRouter } from '../router'
-import type { ServerContextInput } from './context'
+import { isServerAdapter, type ServerAdapter } from './adapter'
+import type { ServerContextInputFor } from './context'
 import { ServerImplementationError } from './errors'
 import { type ServerHandlerBinding, type ServerScope } from './implementation'
 import type { ServerMiddleware, ServerMiddlewareCandidate } from './middleware'
 import type { DefineServerOptions, ServerDefinition } from './types'
 
 type EmptyServerContext = Record<string, never>
-type ContextFactoryShape<ContractType extends Contract> = (
-  input: ServerContextInput<ContractType>
+type ContextFactoryShape<ContractType extends Contract, Adapter extends ServerAdapter | undefined> = (
+  input: ServerContextInputFor<ContractType, Adapter>
 ) => object | PromiseLike<object>
 
 function displayKey(key: readonly string[]): string {
@@ -245,13 +246,17 @@ function composeFragments(
   return { bindings, handlers }
 }
 
-function createDefinition<ContractType extends Contract, Context extends object>(
+function createDefinition<
+  ContractType extends Contract,
+  Context extends object,
+  Adapter extends ServerAdapter | undefined,
+>(
   contract: ContractType,
-  options: DefineServerOptions<Context, ContractType>,
+  options: DefineServerOptions<Context, ContractType, Adapter>,
   middlewarePlan: MiddlewarePlan<ServerMiddleware<Context, ContractType>, CompiledContractRoute>,
   owner: object,
   parent?: ServerScope
-): ServerDefinition<ContractType, Context> {
+): ServerDefinition<ContractType, Context, Adapter> {
   const scope: ServerScope = {
     owner,
     ...(parent === undefined ? {} : { parent }),
@@ -259,7 +264,7 @@ function createDefinition<ContractType extends Contract, Context extends object>
   const middleware = (<const Handler extends ServerMiddlewareCandidate<Context, ContractType>>(handler: Handler) => {
     assertMiddleware('Server', handler)
     return handler
-  }) as ServerDefinition<ContractType, Context>['middleware']
+  }) as ServerDefinition<ContractType, Context, Adapter>['middleware']
 
   const use = ((...applied: readonly unknown[]) => {
     return createDefinition(
@@ -269,7 +274,7 @@ function createDefinition<ContractType extends Contract, Context extends object>
       owner,
       scope
     )
-  }) as ServerDefinition<ContractType, Context>['use']
+  }) as ServerDefinition<ContractType, Context, Adapter>['use']
 
   const implement = ((...values: readonly unknown[]) => {
     const first = values[0]
@@ -279,6 +284,7 @@ function createDefinition<ContractType extends Contract, Context extends object>
       const handlers = composed.handlers
       const bindings = composed.bindings
       const implementation = {
+        adapter: options.adapter as Adapter,
         contract,
         handlers,
         context: options.context,
@@ -312,12 +318,14 @@ function createDefinition<ContractType extends Contract, Context extends object>
     const implementation =
       mount.kind === 'contract'
         ? {
+            adapter: options.adapter as Adapter,
             contract,
             handlers,
             context: options.context,
             middlewares: middlewarePlan[0],
           }
         : {
+            adapter: options.adapter as Adapter,
             kind: 'server-implementation-fragment' as const,
             contract,
             handlers,
@@ -327,9 +335,10 @@ function createDefinition<ContractType extends Contract, Context extends object>
           }
     registerComposition(implementation, scope, bindings)
     return implementation
-  }) as ServerDefinition<ContractType, Context>['implement']
+  }) as ServerDefinition<ContractType, Context, Adapter>['implement']
 
   return {
+    adapter: options.adapter as Adapter,
     contract,
     context: options.context,
     middlewares: middlewarePlan[0],
@@ -341,25 +350,57 @@ function createDefinition<ContractType extends Contract, Context extends object>
 
 export function defineServer<
   const ContractType extends Contract,
-  const Factory extends ContextFactoryShape<ContractType>,
+  const Adapter extends ServerAdapter,
+  const Factory extends ContextFactoryShape<ContractType, Adapter>,
 >(
   contract: ContractType,
   options: {
+    readonly adapter: Adapter
     readonly context: Factory
   }
-): ServerDefinition<ContractType, ContextFrom<Factory>>
+): ServerDefinition<ContractType, ContextFrom<Factory>, Adapter>
+
+export function defineServer<const ContractType extends Contract, const Adapter extends ServerAdapter>(
+  contract: ContractType,
+  options: {
+    readonly adapter: Adapter
+    readonly context?: undefined
+  }
+): ServerDefinition<ContractType, EmptyServerContext, Adapter>
+
+export function defineServer<
+  const ContractType extends Contract,
+  const Factory extends ContextFactoryShape<ContractType, undefined>,
+>(
+  contract: ContractType,
+  options: {
+    readonly adapter?: undefined
+    readonly context: Factory
+  }
+): ServerDefinition<ContractType, ContextFrom<Factory>, undefined>
 
 export function defineServer<const ContractType extends Contract>(
   contract: ContractType,
   options?: DefineServerOptions<EmptyServerContext, NoInfer<ContractType>> & {
     readonly context?: undefined
   }
-): ServerDefinition<ContractType, EmptyServerContext>
+): ServerDefinition<ContractType, EmptyServerContext, undefined>
 
-export function defineServer(contract: Contract, options: { readonly context?: unknown } = {}): unknown {
+export function defineServer(
+  contract: Contract,
+  options: { readonly adapter?: unknown; readonly context?: unknown } = {}
+): unknown {
   if (!isRecord(options)) throw new TypeError('Server options must be an object')
+  if (options.adapter !== undefined && !isServerAdapter(options.adapter)) {
+    throw new TypeError('Server adapter must be an adapter descriptor')
+  }
   if (options.context !== undefined && typeof options.context !== 'function') {
     throw new TypeError('Server context must be a function')
   }
-  return createDefinition(contract, options as DefineServerOptions<object, Contract>, createMiddlewarePlan(), {})
+  return createDefinition(
+    contract,
+    options as DefineServerOptions<object, Contract, ServerAdapter | undefined>,
+    createMiddlewarePlan(),
+    {}
+  )
 }

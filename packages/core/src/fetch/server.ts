@@ -7,29 +7,38 @@ import {
 } from '../adapters/runtime'
 import type { Awaitable } from '../context'
 import type { Contract } from '../contract'
+import { assertServerAdapter, createServerAdapter, type ServerAdapter } from '../server/adapter'
 import type { RouteMetadata, ServerContextInput } from '../server/context'
-import { assertServerContextAdapter, registerServerContextAdapter } from '../server/context'
-import type { ServerExecutable } from '../server/types'
+import type { ServerExecutableFor } from '../server/types'
+
+export type FetchAdapter = ServerAdapter<'fetch', { readonly request: Request }>
+
+const fetchAdapterDescriptor = /* @__PURE__ */ createServerAdapter('fetch') as FetchAdapter
+
+export function fetchAdapter(): FetchAdapter {
+  return fetchAdapterDescriptor
+}
 
 export type FetchServerPhase = AdapterPhase
 
-export type FetchServerErrorInput = {
+export type FetchServerErrorInput<HandlerContext = undefined> = {
   readonly defaultResponse: Response
   readonly error: unknown
+  readonly handlerContext: HandlerContext
   readonly phase: FetchServerPhase
   readonly request: Request
   readonly route?: RouteMetadata
 }
 
-export type FetchServerOptions<HandlerContext = undefined> = {
+export type FetchServerOptions<HandlerContext = undefined, Adapter extends ServerAdapter = FetchAdapter> = {
   /** @internal Adapter identity used to validate native-context factories. */
-  readonly contextAdapter?: string
+  readonly contextAdapter?: Adapter
   /** Adds host-specific values to the server context input. */
   readonly contextInput?: (
     request: Request,
     handlerContext: HandlerContext
   ) => Readonly<Record<string, unknown>> | undefined
-  readonly onError?: (input: FetchServerErrorInput) => Awaitable<Response | undefined | void>
+  readonly onError?: (input: FetchServerErrorInput<HandlerContext>) => Awaitable<Response | undefined | void>
 }
 
 export type FetchHandler<HandlerContext = undefined> = [HandlerContext] extends [undefined]
@@ -38,13 +47,6 @@ export type FetchHandler<HandlerContext = undefined> = [HandlerContext] extends 
 
 export type FetchContextInput<ContractType extends Contract = Contract> = ServerContextInput<ContractType> & {
   readonly request: Request
-}
-
-/** Gives a server context factory access to the native Fetch request. */
-export function withFetchContext<const Context extends object>(
-  factory: (input: FetchContextInput) => Awaitable<Context>
-): <ContractType extends Contract>(input: ServerContextInput<ContractType>) => Awaitable<Context> {
-  return registerServerContextAdapter('fetch', (input) => factory(input as unknown as FetchContextInput))
 }
 
 function pathname(url: string): string {
@@ -154,17 +156,19 @@ export function createFetchHandler<
   const ContractType extends Contract,
   const Context extends object,
   HandlerContext = undefined,
+  Adapter extends ServerAdapter = FetchAdapter,
 >(
-  implementation: ServerExecutable<ContractType, Context>,
-  options: FetchServerOptions<HandlerContext> = {}
+  implementation: ServerExecutableFor<ContractType, Context, Adapter>,
+  options: FetchServerOptions<HandlerContext, Adapter> = {}
 ): FetchHandler<HandlerContext> {
-  assertServerContextAdapter(implementation.context, options.contextAdapter ?? 'fetch')
+  assertServerAdapter(implementation.adapter, options.contextAdapter ?? fetchAdapterDescriptor)
   const onAdapterError =
     options.onError === undefined
       ? undefined
       : async (input: AdapterErrorInput): Promise<AdapterResponse | undefined> => {
           const replacement = await options.onError?.({
             error: input.error,
+            handlerContext: input.hostContext as HandlerContext,
             phase: input.phase,
             request: input.request as Request,
             ...(input.route === undefined ? {} : { route: input.route }),
@@ -182,6 +186,7 @@ export function createFetchHandler<
     const input: AdapterDispatchInput = {
       request,
       contextInput: nativeContext === undefined ? { request } : { ...nativeContext, request },
+      ...(options.onError === undefined ? {} : { hostContext: handlerContext }),
       method: request.method,
       pathname: pathname(request.url),
       readHeaders: () => (headers ??= requestHeaders(request)),

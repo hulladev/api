@@ -1,7 +1,7 @@
 import { codec, defineContract, response, route } from '@hulla/api'
 import { createAdapterHandler } from '@hulla/api/adapters'
 import { defineClient } from '@hulla/api/client'
-import { createFetchHandler, fetchTransport, withFetchContext } from '@hulla/api/fetch'
+import { createFetchHandler, fetchAdapter, fetchTransport } from '@hulla/api/fetch'
 import { defineServer } from '@hulla/api/server'
 import { ndjson } from '@hulla/api/stream'
 import { z } from 'zod'
@@ -63,7 +63,8 @@ const middlewareContract = defineContract({
   routes: { protected: route.get('/protected', { responses: { 200: response.text(middlewareOutput) } }) },
 })
 const middlewareServerBase = defineServer(middlewareContract, {
-  context: withFetchContext(({ request }) => ({ token: request.headers.get('authorization') ?? '' })),
+  adapter: fetchAdapter(),
+  context: ({ request }) => ({ token: request.headers.get('authorization') ?? '' }),
 })
 const serverMiddleware = middlewareServerBase.middleware(({ context, next }) => {
   if (context.token !== 'Bearer benchmark') throw new Error('Missing benchmark token')

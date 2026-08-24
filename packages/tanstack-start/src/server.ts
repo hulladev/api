@@ -2,10 +2,11 @@ import type { Contract } from '@hulla/api'
 import { createAdapterRuntime } from '@hulla/api/adapters'
 import { createFetchHandler, type FetchServerErrorInput } from '@hulla/api/fetch'
 import {
-  registerServerContextAdapter,
+  createServerAdapter,
   type Awaitable,
+  type ServerAdapter,
   type ServerContextInput,
-  type ServerExecutable,
+  type ServerExecutableFor,
 } from '@hulla/api/server'
 
 export type TanStackStartRouteParams = Readonly<Record<string, string | undefined>>
@@ -24,21 +25,48 @@ export type TanStackStartRouteHandler<
   Params extends TanStackStartRouteParams = TanStackStartRouteParams,
 > = (input: TanStackStartHandlerInput<StartContext, Params>) => Promise<Response>
 
-export type TanStackStartServerErrorInput = FetchServerErrorInput
+type TanStackStartAdapterContext<StartContext, Params extends TanStackStartRouteParams> = {
+  readonly request: Request
+  readonly startContext: StartContext
+  readonly startParams: Params
+}
 
-export type TanStackStartServerOptions = {
-  readonly onError?: (input: TanStackStartServerErrorInput) => Awaitable<Response | undefined | void>
+export type TanStackStartAdapter<
+  StartContext = unknown,
+  Params extends TanStackStartRouteParams = TanStackStartRouteParams,
+> = ServerAdapter<'tanstack-start', TanStackStartAdapterContext<StartContext, Params>>
+
+const tanStackStartAdapterDescriptor = /* @__PURE__ */ createServerAdapter('tanstack-start') as TanStackStartAdapter
+
+export function tanStackStartAdapter<
+  StartContext = unknown,
+  Params extends TanStackStartRouteParams = TanStackStartRouteParams,
+>(): TanStackStartAdapter<StartContext, Params> {
+  return tanStackStartAdapterDescriptor as TanStackStartAdapter<StartContext, Params>
+}
+
+export type TanStackStartServerErrorInput<
+  StartContext = unknown,
+  Params extends TanStackStartRouteParams = TanStackStartRouteParams,
+> = Omit<FetchServerErrorInput<TanStackStartHandlerInput<StartContext, Params>>, 'handlerContext'> & {
+  readonly startContext: StartContext
+  readonly startParams: Params
+}
+
+export type TanStackStartServerOptions<
+  StartContext = unknown,
+  Params extends TanStackStartRouteParams = TanStackStartRouteParams,
+> = {
+  readonly onError?: (
+    input: TanStackStartServerErrorInput<StartContext, Params>
+  ) => Awaitable<Response | undefined | void>
 }
 
 export type TanStackStartContextInput<
   ContractType extends Contract = Contract,
   StartContext = unknown,
   Params extends TanStackStartRouteParams = TanStackStartRouteParams,
-> = ServerContextInput<ContractType> & {
-  readonly request: Request
-  readonly startContext: StartContext
-  readonly startParams: Params
-}
+> = ServerContextInput<ContractType> & TanStackStartAdapterContext<StartContext, Params>
 
 export type TanStackStartRouteMethod = 'DELETE' | 'GET' | 'PATCH' | 'POST' | 'PUT'
 
@@ -47,33 +75,16 @@ export type TanStackStartRouteHandlers<
   Params extends TanStackStartRouteParams = TanStackStartRouteParams,
 > = Readonly<Partial<Record<TanStackStartRouteMethod, TanStackStartRouteHandler<StartContext, Params>>>>
 
-/** Gives a server context factory access to TanStack Start's native server-route input. */
-export function withContext<const Context extends object>(
-  factory: (input: TanStackStartContextInput) => Awaitable<Context>
-): <ContractType extends Contract>(input: ServerContextInput<ContractType>) => Awaitable<Context>
-export function withContext<
+/** Creates the method-handler map mounted by a TanStack Start wildcard server route. */
+export function createServerRouteHandlers<
+  const ContractType extends Contract,
+  const Context extends object,
   StartContext = unknown,
   Params extends TanStackStartRouteParams = TanStackStartRouteParams,
->(): <const Context extends object>(
-  factory: (input: TanStackStartContextInput<Contract, StartContext, Params>) => Awaitable<Context>
-) => <ContractType extends Contract>(input: ServerContextInput<ContractType>) => Awaitable<Context>
-export function withContext(factory?: (input: TanStackStartContextInput) => Awaitable<object>): unknown {
-  if (factory === undefined) {
-    return <const Context extends object>(configured: (input: TanStackStartContextInput) => Awaitable<Context>) =>
-      registerServerContextAdapter('tanstack-start', (input: ServerContextInput) =>
-        configured(input as unknown as TanStackStartContextInput)
-      )
-  }
-  return registerServerContextAdapter('tanstack-start', (input: ServerContextInput) =>
-    factory(input as unknown as TanStackStartContextInput)
-  )
-}
-
-/** Creates the method-handler map mounted by a TanStack Start wildcard server route. */
-export function createServerRouteHandlers<const ContractType extends Contract, const Context extends object>(
-  implementation: ServerExecutable<ContractType, Context>,
-  options?: TanStackStartServerOptions
-): TanStackStartRouteHandlers {
+>(
+  implementation: ServerExecutableFor<ContractType, Context, TanStackStartAdapter<StartContext, Params>>,
+  options?: TanStackStartServerOptions<StartContext, Params>
+): TanStackStartRouteHandlers<StartContext, Params> {
   const configured = options ?? {}
   const runtime = createAdapterRuntime(implementation)
   const unsupported = runtime.routes.filter((route) => route.method === 'QUERY')
@@ -83,17 +94,31 @@ export function createServerRouteHandlers<const ContractType extends Contract, c
     )
   }
 
-  type HandlerContext = TanStackStartHandlerInput
-  const fetchHandler = createFetchHandler(implementation, {
-    contextAdapter: 'tanstack-start',
+  type HandlerContext = TanStackStartHandlerInput<StartContext, Params>
+  const fetchHandler = createFetchHandler<
+    ContractType,
+    Context,
+    HandlerContext,
+    TanStackStartAdapter<StartContext, Params>
+  >(implementation, {
+    contextAdapter: tanStackStartAdapterDescriptor as TanStackStartAdapter<StartContext, Params>,
     contextInput: (_request, input: HandlerContext) => ({
       startContext: input.context,
       startParams: input.params,
     }),
-    ...(configured.onError === undefined ? {} : { onError: configured.onError }),
+    ...(configured.onError === undefined
+      ? {}
+      : {
+          onError: ({ handlerContext, ...input }: FetchServerErrorInput<HandlerContext>) =>
+            configured.onError?.({
+              ...input,
+              startContext: handlerContext.context,
+              startParams: handlerContext.params,
+            }),
+        }),
   })
-  const handler: TanStackStartRouteHandler = (input) => fetchHandler(input.request, input)
-  const handlers: Partial<Record<string, TanStackStartRouteHandler>> = {}
+  const handler: TanStackStartRouteHandler<StartContext, Params> = (input) => fetchHandler(input.request, input)
+  const handlers: Partial<Record<string, TanStackStartRouteHandler<StartContext, Params>>> = {}
   for (const route of runtime.routes) handlers[route.method] = handler
   return handlers
 }

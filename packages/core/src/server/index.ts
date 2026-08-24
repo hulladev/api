@@ -1,12 +1,14 @@
+export { assertServerAdapter, createServerAdapter, isServerAdapter } from './adapter'
+export type { ServerAdapter, ServerAdapterContextInput } from './adapter'
 export type {
   Awaitable,
   ContextFactory,
   RouteMetadata,
   ServerContextFactory,
   ServerContextInput,
+  ServerContextInputFor,
   ServerRouteMetadata,
 } from './context'
-export { assertServerContextAdapter, registerServerContextAdapter } from './context'
 export { ContractError, ServerImplementationError, ServerRuntimeError } from './errors'
 export type {
   APIProblem,
@@ -43,6 +45,7 @@ export type {
   ServerHandlersForNode,
   ServerHandlersOf,
   ServerExecutable,
+  ServerExecutableFor,
   ServerImplementation,
   ServerImplementationFragment,
 } from './types'

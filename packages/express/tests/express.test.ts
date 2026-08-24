@@ -1,12 +1,13 @@
 import { EventEmitter } from 'node:events'
 import { defineContract, response, route, type Contract } from '@hulla/api'
-import { defineServer, type ServerExecutable } from '@hulla/api/server'
+import { defineServer, type ServerExecutableFor } from '@hulla/api/server'
 import express from 'express'
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
 import {
+  expressAdapter,
   register,
-  withContext,
+  type ExpressAdapter,
   type ExpressHandler,
   type ExpressRequest,
   type ExpressResponse,
@@ -20,9 +21,13 @@ type RegisteredEndpoint = {
   readonly path: string
 }
 
-function captureEndpoints<const ContractType extends Contract, const Context extends object>(
-  implementation: ServerExecutable<ContractType, Context>,
-  options?: ExpressServerOptions
+function captureEndpoints<
+  const ContractType extends Contract,
+  const Context extends object,
+  Locals extends Record<string, unknown> = Record<string, unknown>,
+>(
+  implementation: ServerExecutableFor<ContractType, Context, ExpressAdapter<Locals>>,
+  options?: ExpressServerOptions<Locals>
 ): readonly RegisteredEndpoint[] {
   const endpoints: RegisteredEndpoint[] = []
   const registrar =
@@ -42,9 +47,11 @@ function captureEndpoints<const ContractType extends Contract, const Context ext
   return endpoints
 }
 
-function endpointHandler<const ContractType extends Contract, const Context extends object>(
-  implementation: ServerExecutable<ContractType, Context>
-): ExpressHandler {
+function endpointHandler<
+  const ContractType extends Contract,
+  const Context extends object,
+  Locals extends Record<string, unknown> = Record<string, unknown>,
+>(implementation: ServerExecutableFor<ContractType, Context, ExpressAdapter<Locals>>): ExpressHandler {
   const handler = captureEndpoints(implementation)[0]?.handlers.at(-1)
   if (handler === undefined) throw new Error('Expected a registered Express handler')
   return handler
@@ -208,7 +215,8 @@ describe('Express endpoints', () => {
     })
     const mountedRouter = express.Router()
     const mountedImplementation = defineServer(mountedContract, {
-      context: withContext(({ request }) => ({ url: request.originalUrl })),
+      adapter: expressAdapter(),
+      context: ({ request }) => ({ url: request.originalUrl }),
     }).implement({
       inspect: ({ context }) => ({ status: 200, body: context.url }),
     })
@@ -321,11 +329,12 @@ describe('Express endpoints', () => {
     })
     let expressRequest: ExpressRequest | undefined
     const implementation = defineServer(bridgeContract, {
-      context: withContext<{ readonly actor: string }>()(({ request, locals }) => {
+      adapter: expressAdapter<{ readonly actor: string }>(),
+      context: ({ request, locals }) => {
         expressRequest = request
         expectTypeOf(locals.actor).toEqualTypeOf<string>()
         return { originalUrl: request.originalUrl, actor: locals.actor }
-      }),
+      },
     }).implement({
       inspect: ({ context }) => ({ status: 200, body: `${context.actor}:${context.originalUrl}` }),
     })
@@ -345,9 +354,15 @@ describe('Express endpoints', () => {
 
   test('requires native parser middleware for request bodies', async () => {
     let runtimeError: unknown
+    let errorRequest: ExpressRequest | undefined
+    let errorResponse: ExpressResponse | undefined
+    let errorLocals: Readonly<Record<string, unknown>> | undefined
     const handler = captureEndpoints(itemImplementation(), {
-      onError({ defaultResponse, error }) {
+      onError({ defaultResponse, error, locals, request, response }) {
         runtimeError = error
+        errorRequest = request
+        errorResponse = response
+        errorLocals = locals
         return defaultResponse
       },
     })[0]!.handlers.at(-1)!
@@ -370,6 +385,9 @@ describe('Express endpoints', () => {
     })
 
     expect(recorded.status()).toBe(400)
+    expect(errorRequest).toBe(expressRequest)
+    expect(errorResponse).toBe(recorded.response)
+    expect(errorLocals).toBe(recorded.response.locals)
     expect(runtimeError).toMatchObject({
       code: 'invalid-request-body',
       cause: expect.objectContaining({

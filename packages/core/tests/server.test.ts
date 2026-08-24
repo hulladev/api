@@ -6,7 +6,9 @@ import { response } from '../src/response'
 import { route } from '../src/route'
 import { router } from '../src/router'
 import {
+  createServerAdapter,
   defineServer,
+  type ServerAdapter,
   type ServerContextFactory,
   type ServerHandlersOf,
   type ServerImplementation,
@@ -179,6 +181,33 @@ describe('defineServer', () => {
     expectTypeOf(invalidFragments).toBeFunction()
   })
 
+  test('binds native context once and preserves the adapter across fragments', () => {
+    type TestAdapter = ServerAdapter<'test', { readonly request: Request }>
+    const adapter = createServerAdapter('test') as TestAdapter
+    const server = defineServer(contract, {
+      adapter,
+      context: ({ request, route: metadata }) => {
+        expectTypeOf(request).toEqualTypeOf<Request>()
+        return { requestMethod: request.method, routeKey: metadata.key }
+      },
+    })
+    const health = server.implement(contract.routes.health, ({ context }) => ({
+      status: 200,
+      body: context.requestMethod === 'GET' ? 'ok' : 'ok',
+    }))
+    const organizations = server.implement(contract.routes.organizations, handlers().organizations)
+    const implementation = server.implement(health, organizations)
+
+    expectTypeOf(server.adapter).toEqualTypeOf<TestAdapter>()
+    expectTypeOf(health.adapter).toEqualTypeOf<TestAdapter>()
+    expectTypeOf(implementation.adapter).toEqualTypeOf<TestAdapter>()
+    expect(server.adapter).toBe(adapter)
+    expect(health.adapter).toBe(adapter)
+    expect(organizations.adapter).toBe(adapter)
+    expect(implementation.adapter).toBe(adapter)
+    expect(defineServer(contract).adapter).toBeUndefined()
+  })
+
   test('rejects duplicate and foreign implementation fragments', () => {
     const server = defineServer(contract)
     const health = server.implement(contract.routes.health, handlers().health)
@@ -230,19 +259,19 @@ describe('defineServer', () => {
         // @ts-expect-error Handler results cannot contain undeclared envelope fields.
         health: () => extra,
       })
-      // @ts-expect-error The response body must match its selected status.
       server.implement({
         ...valid,
+        // @ts-expect-error The response body must match its selected status.
         health: () => ({ status: 200, body: 'unhealthy' }),
       })
-      // @ts-expect-error The status must be declared by the route.
       server.implement({
         ...valid,
+        // @ts-expect-error The status must be declared by the route.
         health: () => ({ status: 201, body: 'ok' }),
       })
-      // @ts-expect-error The handler must cover both declared statuses.
       server.implement({
         ...valid,
+        // @ts-expect-error The handler must cover both declared statuses.
         organizations: {
           ...valid.organizations,
           createUser: () => ({
@@ -329,10 +358,8 @@ describe('defineServer', () => {
     expectTypeOf<Result['status']>().toEqualTypeOf<201 | 409>()
     expectTypeOf<Created['body']>().toEqualTypeOf<z.input<typeof user>>()
     expectTypeOf<Created['headers']>().toEqualTypeOf<{ etag: string }>()
-    expectTypeOf<Conflict['body']>().toEqualTypeOf<{
-      code: 'CONFLICT' | 'UNAUTHORIZED'
-      message?: string
-    }>()
+    expectTypeOf<Conflict['body']['code']>().toEqualTypeOf<'CONFLICT' | 'UNAUTHORIZED'>()
+    expectTypeOf<Conflict['body']['message']>().toEqualTypeOf<string | undefined>()
   })
 
   test('preserves prototype-like and dotted handler keys safely', () => {

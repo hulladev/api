@@ -127,7 +127,7 @@ describe('adapter server runtime', () => {
 
   test('requests lazy body extraction with the declared representation', async () => {
     const dispatch = createAdapterTestRuntime()
-    const readBody = vi.fn(async () => new Uint8Array([1, 2, 3]))
+    const readBody = vi.fn<() => Promise<Uint8Array>>(async () => new Uint8Array([1, 2, 3]))
 
     const result = await dispatch({
       request: new Request('https://adapter.test/bytes', { method: 'POST' }),
@@ -148,7 +148,7 @@ describe('adapter server runtime', () => {
     const implementation = defineServer(contract, { context: () => ({ requestId: 'request-1' }) }).implement({
       echo: ({ body }) => ({ status: 200, body }),
     })
-    const readBody = vi.fn(async () => 'hello')
+    const readBody = vi.fn<() => Promise<string>>(async () => 'hello')
 
     await createAdapterHandler(implementation)({
       request: {},

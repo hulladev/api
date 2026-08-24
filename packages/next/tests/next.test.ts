@@ -9,9 +9,10 @@ import {
   createRouteHandler,
   createNextCache,
   nextFetchTransport,
+  nextAdapter,
   nextRouteTag,
   nextRouteTags,
-  withContext,
+  type NextServerErrorInput,
   type NextRouteContext,
   type NextRouteHandler,
 } from '../src'
@@ -46,12 +47,13 @@ describe('Next.js integration', () => {
     let contextRequest: NextRequest | undefined
     let contextParams: { readonly hulla: string[] } | undefined
     const implementation = defineServer(contract, {
-      context: withContext<AppRouteContext>()(async ({ request, routeContext }) => {
+      adapter: nextAdapter<AppRouteContext>(),
+      context: async ({ request, routeContext }) => {
         expectTypeOf(routeContext).toEqualTypeOf<AppRouteContext>()
         contextRequest = request
         contextParams = await routeContext.params
         return { requestMethod: request.method }
-      }),
+      },
     }).implement({
       health: ({ context }) => ({ status: 200, body: context.requestMethod === 'GET' ? 'ok' : 'ok' }),
       users: {
@@ -61,7 +63,7 @@ describe('Next.js integration', () => {
     })
     const handler = createRouteHandler(implementation)
 
-    expectTypeOf(handler).toEqualTypeOf<NextRouteHandler>()
+    expectTypeOf(handler).toEqualTypeOf<NextRouteHandler<AppRouteContext>>()
     const request = new NextRequest('https://example.com/api/users/user-1')
     const routeContext: AppRouteContext = { params: Promise.resolve({ hulla: ['users', 'user-1'] }) }
     const result = await handler(request, routeContext)
@@ -70,14 +72,16 @@ describe('Next.js integration', () => {
     expect(contextParams).toEqual({ hulla: ['users', 'user-1'] })
     expect(result.status).toBe(200)
     await expect(result.json()).resolves.toEqual({ id: 'user-1' })
-    expect(() => inProcessTransport(implementation)).toThrow(
-      'Server context requires the next adapter, but was mounted with in-process'
+    expect(() => inProcessTransport(implementation as never)).toThrow(
+      'Server requires the next adapter, but was mounted with in-process'
     )
   })
 
   test('applies typed GET policies without taking over Next fetch execution', async () => {
     expectTypeOf(nextFetchTransport({ fetch: globalThis.fetch })).toBeFunction()
-    const fetcher = vi.fn(async (_request: Request, _options?: object) => json({ id: 'user-1' }))
+    const fetcher = vi.fn<(_request: Request, _options?: object) => Promise<Response>>(async () =>
+      json({ id: 'user-1' })
+    )
     const cache = createNextCache(contract, {
       namespace: 'admin-api',
       routes: {
@@ -147,6 +151,38 @@ describe('Next.js integration', () => {
 
     expect(() => nextRouteTag(['x'.repeat(257)])).toThrow('exceeds 256 characters')
     expect(() => nextRouteTag([], { namespace: '' })).toThrow('namespace must not be empty')
+  })
+
+  test('forwards route context to the adapter error hook', async () => {
+    type AppRouteContext = NextRouteContext<{ readonly hulla: string[] }>
+    const onError = vi.fn<(input: NextServerErrorInput<AppRouteContext>) => Response>(({ defaultResponse }) =>
+      Response.json({ replaced: true }, { status: defaultResponse.status })
+    )
+    const implementation = defineServer(contract, { adapter: nextAdapter<AppRouteContext>() }).implement({
+      health: (): { readonly body: 'ok'; readonly status: 200 } => {
+        throw new Error('failure')
+      },
+      users: {
+        byId: ({ params }) => ({ status: 200, body: { id: params.id } }),
+        rename: ({ body, params }) => ({ status: 200, body: { id: params.id, name: body.name } }),
+      },
+    })
+    const handler = createRouteHandler(implementation, { onError })
+    const request = new NextRequest('https://example.com/api/health')
+    const routeContext: AppRouteContext = { params: Promise.resolve({ hulla: ['health'] }) }
+
+    const result = await handler(request, routeContext)
+
+    expect(result.status).toBe(500)
+    await expect(result.json()).resolves.toEqual({ replaced: true })
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        phase: 'handler',
+        request,
+        routeContext,
+        route: expect.objectContaining({ key: ['health'] }),
+      })
+    )
   })
 
   test('rejects QUERY routes before mounting the Next handler', () => {
