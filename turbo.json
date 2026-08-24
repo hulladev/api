@@ -11,9 +11,6 @@
       "inputs": ["$TURBO_DEFAULT$", "../../tsconfig.base.json"],
       "outputs": ["dist/**"]
     },
-    "check:package": {
-      "dependsOn": ["build"]
-    },
     "dev": {
       "cache": false,
       "persistent": true

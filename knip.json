@@ -1,0 +1,13 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "ignore": ["legacy/**", "packages/next/tests/fixtures/**", "packages/tanstack-start/tests/fixtures/**"],
+  "treatConfigHintsAsErrors": true,
+  "workspaces": {
+    ".": {
+      "project": ["**/*.{js,cjs,mjs,jsx,ts,cts,mts,tsx}", "!legacy/**"]
+    },
+    "benchmarks": {
+      "entry": ["size/*.ts"]
+    }
+  }
+}
