@@ -49,11 +49,13 @@ describe('router declaration', () => {
     expectTypeOf(declaration.$meta.params).toEqualTypeOf<typeof params>()
   })
 
+  // oxlint-disable-next-line vitest/expect-expect -- This test is enforced by TypeScript diagnostics.
   test('requires params for a dynamic path', () => {
     // @ts-expect-error A dynamic path requires a params declaration.
     router('/organizations/:organizationId', { routes })
   })
 
+  // oxlint-disable-next-line vitest/expect-expect -- This test is enforced by TypeScript diagnostics.
   test('requires a schema for every parameter in a dynamic path', () => {
     router('/organizations/:organizationId/members/:memberId', {
       // @ts-expect-error The params schema must contain every path parameter.
@@ -62,6 +64,7 @@ describe('router declaration', () => {
     })
   })
 
+  // oxlint-disable-next-line vitest/expect-expect -- This test is enforced by TypeScript diagnostics.
   test('rejects params for a static path', () => {
     router('/organizations', {
       // @ts-expect-error A static path cannot declare params.
@@ -70,6 +73,7 @@ describe('router declaration', () => {
     })
   })
 
+  // oxlint-disable-next-line vitest/expect-expect -- This test is enforced by TypeScript diagnostics.
   test('rejects a raw schema record for params', () => {
     router('/organizations/:organizationId', {
       // @ts-expect-error Params must be declared as an object Standard Schema.

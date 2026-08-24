@@ -48,7 +48,7 @@ describe('declared errors', () => {
   })
 
   test('serializes returned and thrown occurrences through the same contract enrichment', async () => {
-    const onError = vi.fn()
+    const onError = vi.fn<(input: unknown) => void>()
     const dispatch = createAdapterHandler(
       defineServer(contract).implement({
         returned: ({ errors, response }) =>

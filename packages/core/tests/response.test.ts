@@ -247,6 +247,7 @@ describe('response declaration', () => {
     expectTypeOf(declaration.contentType).toEqualTypeOf<undefined>()
   })
 
+  // oxlint-disable-next-line vitest/expect-expect -- This test is enforced by TypeScript diagnostics.
   test('requires schemas to encode to the representation selected by the helper', () => {
     // @ts-expect-error Text responses must encode to strings.
     response.text(z.number())
@@ -279,6 +280,7 @@ describe('response declaration', () => {
     response.formData(v.string())
   })
 
+  // oxlint-disable-next-line vitest/expect-expect -- This test is enforced by TypeScript diagnostics.
   test('requires response headers to be an object Standard Schema', () => {
     response.json(z.string(), {
       // @ts-expect-error Response headers describe named fields and must produce an object.
@@ -294,6 +296,7 @@ describe('response declaration', () => {
     })
   })
 
+  // oxlint-disable-next-line vitest/expect-expect -- This test is enforced by TypeScript diagnostics.
   test('requires response descriptors in the status mapping', () => {
     route.get('/legacy', {
       responses: {

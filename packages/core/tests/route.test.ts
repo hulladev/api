@@ -121,6 +121,7 @@ describe('route declaration', () => {
     expectTypeOf(declaration.body.schema).toEqualTypeOf<typeof body>()
   })
 
+  // oxlint-disable-next-line vitest/expect-expect -- This test is enforced by TypeScript diagnostics.
   test('rejects raw schema records for params and query', () => {
     void (() => {
       route.get('/:id', {
@@ -218,11 +219,13 @@ describe('route declaration', () => {
     expectTypeOf(declaration.query).toEqualTypeOf<typeof schema>()
   })
 
+  // oxlint-disable-next-line vitest/expect-expect -- This test is enforced by TypeScript diagnostics.
   test('requires params for a dynamic path', () => {
     // @ts-expect-error A dynamic path requires a matching params declaration.
     route.get('/:id', { responses })
   })
 
+  // oxlint-disable-next-line vitest/expect-expect -- This test is enforced by TypeScript diagnostics.
   test('rejects a request body for GET routes', () => {
     route.get('/users', {
       responses,

@@ -149,6 +149,7 @@ describe('stream formats', () => {
     textLines(z.number())
   })
 
+  // oxlint-disable-next-line vitest/expect-expect -- This test is enforced by TypeScript diagnostics.
   test('accepts and rejects JSON wire schemas consistently across validators', () => {
     ndjson(z.object({ message: z.string() }))
     sseJson(z.string())

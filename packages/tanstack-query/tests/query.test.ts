@@ -26,7 +26,7 @@ function json(value: unknown): Response {
 
 describe('TanStack Query integration', () => {
   test('exposes shared keys plus bound query and mutation options', async () => {
-    const fetcher = vi.fn(async (request: Request) =>
+    const fetcher = vi.fn<(request: Request) => Promise<Response>>(async (request) =>
       request.url.endsWith('/health') ? json('ok') : json({ id: request.url.split('/').at(-1) })
     )
     const client = defineClient(contract, {
@@ -75,7 +75,7 @@ describe('TanStack Query integration', () => {
 
   test('requires query input and forwards cancellation through request options', async () => {
     const controller = new AbortController()
-    const fetcher = vi.fn(async (_request: Request) => json({ id: 'user-1' }))
+    const fetcher = vi.fn<(_request: Request) => Promise<Response>>(async () => json({ id: 'user-1' }))
     const client = defineClient(contract, {
       transport: fetchTransport({ baseUrl: 'https://api.example.com', fetch: fetcher }),
     }).create()

@@ -148,6 +148,7 @@ describe('Standard Schema validation', () => {
     expectTypeOf<SchemaOutbound<typeof nativeZodCodec>>().toEqualTypeOf<string>()
   })
 
+  // oxlint-disable-next-line vitest/expect-expect -- This test is enforced by TypeScript diagnostics.
   test('requires identity representation schemas at codec endpoints', () => {
     void (() => {
       codec(

@@ -10,7 +10,6 @@ import {
   createOpenAPIDocument,
   defineOpenAPI,
   generateContractFromOpenAPI,
-  OpenAPIImportError,
   readOpenAPIDocument,
   writeOpenAPIDocument,
   type OpenAPIDocument,
@@ -63,20 +62,20 @@ function diagnosticsFor(files: readonly string[]): string[] {
   const program = ts.createProgram({
     rootNames: [...files],
     options: {
-      baseUrl: workspace,
       module: ts.ModuleKind.ESNext,
       moduleResolution: ts.ModuleResolutionKind.Bundler,
       noEmit: true,
       noUnusedLocals: true,
       noUnusedParameters: true,
       paths: {
-        '@hulla/api': ['packages/core/src/index.ts'],
-        '@hulla/api-openapi': ['packages/openapi/src/index.ts'],
-        zod: ['packages/openapi/node_modules/zod/index.d.ts'],
+        '@hulla/api': [`${workspace}/packages/core/src/index.ts`],
+        '@hulla/api-openapi': [`${workspace}/packages/openapi/src/index.ts`],
+        zod: [`${workspace}/packages/openapi/node_modules/zod/index.d.ts`],
       },
       skipLibCheck: true,
       strict: true,
       target: ts.ScriptTarget.ESNext,
+      types: ['node'],
       verbatimModuleSyntax: true,
     },
   })
@@ -298,14 +297,15 @@ describe('OpenAPI to contract', () => {
       },
     }
 
-    expect(() => generateContractFromOpenAPI(document)).toThrow(OpenAPIImportError)
-    try {
-      generateContractFromOpenAPI(document)
-    } catch (error) {
-      expect(error).toBeInstanceOf(OpenAPIImportError)
-      expect((error as OpenAPIImportError).diagnostics).toContainEqual(
-        expect.objectContaining({ severity: 'error', message: 'cookie parameters are not supported by Hulla routes' })
-      )
-    }
+    expect(() => generateContractFromOpenAPI(document)).toThrowError(
+      expect.objectContaining({
+        diagnostics: expect.arrayContaining([
+          expect.objectContaining({
+            severity: 'error',
+            message: 'cookie parameters are not supported by Hulla routes',
+          }),
+        ]),
+      })
+    )
   })
 })

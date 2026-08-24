@@ -25,7 +25,7 @@ function json(value: unknown): Response {
 
 describe('SWR integration', () => {
   test('exposes query keys plus bound query and mutation tuples', async () => {
-    const fetcher = vi.fn(async (request: Request) =>
+    const fetcher = vi.fn<(request: Request) => Promise<Response>>(async (request) =>
       request.url.endsWith('/health') ? json('ok') : json({ id: request.url.split('/').at(-1) })
     )
     const client = defineClient(contract, {
