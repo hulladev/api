@@ -1,5 +1,76 @@
 # Error model
 
+Application failures and operational failures are separate concepts in @hulla/api.
+
+## Declared application errors
+
+`defineErrors()` defines a named group without assigning transport status:
+
+```ts
+import { defineContract, defineErrors } from '@hulla/api'
+import { z } from 'zod'
+
+export const errors = defineErrors({
+  UNAUTHORIZED: {
+    message: 'Authentication required',
+  },
+  ITEM_NOT_FOUND: {
+    message: 'Item not found',
+    data: z.object({ id: z.string() }),
+  },
+})
+
+export const contract = defineContract({
+  errors: {
+    401: errors.UNAUTHORIZED,
+    404: errors.ITEM_NOT_FOUND,
+  },
+  routes,
+})
+```
+
+Each member is an independent callable declaration. Calling it creates a fresh `DeclaredError`; its default message can be overridden per occurrence:
+
+```ts
+throw errors.UNAUTHORIZED({ message: 'Your session expired' })
+return errors.ITEM_NOT_FOUND({ data: { id } })
+```
+
+`message` is optional in the declaration; when omitted, the error code is the default. There is no separate `title` field in the application-error wire shape.
+
+Both forms produce the same concise JSON body once the declaration crosses an HTTP contract boundary:
+
+```json
+{
+  "code": "ITEM_NOT_FOUND",
+  "message": "Item not found",
+  "data": { "id": "item-1" }
+}
+```
+
+The declaration key supplies the stable code, so users do not repeat it in a literal schema. Only variable `data` needs a Standard Schema. A status accepts a single declaration directly; use an array only when several distinct errors share that status:
+
+```ts
+errors: {
+  404: [errors.ITEM_NOT_FOUND, errors.ORGANIZATION_NOT_FOUND],
+}
+```
+
+One declaration cannot be assigned to several statuses in the same contract.
+
+Clients return declared errors as typed response values by default. Applications that prefer exception control flow can opt in once when defining the client:
+
+```ts
+const client = defineClient(contract, {
+  transport,
+  errorMode: 'throw',
+}).create()
+```
+
+In `throw` mode, a declared failure is reconstructed as a `DeclaredError`; successful route return types no longer include the declared error response union.
+
+## Operational errors
+
 @hulla/api operational errors use one structural interface:
 
 ```ts
@@ -39,7 +110,7 @@ try {
 }
 ```
 
-Application and plugin errors can participate in the same convention by exposing an error name, message, string code, and issue array. `annotateAPIErrorIssues()` copies and freezes Standard Schema-compatible issues while adding default code or location metadata.
+Application and integration errors can participate in the same convention by exposing an error name, message, string code, and issue array. `annotateAPIErrorIssues()` copies and freezes Standard Schema-compatible issues while adding default code or location metadata.
 
 ## Core errors
 

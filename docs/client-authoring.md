@@ -1,13 +1,14 @@
 # Client authoring
 
-`defineClient()` mirrors server authoring: configure a scope, derive it with `use()`, then call `build()`. The built value is the contract-shaped callable tree itself—there is no extra `routes`, `api`, or procedure namespace:
+`defineClient()` creates a transport-neutral client authoring scope. `create()` materializes the complete contract-shaped client. `create(node)` selects one route or recursive router fragment—there is no extra `routes`, `api`, or procedure namespace. An executable client receives one transport in its options:
 
 ```ts
 import { defineClient } from '@hulla/api/client'
+import { fetchTransport } from '@hulla/api/fetch'
 
 const client = defineClient(contract, {
-  baseUrl: 'https://api.example.com',
-}).build()
+  transport: fetchTransport({ baseUrl: 'https://api.example.com' }),
+}).create()
 
 const result = await client.organizations.createUser({
   params: { organizationId, userId },
@@ -22,7 +23,11 @@ if (result.status === 201) {
 }
 ```
 
-Routes without declared request data take only optional request-scoped Fetch options:
+An omitted or path-relative `baseUrl` uses the host document's URL when the runtime can resolve relative `Request`
+objects. Configure an absolute `baseUrl` in Node.js and SSR runtimes; the transport reports this requirement explicitly
+when the native `Request` constructor cannot resolve the URL.
+
+Routes without declared request data take only optional request-scoped transport options:
 
 ```ts
 await client.health()
@@ -37,39 +42,67 @@ await client.organizations.createUser(input, { signal })
 
 ## Context and middleware
 
-Client context follows the server context model. A context factory runs once per request with the fully encoded `Request` and exact route metadata:
+Client context follows the server context model. A context factory runs once per request with the schema-encoded neutral invocation and exact route metadata:
 
 ```ts
 const base = defineClient(contract, {
-  baseUrl: 'https://api.example.com',
+  transport: fetchTransport({ baseUrl: 'https://api.example.com' }),
   context: ({ request, route }) => ({
     accessToken: session.accessToken,
-    requestUrl: request.url,
+    requestPath: request.path,
     routeKey: route.key,
   }),
 })
 ```
 
-Middleware receives one options object, matching server and procedure middleware. `middleware()` defines a reusable middleware value, `use()` returns a derived scope, and `build()` materializes the callable tree:
+The returned object may contain lazy memoized functions when only some middleware paths need expensive data. This keeps request lifetime and caching explicit without eagerly fetching every possible context value.
+
+Middleware receives one options object, matching server and procedure middleware. `middleware()` defines a reusable middleware value, `use()` returns a derived scope, and `create()` captures that scope on every generated route:
 
 ```ts
 const authenticate = base.middleware(async ({ context, next, request }) => {
-  request.headers.set('authorization', `Bearer ${context.accessToken}`)
+  request.headers.authorization = `Bearer ${context.accessToken}`
   return next()
 })
 
-export const client = base.use(authenticate).build()
+export const client = base.use(authenticate).create()
 ```
 
-Middleware wraps the complete transport operation, including response decoding. It can prepare the request, perform logging or tracing before and after `next()`, and reject a call. Higher-level result policies belong in application procedures.
+Pass a mounted contract router or route as the first argument to scope one middleware without changing the generated client shape:
 
-Client middleware can also stop every route with a contract-level error through its typed `response(status, body, headers?)` helper. Responses without declared header schemas receive an empty `Headers` instance by default.
+```ts
+export const client = base
+  .use(logRequests)
+  .use(contract.routes.organizations, authenticate)
+  .create()
+```
+
+`use(middleware)` applies globally, `use(router, middleware)` applies below that router, and `use(route, middleware)` applies only to that route. Registrations run in declaration order. Separately registering the same middleware in overlapping scopes runs it once per matching registration; there is no function-identity deduplication.
+
+Middleware wraps the complete transport operation, including response decoding. It can prepare the neutral invocation, perform logging or tracing before and after `next()`, and reject a call. Transport-native customization belongs in the transport configuration; for Fetch this includes injecting a compatible `fetch` function.
+
+Client middleware can also stop every route with a contract-level error through its typed `response(status, body, headers?)` helper. Responses without declared header schemas receive an empty header record by default.
+
+## Client fragments
+
+Fragments remain useful when a route or router client must be exported or deployed independently. They are directly callable and retain their authoring scope when composed:
+
+```ts
+const observed = base.use(logRequests)
+
+const health = observed.create(contract.routes.health)
+const organizations = observed.use(authenticate).create(contract.routes.organizations)
+
+export const client = observed.create(health, organizations)
+```
+
+Here both fragments use `logRequests`, while only the organization routes use `authenticate`. `create(...fragments)` requires complete route coverage and rejects duplicates, fragments from another client definition, and fragments that do not inherit the composition scope middleware. A route fragment is its route call, and a router fragment is its callable subtree, so either can also be used independently.
 
 ## Transport boundary
 
-Each client leaf performs exactly one Fetch call. Ordinary schemas expose their input types directly; explicit codecs encode shared application values before the declared HTTP representation is serialized. The selected response declaration is then decoded back into its application value.
+Each client leaf performs exactly one transport invocation. Ordinary schemas expose their input types directly; explicit codecs encode shared application values before the declared representation is handed to the transport. The selected response declaration is then decoded back into its application value.
 
-Like Fetch, the client does not throw merely because a response has a 4xx or 5xx status. Route responses and contract-level middleware errors are returned as a status-discriminated union. Network failures, schema failures, content-type mismatches, and statuses absent from both response maps reject the call.
+The client does not throw merely because a transport response has a 4xx or 5xx status. Route responses and contract-level middleware errors are returned as a status-discriminated union. Transport failures, schema failures, content-type mismatches, and statuses absent from both response maps reject the call.
 
 The core does not add retries, caching, deduplication, domain exceptions, loading state, or query-library behavior. Those policies can be ordinary application functions:
 
@@ -85,4 +118,16 @@ export async function createUser(input: Parameters<typeof client.organizations.c
 }
 ```
 
-Use an `@hulla/api/procedure` procedure only when its schema, context, middleware, or structural identity provides concrete value. Procedures do not change or wrap the client surface.
+When the client and server share one JavaScript process, use the same client API with the in-process transport:
+
+```ts
+import { inProcessTransport } from '@hulla/api/in-process'
+
+const client = defineClient(contract, {
+  transport: inProcessTransport(implementation),
+}).create()
+```
+
+This still runs contract encoding, server validation, middleware, and response decoding, but skips native Fetch object construction. It is suitable for colocated SSR, tests, and same-process application boundaries—not for communication between separate processes.
+
+Use an `@hulla/api/procedure` procedure only when its validation, context, or middleware provides concrete value. Otherwise use an ordinary function. Client creation does not add custom route implementations or change the generated call surface.

@@ -109,4 +109,4 @@ Each helper also has a representation-appropriate identity schema when the schem
 
 ## Adapter boundary
 
-Adapters provide a standard `Request`, then extract raw path strings, flat query parameters, headers, and the selected body representation. Repeated query keys become arrays before Standard Schema validation. Codecs are compiled into the shared client/server route plan, so framework adapters do not implement validator-specific encoding.
+Adapters provide already-extracted native path strings, flat query values, headers, and the selected body representation. Repeated query keys become arrays before Standard Schema validation. The shared execution plan validates those values without constructing a Fetch `Request`; framework adapters therefore keep their native request and response lifecycle while reusing the same codec and validator execution.
