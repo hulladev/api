@@ -4,12 +4,5 @@
   "compilerOptions": {
     "types": ["node"]
   },
-  "include": [
-    "src/**/*.ts",
-    "tests/**/*.ts",
-    "tsdown.config.ts",
-    "vitest.config.ts",
-    "tests.ai/roundtrip.test.ts",
-    "tests.ai/schema.test.ts"
-  ]
+  "include": ["src/**/*.ts", "tests/**/*.ts", "tsdown.config.ts", "vitest.config.ts"]
 }

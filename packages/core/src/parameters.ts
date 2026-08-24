@@ -72,15 +72,6 @@ export function compilePathParameterEncoder(
   }
 }
 
-/** Encodes application path parameters and substitutes them into a compiled route path. */
-export async function encodePathParameters(
-  path: string,
-  declarations: readonly CompiledPathParameters[],
-  value: Readonly<Record<string, unknown>>
-): Promise<string> {
-  return compilePathParameterEncoder(path, declarations)(value)
-}
-
 /** Compiles captured wire path parameter decoding for a route. */
 export function compilePathParameterDecoder(declarations: readonly CompiledPathParameters[]): PathParameterDecoder {
   const plans = declarations.map((declaration) => ({
@@ -109,12 +100,4 @@ export function compilePathParameterDecoder(declarations: readonly CompiledPathP
       return decodedValues
     })
   }
-}
-
-/** Decodes captured wire path parameters into their combined application representation. */
-export async function decodePathParameters(
-  declarations: readonly CompiledPathParameters[],
-  value: Readonly<Record<string, string>>
-): Promise<Readonly<Record<string, unknown>>> {
-  return compilePathParameterDecoder(declarations)(value)
 }

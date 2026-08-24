@@ -1,33 +1,41 @@
 import type { CompiledContractRoute } from '../compiler'
+import { getCompositionState, isScopeDescendant, registerComposition } from '../composition'
 import type { ContextFrom } from '../context'
-import type { Contract } from '../contract'
+import type { Contract, ContractRoute } from '../contract'
+import { compileContractRoutes } from '../contract-compiler'
+import { findContractMount, type ContractMount } from '../contract-state'
+import type { ClientErrorMode, ErrorFactories } from '../declared-errors'
 import { isPromiseLike } from '../execution'
-import { assertMiddleware, assertMiddlewares, dispatchMiddlewares } from '../middleware'
-import { hasOwn, isRecord, setOwn } from '../object'
 import {
-  type APIClientPluginList,
-  type APIClientPluginRouteCall,
-  type APIClientPluginRouteKey,
-  type APIPlugin,
-} from '../plugin'
-import { normalizeAPIPlugins } from '../plugin-runtime'
+  appendMiddlewarePlan,
+  assertMiddleware,
+  createMiddlewarePlan,
+  dispatchMiddlewareSteps,
+  type MiddlewarePlan,
+  routeMiddlewares,
+} from '../middleware'
+import { hasOwn, isRecord, setOwn } from '../object'
 import { compileCanonicalContract } from '../route-plan'
 import type { ClientContextInput, ClientContractRouteMetadata } from './context'
+import { type ClientRouteBinding, type ClientScope } from './creation'
+import { registerClientRoute } from './integration'
 import type { ClientMiddleware, ClientMiddlewareCandidate, ClientMiddlewareInput } from './middleware'
 import {
-  assertClientBaseUrl,
   compileClientRequest,
+  type ClientHeaders,
   type ClientRequestOptions,
   type ClientRequestCreator,
-  type ClientTransportOptions,
+  type ClientTransport,
+  type ClientTransportResponse,
 } from './request'
 import {
   ClientResponseError,
+  compileClientErrorResponse,
   compileClientResponse,
   createClientResponse,
   type ClientResponseDecoder,
 } from './response'
-import type { ClientDefinition, ClientRoutes, DefineClientOptions } from './types'
+import type { ClientDefinition, DefineClientOptions } from './types'
 
 type EmptyClientContext = Record<string, never>
 type ContextFactoryShape<ContractType extends Contract> = (
@@ -35,7 +43,6 @@ type ContextFactoryShape<ContractType extends Contract> = (
 ) => object | PromiseLike<object>
 
 const emptyContext = Object.freeze({}) as EmptyClientContext
-
 type RuntimeRoute = {
   readonly compiled: CompiledContractRoute
   readonly createRequest: ClientRequestCreator
@@ -43,14 +50,10 @@ type RuntimeRoute = {
   readonly responseDecoder?: ClientResponseDecoder
   readonly responseStatus?: number
   readonly responses?: ReadonlyMap<number, ClientResponseDecoder>
+  readonly errorFactories?: ErrorFactories<Contract['errors']>
 }
 
-type RuntimeRouter = {
-  readonly key: readonly string[]
-  readonly target: Record<string, unknown>
-}
-
-function responseDecoder(runtime: RuntimeRoute, response: Response): ClientResponseDecoder {
+function responseDecoder(runtime: RuntimeRoute, response: ClientTransportResponse): ClientResponseDecoder {
   const decoder =
     runtime.responseStatus === response.status ? runtime.responseDecoder : runtime.responses?.get(response.status)
   if (decoder !== undefined) return decoder
@@ -64,7 +67,7 @@ function responseDecoder(runtime: RuntimeRoute, response: Response): ClientRespo
 
 async function executeRoute(
   runtime: RuntimeRoute,
-  transport: ClientTransportOptions,
+  transport: ClientTransport,
   contextFactory: ((input: ClientContextInput) => object | PromiseLike<object>) | undefined,
   middlewares: readonly ClientMiddleware<object, Contract>[],
   input: Readonly<Record<string, unknown>>,
@@ -72,23 +75,30 @@ async function executeRoute(
 ): Promise<unknown> {
   const requestStep = runtime.createRequest(input, options)
   const request = isPromiseLike(requestStep) ? await requestStep : requestStep
-  const context =
-    contextFactory === undefined ? emptyContext : await contextFactory({ request, route: runtime.metadata })
+  const contextStep = contextFactory === undefined ? emptyContext : contextFactory({ request, route: runtime.metadata })
+  const context = isPromiseLike(contextStep) ? await contextStep : contextStep
   if (!isRecord(context)) throw new TypeError('Client context factory must return an object')
-  const fetcher = transport.fetch ?? globalThis.fetch
-  const fetchAndDecode = async () => {
-    const response = await fetcher(request)
-    return responseDecoder(runtime, response)(response)
+  const transportAndDecode = () => {
+    const response = transport(request)
+    return isPromiseLike(response)
+      ? Promise.resolve(response).then((resolved) => responseDecoder(runtime, resolved)(resolved))
+      : responseDecoder(runtime, response)(response)
   }
 
-  if (middlewares.length === 0) return fetchAndDecode()
+  if (middlewares.length === 0) return transportAndDecode()
 
-  const middlewareInput = { context, request, response: createClientResponse, route: runtime.metadata }
+  const middlewareInput = {
+    context,
+    response: createClientResponse,
+    request,
+    route: runtime.metadata,
+    ...(runtime.errorFactories === undefined ? {} : { errors: runtime.errorFactories }),
+  }
 
-  return dispatchMiddlewares<ClientMiddlewareInput<object, Contract>, unknown>(
+  return dispatchMiddlewareSteps<ClientMiddlewareInput<object, Contract>, unknown>(
     middlewares,
     middlewareInput,
-    fetchAndDecode,
+    transportAndDecode,
     {
       invalidMiddleware: () => new TypeError('Client middleware must be a function'),
       multipleNext: () => new TypeError('Client middleware called next() more than once'),
@@ -96,12 +106,7 @@ async function executeRoute(
   )
 }
 
-function setClientRoute(
-  target: Record<string, unknown>,
-  key: readonly string[],
-  value: unknown,
-  routers: RuntimeRouter[]
-): void {
+function setClientRoute(target: Record<string, unknown>, key: readonly string[], value: unknown): void {
   if (key.length === 1) {
     setOwn(target, key[0]!, value)
     return
@@ -109,7 +114,7 @@ function setClientRoute(
 
   let parent = target
 
-  for (const [index, segment] of key.slice(0, -1).entries()) {
+  for (const segment of key.slice(0, -1)) {
     const existing = hasOwn(parent, segment) ? parent[segment] : undefined
     if (existing !== undefined) {
       if (!isRecord(existing)) throw new TypeError(`Compiled client key "${key.join('.')}" collides with a route`)
@@ -119,7 +124,6 @@ function setClientRoute(
 
     const nested: Record<string, unknown> = {}
     setOwn(parent, segment, nested)
-    routers.push({ key: key.slice(0, index + 1), target: nested })
     parent = nested
   }
 
@@ -128,100 +132,42 @@ function setClientRoute(
   setOwn(parent, routeKey, value)
 }
 
-function clientRouteKey(key: readonly string[]): APIClientPluginRouteKey {
-  const prefix = Object.freeze([...key])
-  return Object.freeze({
-    prefix,
-    full: (...args: readonly unknown[]) => [...prefix, ...args],
-  })
+function displayKey(key: readonly string[]): string {
+  return key.join('.')
 }
 
-function attachClientPluginMembers(
-  target: object,
-  plugin: APIPlugin,
-  members: Readonly<Record<string, unknown>>,
-  owners: Map<string, string>,
-  targetKind: 'route' | 'router'
-): void {
-  for (const [key, value] of Object.entries(members)) {
-    if (key.startsWith('$')) {
-      throw new TypeError(
-        `Client plugin "${plugin.id}" ${targetKind} member "${key}" must omit the framework-owned "$" prefix`
-      )
-    }
-
-    const publicKey = `$${key}`
-    if (publicKey === '$meta')
-      throw new TypeError(`Client plugin "${plugin.id}" ${targetKind} member "$meta" is reserved by @hulla/api`)
-
-    const owner = owners.get(publicKey)
-    if (owner !== undefined) {
-      throw new TypeError(
-        `Client plugin "${plugin.id}" ${targetKind} member "${publicKey}" collides with plugin "${owner}"`
-      )
-    }
-    if (publicKey in target) {
-      throw new TypeError(
-        `Client plugin "${plugin.id}" ${targetKind} member "${publicKey}" collides with the client ${targetKind}`
-      )
-    }
-
-    Object.defineProperty(target, publicKey, { enumerable: true, value })
-    owners.set(publicKey, plugin.id)
+function mountedNode(contract: Contract, node: unknown): ContractMount {
+  const mount = findContractMount(contract, node)
+  if (mount === null) throw new TypeError('Client creation node must belong to its client contract')
+  if (mount === undefined) {
+    throw new TypeError('Client creation node belongs to a different contract or is not mounted')
   }
+  return mount
 }
 
-function applyClientPlugins(
+function buildClientNode(
   contract: Contract,
-  plan: ReturnType<typeof compileCanonicalContract>['routes'][number],
-  call: APIClientPluginRouteCall,
-  plugins: readonly APIPlugin[]
-): void {
-  const key = clientRouteKey(plan.compiled.key)
-  const owners = new Map<string, string>()
-
-  for (const plugin of plugins) {
-    const hook = plugin.client?.route
-    if (hook === undefined) continue
-    const members = hook({ contract, route: plan.compiled, call, hasInput: plan.hasInput, key })
-    if (members === undefined) continue
-    if (!isRecord(members)) throw new TypeError(`Client plugin "${plugin.id}" route hook must return an object`)
-    attachClientPluginMembers(call, plugin, members, owners, 'route')
-  }
-}
-
-function applyClientRouterPlugins(contract: Contract, router: RuntimeRouter, plugins: readonly APIPlugin[]): void {
-  const key = clientRouteKey(router.key)
-  const owners = new Map<string, string>()
-
-  for (const plugin of plugins) {
-    const hook = plugin.client?.router
-    if (hook === undefined) continue
-    const members = hook({ contract, key })
-    if (members === undefined) continue
-    if (!isRecord(members)) throw new TypeError(`Client plugin "${plugin.id}" router hook must return an object`)
-    attachClientPluginMembers(router.target, plugin, members, owners, 'router')
-  }
-}
-
-function buildClientRoutes(
-  contract: Contract,
-  transport: ClientTransportOptions,
+  mount: ContractMount,
+  transport: ClientTransport,
+  headers: ClientHeaders | undefined,
   contextFactory: ((input: ClientContextInput) => object | PromiseLike<object>) | undefined,
-  middlewares: readonly ClientMiddleware<object, Contract>[],
-  plugins: readonly APIPlugin[]
-): Readonly<Record<string, unknown>> {
+  middlewarePlan: MiddlewarePlan<ClientMiddleware<object, Contract>, CompiledContractRoute>,
+  errorMode: ClientErrorMode
+): { readonly bindings: readonly ClientRouteBinding[]; readonly value: object } {
   const tree: Record<string, unknown> = {}
-  const routers: RuntimeRouter[] = []
-  const contractPlan = compileCanonicalContract(contract)
+  const contractPlan = compileCanonicalContract(contract, mount.kind === 'contract' ? undefined : mount.routes)
+  const selectedPlans = contractPlan.routes
+  const bindings: ClientRouteBinding[] | undefined = mount.kind === 'contract' ? undefined : []
   let errorResponses: ReadonlyMap<number, ClientResponseDecoder> | undefined
   if (contractPlan.errors.length > 0) {
     const decoders = new Map<number, ClientResponseDecoder>()
-    for (const [status, response] of contractPlan.errors) decoders.set(status, compileClientResponse(response))
+    for (const [status, declarations] of contractPlan.errors) {
+      decoders.set(status, compileClientErrorResponse(status, declarations, errorMode))
+    }
     errorResponses = decoders
   }
 
-  for (const plan of contractPlan.routes) {
+  for (const plan of selectedPlans) {
     const compiled = plan.compiled
     const responseEntries = plan.responses
     let responseStatus: number | undefined
@@ -240,105 +186,177 @@ function buildClientRoutes(
     }
     const runtime: RuntimeRoute = {
       compiled,
-      createRequest: compileClientRequest(plan, transport),
+      createRequest: compileClientRequest(plan, headers),
       metadata: plan.metadata as ClientContractRouteMetadata,
+      ...(contractPlan.errors.length === 0 ? {} : { errorFactories: contractPlan.errorFactories }),
       ...(responses === undefined
         ? { responseDecoder: responseDecoder!, responseStatus: responseStatus! }
         : { responses }),
     }
+    const middlewares = routeMiddlewares(middlewarePlan, compiled)
 
     const call = ((...args: readonly unknown[]) => {
       const input = (plan.hasInput ? args[0] : {}) as Readonly<Record<string, unknown>>
       const requestOptions = (plan.hasInput ? args[1] : args[0]) as ClientRequestOptions | undefined
       return executeRoute(runtime, transport, contextFactory, middlewares, input, requestOptions ?? {})
-    }) as APIClientPluginRouteCall
-    applyClientPlugins(contract, plan, call, plugins)
-    setClientRoute(tree, compiled.key, call, routers)
+    }) as (...args: readonly unknown[]) => Promise<unknown>
+    registerClientRoute(call, { hasInput: plan.hasInput })
+    bindings?.push({ call, compiled })
+    if (mount.kind !== 'route') setClientRoute(tree, compiled.key.slice(mount.key.length), call)
   }
 
-  for (const router of routers) applyClientRouterPlugins(contract, router, plugins)
+  if (mount.kind === 'route') {
+    const call = bindings?.[0]?.call
+    if (call === undefined) throw new TypeError(`Client route "${displayKey(mount.key)}" is not compiled`)
+    return { bindings: bindings ?? [], value: call }
+  }
 
-  for (const plugin of plugins) plugin.client?.build?.({ contract, routes: tree })
+  return { bindings: bindings ?? [], value: tree }
+}
+
+function composeClientFragments(
+  contract: Contract,
+  scope: ClientScope,
+  fragments: readonly object[]
+): Readonly<Record<string, unknown>> {
+  const tree: Record<string, unknown> = {}
+  const registered = new Set<CompiledContractRoute>()
+
+  for (const fragment of fragments) {
+    const state = getCompositionState<ClientRouteBinding, ClientScope>(fragment)
+    if (state === undefined || state.scope.owner !== scope.owner) {
+      throw new TypeError('Client creation fragment belongs to a different client definition')
+    }
+    if (!isScopeDescendant(state.scope, scope)) {
+      throw new TypeError('Client creation fragment does not inherit the composition scope middleware')
+    }
+
+    for (const binding of state.bindings) {
+      const key = binding.compiled.key
+      const displayed = displayKey(key)
+      if (registered.has(binding.compiled)) throw new TypeError(`Client route "${displayed}" is created more than once`)
+      registered.add(binding.compiled)
+      setClientRoute(tree, key, binding.call)
+    }
+  }
+
+  const contractRoutes = compileContractRoutes(contract)
+  const missing =
+    registered.size === contractRoutes.length
+      ? []
+      : contractRoutes.filter((route) => !registered.has(route)).map(({ key }) => displayKey(key))
+  if (missing.length > 0) {
+    throw new TypeError(`Missing client ${missing.length === 1 ? 'route' : 'routes'}: ${missing.join(', ')}`)
+  }
 
   return tree
 }
 
-function createDefinition<ContractType extends Contract, Context extends object, Plugins extends APIClientPluginList>(
+function createDefinition<ContractType extends Contract, Context extends object, ErrorMode extends ClientErrorMode>(
   contract: ContractType,
-  options: DefineClientOptions<Context, ContractType, Plugins>,
-  plugins: Plugins,
-  middlewares: readonly ClientMiddleware<Context, ContractType>[] = []
-): ClientDefinition<ContractType, Context, Plugins> {
-  assertClientBaseUrl(options.baseUrl)
-  const middlewareStack = [...middlewares]
-  const transport = {
-    ...(options.baseUrl === undefined ? {} : { baseUrl: options.baseUrl }),
-    ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
-    ...(options.headers === undefined ? {} : { headers: options.headers }),
-  }
+  options: DefineClientOptions<Context, ContractType, ErrorMode>,
+  transport: ClientTransport,
+  middlewarePlan: MiddlewarePlan<ClientMiddleware<Context, ContractType>, CompiledContractRoute>,
+  owner: object,
+  parent?: ClientScope
+): ClientDefinition<ContractType, Context, ErrorMode> {
+  let scope: ClientScope | undefined
+  const clientScope = (): ClientScope =>
+    (scope ??= {
+      owner,
+      ...(parent === undefined ? {} : { parent }),
+    })
 
   const middleware = (<const Handler extends ClientMiddlewareCandidate<Context, ContractType>>(handler: Handler) => {
     assertMiddleware('Client', handler)
     return handler
-  }) as ClientDefinition<ContractType, Context, Plugins>['middleware']
+  }) as ClientDefinition<ContractType, Context, ErrorMode>['middleware']
 
-  const use = (<const Middlewares extends readonly ClientMiddlewareCandidate<Context, ContractType>[]>(
-    ...applied: Middlewares
-  ) => {
-    assertMiddlewares('Client', applied)
-
-    return createDefinition(contract, options, plugins, [
-      ...middlewareStack,
-      ...(applied as readonly ClientMiddleware<Context, ContractType>[]),
-    ])
-  }) as ClientDefinition<ContractType, Context, Plugins>['use']
-
-  let builtClient: ClientRoutes<ContractType, ContractType['routes'], undefined, Plugins> | undefined
-  const build = (() => {
-    builtClient ??= buildClientRoutes(
+  const use = ((...applied: readonly unknown[]) => {
+    return createDefinition(
       contract,
+      options,
       transport,
+      appendMiddlewarePlan('Client', middlewarePlan, applied, (node) => mountedNode(contract, node).routes),
+      owner,
+      clientScope()
+    )
+  }) as ClientDefinition<ContractType, Context, ErrorMode>['use']
+
+  let rootClient: object | undefined
+  let createdFragments: WeakMap<object, object> | undefined
+  const create = ((...values: readonly object[]) => {
+    if (values.length > 0) {
+      const first = values[0]!
+      if (getCompositionState(first) !== undefined || values.length > 1) {
+        return composeClientFragments(contract, clientScope(), values)
+      }
+    }
+
+    const node: Contract | ContractRoute = values.length === 0 ? contract : (values[0] as ContractRoute)
+    const mount = mountedNode(contract, node)
+    if (mount.kind === 'contract' && values.length > 0) {
+      throw new TypeError('Create the root client with create()')
+    }
+    const cached = mount.kind === 'contract' ? rootClient : createdFragments?.get(node)
+    if (cached !== undefined) return cached
+    const created = buildClientNode(
+      contract,
+      mount,
+      transport,
+      options.headers,
       options.context as ((input: ClientContextInput) => object | PromiseLike<object>) | undefined,
-      middlewareStack as unknown as readonly ClientMiddleware<object, Contract>[],
-      plugins
-    ) as ClientRoutes<ContractType, ContractType['routes'], undefined, Plugins>
-    return builtClient
-  }) as ClientDefinition<ContractType, Context, Plugins>['build']
+      middlewarePlan as MiddlewarePlan<ClientMiddleware<object, Contract>, CompiledContractRoute>,
+      options.errorMode ?? 'return'
+    )
+    if (mount.kind === 'contract') rootClient = created.value
+    else {
+      const fragmentCache = (createdFragments ??= new WeakMap())
+      fragmentCache.set(node, created.value)
+      registerComposition(created.value, clientScope(), created.bindings)
+    }
+    return created.value
+  }) as ClientDefinition<ContractType, Context, ErrorMode>['create']
 
   return {
     contract,
     context: options.context,
-    middlewares: middlewareStack,
-    plugins,
+    middlewares: middlewarePlan[0],
     middleware,
     use,
-    build,
+    create,
   }
 }
 
 export function defineClient<
   const ContractType extends Contract,
   const Factory extends ContextFactoryShape<ContractType>,
-  const Plugins extends APIClientPluginList = readonly [],
+  const ErrorMode extends ClientErrorMode = 'return',
 >(
   contract: ContractType,
-  options: ClientTransportOptions & { readonly context: Factory; readonly plugins?: Plugins }
-): ClientDefinition<ContractType, ContextFrom<Factory>, Plugins>
+  options: DefineClientOptions<ContextFrom<Factory>, NoInfer<ContractType>, ErrorMode> & {
+    readonly context: Factory
+  }
+): ClientDefinition<ContractType, ContextFrom<Factory>, ErrorMode>
 
-export function defineClient<
-  const ContractType extends Contract,
-  const Plugins extends APIClientPluginList = readonly [],
->(
+export function defineClient<const ContractType extends Contract, const ErrorMode extends ClientErrorMode = 'return'>(
   contract: ContractType,
-  options?: DefineClientOptions<EmptyClientContext, NoInfer<ContractType>, Plugins> & {
+  options: DefineClientOptions<EmptyClientContext, NoInfer<ContractType>, ErrorMode> & {
     readonly context?: undefined
   }
-): ClientDefinition<ContractType, EmptyClientContext, Plugins>
+): ClientDefinition<ContractType, EmptyClientContext, ErrorMode>
 
 export function defineClient(
   contract: Contract,
-  options: DefineClientOptions<object, Contract, APIClientPluginList> = {}
+  options: DefineClientOptions<object, Contract, ClientErrorMode>
 ): unknown {
-  const plugins = normalizeAPIPlugins(options.plugins, 'client')
-  return createDefinition(contract, options, plugins)
+  if (!isRecord(options)) throw new TypeError('Client options must be an object')
+  if (options.context !== undefined && typeof options.context !== 'function') {
+    throw new TypeError('Client context must be a function')
+  }
+  if (typeof options.transport !== 'function') throw new TypeError('Client transport must be a function')
+  if (options.errorMode !== undefined && options.errorMode !== 'return' && options.errorMode !== 'throw') {
+    throw new TypeError('Client errorMode must be "return" or "throw"')
+  }
+  return createDefinition(contract, options, options.transport, createMiddlewarePlan(), {})
 }

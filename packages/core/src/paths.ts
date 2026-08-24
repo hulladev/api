@@ -3,7 +3,7 @@ import type { ObjectSchema } from './validation'
 
 type SegmentParam<Segment extends string> = Segment extends `:${infer Param}` ? Param : never
 
-export type ExtractPathParamNames<Path extends string> = Path extends `${infer Segment}/${infer Rest}`
+type ExtractPathParamNames<Path extends string> = Path extends `${infer Segment}/${infer Rest}`
   ? SegmentParam<Segment> | ExtractPathParamNames<Rest>
   : SegmentParam<Path>
 
@@ -63,9 +63,7 @@ export function pathParamNames(path: string): readonly string[] {
 
 function assertSafePath(path: string, label: string, allowParameters: boolean): void {
   if (path.includes('?')) {
-    throw new TypeError(
-      `${label} "${path}" cannot contain a query string; declare query parameters with the route "query" option instead`
-    )
+    throw new TypeError(`${label} "${path}" cannot contain a query string; use the route query option`)
   }
   if (path.includes('#')) {
     throw new TypeError(`${label} "${path}" cannot contain a hash fragment`)
@@ -94,11 +92,6 @@ function assertSafePath(path: string, label: string, allowParameters: boolean): 
 
 export function assertBasePath(basePath: string): void {
   if (basePath === '' || basePath === '/') return
-  if (basePath.includes('#')) {
-    throw new TypeError(
-      `Contract base path "${basePath}" cannot contain a hash fragment; fragments are client-side only and should not be included in contract paths`
-    )
-  }
   assertSafePath(basePath, 'Contract base path', false)
 }
 

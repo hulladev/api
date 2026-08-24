@@ -17,7 +17,7 @@ describe('router declaration', () => {
     expect(declaration.$meta).toEqual({ kind: 'router', path: '/users' })
     expect('params' in declaration.$meta).toBe(false)
     expect(declaration).not.toBe(routes)
-    expect(declaration.list).not.toBe(routes.list)
+    expect(declaration.list).toBe(routes.list)
     expect(Object.isFrozen(declaration)).toBe(true)
     expect(Object.isFrozen(declaration.$meta)).toBe(true)
     expectTypeOf(declaration.$meta.kind).toEqualTypeOf<'router'>()
@@ -111,6 +111,15 @@ describe('router declaration', () => {
     expect(Object.keys(declaration)).toEqual(['current', 'byId'])
   })
 
+  test('nests routers without copying their declarations', () => {
+    const members = router('/members', { routes })
+    const organizations = router('/organizations', { routes: { members } })
+
+    expect(organizations.members).toBe(members)
+    expect(organizations.members.list).toBe(routes.list)
+    expect(Object.keys(organizations)).toEqual(['members'])
+  })
+
   test('rejects parameters redeclared by a child route', () => {
     const child = route.get('/children/:id', {
       params: z.object({ id: z.string() }),
@@ -122,7 +131,7 @@ describe('router declaration', () => {
         params: z.object({ id: z.string() }),
         routes: { child },
       })
-    ).toThrowError('Router route "child" redeclares parameter "id"')
+    ).toThrowError('Router member "child" redeclares parameter "id"')
   })
 
   test.each(['/users//active', '/users?active=true', '/users#active', '/users/../active', '/users\\active'])(

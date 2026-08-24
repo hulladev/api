@@ -1,7 +1,7 @@
 import * as v from 'valibot'
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
-import { mimeEssence, request } from '../src/request'
+import { mimeEssence, request, textWireObject } from '../src/request'
 import { response } from '../src/response'
 import { route } from '../src/route'
 
@@ -41,6 +41,16 @@ describe('request declarations', () => {
     expect(mimeEssence(' Application/JSON ; charset=utf-8')).toBe('application/json')
     expect(mimeEssence('multipart/form-data; boundary=abc')).toBe('multipart/form-data')
     expect(mimeEssence('')).toBe('')
+  })
+
+  test('preserves prototype-named wire fields', () => {
+    const source: Record<string, string> = {}
+    Object.defineProperty(source, '__proto__', { enumerable: true, value: 'preserved' })
+
+    const encoded = textWireObject(source, 'headers')
+
+    expect(Object.hasOwn(encoded, '__proto__')).toBe(true)
+    expect(encoded['__proto__']).toBe('preserved')
   })
 
   test('supports custom content types without changing representation', () => {

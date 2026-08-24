@@ -1,6 +1,5 @@
 import type { HttpMethod } from './http'
 import { assertRoutePath, type PathParamOptions, type PathParams, type PathParamsFor } from './paths'
-import { normalizeRequestQuery, type NormalizedRequestQuery } from './query'
 import type { JsonValue } from './representation'
 import {
   isRequestBodyDefinition,
@@ -11,7 +10,7 @@ import {
   type TextWireObject,
 } from './request'
 import type { RouteResponses } from './response'
-import type { AnySchema, ObjectSchema, SchemaInput } from './validation'
+import { isSchema, type AnySchema, type ObjectSchema, type SchemaInput } from './validation'
 
 export type RouteQuery = ObjectSchema
 export type RouteHeaders = ObjectSchema
@@ -24,8 +23,6 @@ type RouteBodyInput = AnySchema | AnyRequestBody
 type RouteBodyOptions<Method extends HttpMethod, Body extends RouteBodyInput | undefined> = Method extends 'GET'
   ? { readonly body?: never }
   : { readonly body?: CheckedBody<Body> }
-
-type QuerySchema<Declaration> = Declaration extends ObjectSchema ? Declaration : never
 
 type CheckedQuery<Declaration> = Declaration extends RouteQueryInput
   ? SchemaInput<Declaration> extends QueryWireObject
@@ -47,10 +44,6 @@ type CheckedBody<Body> = Body extends AnyRequestBody
       : never
     : Body
 
-type NormalizedQuery<Declaration> = Declaration extends RouteQueryInput
-  ? NormalizedRequestQuery<QuerySchema<Declaration>>
-  : undefined
-
 type NormalizedBody<Body> = Body extends AnyRequestBody
   ? Body
   : Body extends AnySchema
@@ -59,7 +52,7 @@ type NormalizedBody<Body> = Body extends AnyRequestBody
 
 export type RouteShape = {
   readonly params: ObjectSchema | undefined
-  readonly query: NormalizedRequestQuery | undefined
+  readonly query: ObjectSchema | undefined
   readonly headers: RouteHeaders | undefined
   readonly body: AnyRequestBody | undefined
   readonly responses: Readonly<RouteResponses>
@@ -104,7 +97,7 @@ export type RouteOptions<
 
 type DefinedRouteShape<
   Params extends ObjectSchema | undefined,
-  Query extends NormalizedRequestQuery | undefined,
+  Query extends ObjectSchema | undefined,
   Headers extends RouteHeaders | undefined,
   Body extends AnyRequestBody | undefined,
   Responses extends RouteResponses,
@@ -127,14 +120,15 @@ function defineRoute<const Method extends HttpMethod>(method: Method) {
   >(
     path: Path,
     options: RouteOptions<Method, Path, Responses, Params, Query, Headers, Body>
-  ): NoInfer<
-    Route<Method, Path, DefinedRouteShape<Params, NormalizedQuery<Query>, Headers, NormalizedBody<Body>, Responses>>
-  > => {
+  ): NoInfer<Route<Method, Path, DefinedRouteShape<Params, Query, Headers, NormalizedBody<Body>, Responses>>> => {
     assertRoutePath(path, `${method} route path`)
     if (typeof options !== 'object' || options === null || Array.isArray(options)) {
       throw new TypeError(`${method} route options must be an object`)
     }
-    const query = options.query === undefined ? undefined : normalizeRequestQuery(options.query as RouteQueryInput)
+    if (options.query !== undefined && !isSchema(options.query)) {
+      throw new TypeError('Request query must be declared with an object Standard Schema')
+    }
+    const query = options.query
     const body =
       options.body === undefined
         ? undefined
@@ -147,23 +141,19 @@ function defineRoute<const Method extends HttpMethod>(method: Method) {
       method,
       path,
       ...(options.params === undefined ? {} : { params: options.params as Params }),
-      ...(query === undefined ? {} : { query: query as NormalizedQuery<Query> }),
+      ...(query === undefined ? {} : { query: query as Query }),
       ...(options.headers === undefined ? {} : { headers: options.headers as Headers }),
       ...(body === undefined ? {} : { body: body as NormalizedBody<Body> }),
       responses: Object.freeze({ ...options.responses }) as Readonly<Responses>,
-    }) as Route<
-      Method,
-      Path,
-      DefinedRouteShape<Params, NormalizedQuery<Query>, Headers, NormalizedBody<Body>, Responses>
-    >
+    }) as Route<Method, Path, DefinedRouteShape<Params, Query, Headers, NormalizedBody<Body>, Responses>>
   }
 }
 
-export const route = Object.freeze({
+export const route = {
   get: defineRoute('GET'),
   post: defineRoute('POST'),
   put: defineRoute('PUT'),
   delete: defineRoute('DELETE'),
   patch: defineRoute('PATCH'),
   query: defineRoute('QUERY'),
-})
+} as const

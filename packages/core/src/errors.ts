@@ -12,13 +12,23 @@ export type APIErrorIssue = StandardSchemaV1.Issue & {
   readonly location?: APIErrorLocation
 }
 
-export type ClientResponseErrorCode = 'content-type-mismatch' | 'missing-body' | 'unexpected-status'
+export type ClientResponseErrorCode =
+  | 'content-type-mismatch'
+  | 'invalid-error-response'
+  | 'missing-body'
+  | 'unexpected-status'
 
 export type QueryTransportErrorCode = 'empty-query-array' | 'invalid-query-value'
 
 export type SchemaValidationErrorCode = 'schema-validation'
 
-export type ServerImplementationErrorCode = 'invalid-handler' | 'missing-handler' | 'unknown-handler'
+export type ServerImplementationErrorCode =
+  | 'duplicate-handler'
+  | 'foreign-contract-node'
+  | 'foreign-implementation'
+  | 'invalid-handler'
+  | 'missing-handler'
+  | 'unknown-handler'
 
 export type ServerRuntimeErrorCode =
   | 'invalid-context'

@@ -6,6 +6,7 @@ export type {
   ServerContextInput,
   ServerRouteMetadata,
 } from './context'
+export { assertServerContextAdapter, registerServerContextAdapter } from './context'
 export { ContractError, ServerImplementationError, ServerRuntimeError } from './errors'
 export type {
   APIProblem,
@@ -25,8 +26,6 @@ export type {
   ServerMiddlewareOptions,
 } from './middleware'
 export { defineServer } from './definition'
-export { createFetchHandler } from './fetch'
-export type { FetchHandler, FetchServerErrorInput, FetchServerOptions, FetchServerPhase } from './fetch'
 export type {
   ServerErrorResult,
   ServerResponseFactory,
@@ -38,8 +37,12 @@ export type {
   Server,
   ServerDefinition,
   ServerHandler,
+  ServerHandlerFragment,
   ServerHandlerInput,
   ServerHandlers,
+  ServerHandlersForNode,
   ServerHandlersOf,
+  ServerExecutable,
   ServerImplementation,
+  ServerImplementationFragment,
 } from './types'

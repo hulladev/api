@@ -1,44 +1,34 @@
 import type { Awaitable } from '../context'
 import type { Contract } from '../contract'
-import type { MiddlewareInput, MiddlewareNext, MiddlewareOptions } from '../middleware'
-import type { RouteResponses } from '../response'
+import type { ErrorFactoryField, ErrorInstance, NormalizedErrorStatusMap } from '../declared-errors'
+import type { MiddlewareNext, MiddlewareOptions } from '../middleware'
 import type { ServerRouteMetadata } from './context'
-import type { ServerErrorResult, ServerResponseFactory } from './response'
 
 export type ServerMiddlewareNext<Result> = MiddlewareNext<Promise<Result>>
 
-export type Middleware<
-  Context extends object,
-  RequestType,
-  Route,
-  Errors extends RouteResponses,
-  Status extends Extract<keyof Errors, number> = Extract<keyof Errors, number>,
-> = <Result>(
-  options: MiddlewareOptions<MiddlewareInput<Context, RequestType, Route>, Promise<Result>> & {
-    readonly response: ServerResponseFactory<Errors>
-  }
-) => Awaitable<Result | ServerErrorResult<Errors, Status>>
+export type Middleware<Context extends object, Route, Errors extends NormalizedErrorStatusMap> = <Result>(
+  options: MiddlewareOptions<{ readonly context: Readonly<Context>; readonly route: Route }, Promise<Result>> &
+    ErrorFactoryField<Errors>
+) => Awaitable<Result | ErrorInstance<Errors>>
 
-export type ServerMiddlewareInput<Context extends object, ContractType extends Contract = Contract> = MiddlewareInput<
+export type ServerMiddlewareInput<Context extends object, ContractType extends Contract = Contract> = {
+  readonly context: Readonly<Context>
+  readonly route: ServerRouteMetadata<ContractType>
+}
+
+export type ServerMiddleware<Context extends object, ContractType extends Contract = Contract> = Middleware<
   Context,
-  Request,
-  ServerRouteMetadata<ContractType>
+  ServerRouteMetadata<ContractType>,
+  ContractType['errors']
 >
-
-export type ServerMiddleware<
-  Context extends object,
-  ContractType extends Contract = Contract,
-  Status extends Extract<keyof ContractType['errors'], number> = Extract<keyof ContractType['errors'], number>,
-> = Middleware<Context, Request, ServerRouteMetadata<ContractType>, ContractType['errors'], Status>
 
 export type ServerMiddlewareOptions<
   Context extends object,
   ContractType extends Contract = Contract,
   Result = unknown,
-> = MiddlewareOptions<ServerMiddlewareInput<Context, ContractType>, Promise<Result>> & {
-  readonly response: ServerResponseFactory<ContractType['errors']>
-}
+> = MiddlewareOptions<ServerMiddlewareInput<Context, ContractType>, Promise<Result>> &
+  ErrorFactoryField<ContractType['errors']>
 
 export type ServerMiddlewareCandidate<Context extends object, ContractType extends Contract = Contract> = <Result>(
   options: ServerMiddlewareOptions<Context, ContractType, Result>
-) => Awaitable<Result | ServerErrorResult<ContractType['errors']>>
+) => Awaitable<Result | ErrorInstance<ContractType['errors']>>

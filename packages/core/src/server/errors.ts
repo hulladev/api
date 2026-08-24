@@ -53,7 +53,7 @@ export type ServerRuntimeIssue = APIErrorIssue & {
   readonly code: ServerRuntimeErrorCode
 }
 
-/** A structured failure raised while executing the Fetch server runtime. */
+/** A structured failure raised while executing a server adapter runtime. */
 export class ServerRuntimeError extends TypeError implements APIError<ServerRuntimeErrorCode, ServerRuntimeIssue> {
   readonly code: ServerRuntimeErrorCode
   readonly issues: readonly ServerRuntimeIssue[]

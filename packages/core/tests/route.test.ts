@@ -95,7 +95,8 @@ describe('route declaration', () => {
     const body = z.object({ name: z.string() })
     const declaration = route.post('/users', { responses, query, headers, body })
 
-    expectTypeOf(declaration.query.schema).toEqualTypeOf<typeof query>()
+    expect(declaration.query).toBe(query)
+    expectTypeOf(declaration.query).toEqualTypeOf<typeof query>()
     expectTypeOf(declaration.headers).toEqualTypeOf<typeof headers>()
     expectTypeOf(declaration.body.schema).toEqualTypeOf<typeof body>()
     expectTypeOf<'params' extends keyof typeof declaration ? true : false>().toEqualTypeOf<false>()
@@ -115,7 +116,7 @@ describe('route declaration', () => {
     })
 
     expectTypeOf(declaration.params).toEqualTypeOf<typeof params>()
-    expectTypeOf(declaration.query.schema).toEqualTypeOf<typeof query>()
+    expectTypeOf(declaration.query).toEqualTypeOf<typeof query>()
     expectTypeOf(declaration.headers).toEqualTypeOf<typeof headers>()
     expectTypeOf(declaration.body.schema).toEqualTypeOf<typeof body>()
   })
@@ -196,12 +197,12 @@ describe('route declaration', () => {
     })
 
     expectTypeOf<SchemaOutput<typeof declaration.params>>().toEqualTypeOf<{ id: number }>()
-    expectTypeOf<SchemaOutput<typeof declaration.query.schema>>().toEqualTypeOf<{
+    expectTypeOf<SchemaOutput<typeof declaration.query>>().toEqualTypeOf<{
       page: number
       tags: string[]
     }>()
     expectTypeOf<SchemaOutbound<typeof declaration.params>>().toEqualTypeOf<{ id: number }>()
-    expectTypeOf<SchemaOutbound<typeof declaration.query.schema>>().toEqualTypeOf<{
+    expectTypeOf<SchemaOutbound<typeof declaration.query>>().toEqualTypeOf<{
       page: number
       tags: string[]
     }>()
@@ -214,7 +215,7 @@ describe('route declaration', () => {
       query: schema,
     })
 
-    expectTypeOf(declaration.query.schema).toEqualTypeOf<typeof schema>()
+    expectTypeOf(declaration.query).toEqualTypeOf<typeof schema>()
   })
 
   test('requires params for a dynamic path', () => {

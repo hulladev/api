@@ -5,7 +5,10 @@ export type {
   ClientContractRouteMetadata,
   ClientRouteMetadata,
 } from './context'
+export type { ClientErrorMode, ClientErrorResponseResult } from '../declared-errors'
 export { defineClient } from './definition'
+export { clientRouteIntegration } from './integration'
+export type { ClientRouteIntegration } from './integration'
 export type {
   ClientMiddleware,
   ClientMiddlewareCandidate,
@@ -13,7 +16,14 @@ export type {
   ClientMiddlewareNext,
   ClientMiddlewareOptions,
 } from './middleware'
-export type { ClientFetch, ClientHeaders, ClientRequestOptions, ClientTransportOptions } from './request'
+export type {
+  ClientHeaders,
+  ClientRequestOptions,
+  ClientTransport,
+  ClientTransportBody,
+  ClientTransportRequest,
+  ClientTransportResponse,
+} from './request'
 export { ClientResponseError } from './response'
 export type {
   ClientResponseErrorCode,
@@ -25,9 +35,11 @@ export type {
 export type {
   Client,
   ClientDefinition,
+  ClientFragment,
   ClientRouteCall,
   ClientRouteInput,
   ClientRouteResult,
   ClientRoutes,
+  ClientRoutesForNode,
   DefineClientOptions,
 } from './types'

@@ -1,12 +1,12 @@
 import * as v from 'valibot'
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
-import { defineProcedures, type ProcedureContextInput } from '../src/procedure'
+import { defineProcedure } from '../src/procedure'
 import { response, routeOutput, type RouteResponseBody } from '../src/response'
 import { route } from '../src/route'
 import { validation } from '../src/validation'
 
-const procedure = defineProcedures()
+const procedure = defineProcedure()
 
 const dateTime = z.codec(z.iso.datetime(), z.date(), {
   decode: (value) => new Date(value),
@@ -27,18 +27,17 @@ const createUserRoute = route.post('/users', {
 
 describe('procedure', () => {
   test('uses Standard Schema without validator configuration', () => {
-    expect(defineProcedures()).toHaveProperty('input')
-    expect(defineProcedures({})).toHaveProperty('output')
+    expect(defineProcedure()).toHaveProperty('input')
+    expect(defineProcedure({})).toHaveProperty('output')
   })
 
   test('creates synchronous one-off callable procedures from exact route-shaped schemas', () => {
     const createUser = procedure
       .input(z.object({ body: z.object({ createdAt: dateTime }) }))
       .output(routeOutput(createUserRoute, 201))
-      .handler(({ input, context, procedure: metadata }) => {
+      .handler(({ input, context }) => {
         expectTypeOf(input.body.createdAt).toEqualTypeOf<Date>()
         expectTypeOf(context).toEqualTypeOf<Readonly<Record<string, never>>>()
-        expect(metadata.key).toEqual([])
         return { id: 'user-1', createdAt: input.body.createdAt.toISOString() }
       })
     const createdAt = '2026-08-12T10:00:00.000Z'
@@ -99,7 +98,7 @@ describe('procedure', () => {
     expectTypeOf<ReturnType<typeof asyncHandler>>().toEqualTypeOf<Promise<string>>()
     await expect(asyncHandler()).resolves.toBe('handler')
 
-    const withAsyncContext = defineProcedures({
+    const withAsyncContext = defineProcedure({
       context: async () => ({ prefix: 'async' }),
     }).handler(({ context }) => context.prefix)
     expectTypeOf<ReturnType<typeof withAsyncContext>>().toEqualTypeOf<Promise<string>>()
@@ -147,48 +146,12 @@ describe('procedure', () => {
   })
 
   test('keeps synchronous context factories synchronous', () => {
-    const withContext = defineProcedures({ context: () => ({ prefix: 'sync' }) }).handler(
+    const withContext = defineProcedure({ context: () => ({ prefix: 'sync' }) }).handler(
       ({ context }) => context.prefix
     )
 
     expectTypeOf<ReturnType<typeof withContext>>().toEqualTypeOf<string>()
     expect(withContext()).toBe('sync')
-  })
-
-  test('builds nested callable trees with structural identities', async () => {
-    const calls: string[] = []
-    const base = defineProcedures({
-      context: ({ procedure: metadata }: ProcedureContextInput) => ({
-        prefix: metadata.key.join(':') || 'standalone',
-      }),
-    })
-    const observe = base.middleware(async ({ context, next, procedure: metadata }) => {
-      calls.push(`before:${metadata.key.join('.')}`)
-      expectTypeOf(context.prefix).toEqualTypeOf<string>()
-      const result = await next()
-      calls.push(`after:${metadata.key.join('.')}`)
-      return result
-    })
-    const traced = base.use(observe)
-    const label = traced
-      .input(z.string())
-      .output(z.string())
-      .handler(({ context, input, procedure: metadata }) => {
-        expectTypeOf(context.prefix).toEqualTypeOf<string>()
-        expect(metadata.key).toEqual(['users', 'label'])
-        return `${context.prefix}:${input}`
-      })
-    const api = base.build({ users: { label } })
-
-    await expect(api.users.label('user-1')).resolves.toBe('users:label:user-1')
-    expect(api.users.label.$meta).toEqual({ kind: 'procedure', key: ['users', 'label'] })
-    expectTypeOf(api.users.label.$meta.key).toEqualTypeOf<readonly ['users', 'label']>()
-    expect(calls).toEqual(['before:users.label', 'after:users.label'])
-    expect(Object.isFrozen(api)).toBe(true)
-    expect(Object.isFrozen(api.users)).toBe(true)
-    expect(Object.isFrozen(api.users.label)).toBe(true)
-    expect(Object.keys(api.users.label)).toEqual([])
-    expect(Object.getOwnPropertySymbols(api.users.label)).toEqual([])
   })
 
   test('types middleware input after an input declaration', async () => {
@@ -232,48 +195,13 @@ describe('procedure', () => {
     expect(handlerCalls).toBe(1)
   })
 
-  test('rejects foreign, duplicate, cyclic, and malformed tree members', () => {
-    const first = defineProcedures({})
-    const second = defineProcedures({})
-    const local = first.handler(() => 'local')
-    const foreign = second.handler(() => 'foreign')
-
-    expect(() => first.build({ foreign })).toThrowError(
-      'Procedure "foreign" belongs to a different procedure definition'
-    )
-    expect(() => first.build({ first: local, nested: { second: local } })).toThrowError(
-      'each procedure needs one structural identity'
-    )
-    expect(() => first.build({ invalid: 1 } as never)).toThrowError(
-      'Procedure tree member "invalid" must be a procedure or nested object'
-    )
-
-    const cyclic: Record<string, unknown> = {}
-    cyclic['nested'] = cyclic
-    expect(() => first.build(cyclic as never)).toThrowError('Procedure tree "nested" is already registered at "<root>"')
-  })
-
-  test('preserves prototype-like structural keys safely', () => {
-    const base = defineProcedures({})
-    const operation = base.handler(() => 'safe')
-    const api = base.build({ ['__proto__']: { ['constructor']: operation } })
-
-    expect(Object.keys(api)).toEqual(['__proto__'])
-    expect(Object.keys(api.__proto__)).toEqual(['constructor'])
-    expect(Object.getPrototypeOf(api)).toBe(Object.prototype)
-    expect(api.__proto__.constructor.$meta.key).toEqual(['__proto__', 'constructor'])
-    expect(api.__proto__.constructor()).toBe('safe')
-  })
-
   test('rejects invalid JavaScript authoring values', () => {
     const input = procedure.input as unknown as (value: unknown) => unknown
     const output = procedure.output as unknown as (value: unknown) => unknown
     const middleware = procedure.middleware as unknown as (value: unknown) => unknown
-    const build = procedure.build as unknown as (value: unknown) => unknown
 
     expect(() => input({})).toThrowError('Procedure input must be a Standard Schema')
     expect(() => output({})).toThrowError('Procedure output must be a Standard Schema')
     expect(() => middleware({})).toThrowError('Procedure middleware must be a function')
-    expect(() => build([])).toThrowError('Procedure tree must be a plain object')
   })
 })

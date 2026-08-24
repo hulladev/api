@@ -1,6 +1,8 @@
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
-import { defineContract, type Contract } from '../src/contract'
+import { compileContract } from '../src/compiler'
+import { contractNodeKey, defineContract, type Contract } from '../src/contract'
+import { defineErrors } from '../src/declared-errors'
 import { response } from '../src/response'
 import { route } from '../src/route'
 import { router } from '../src/router'
@@ -39,14 +41,27 @@ describe('contract declaration', () => {
     expect(Object.isFrozen(contract.routes)).toBe(true)
     expectTypeOf(contract.kind).toEqualTypeOf<'contract'>()
     expectTypeOf(contract.basePath).toEqualTypeOf<'/api'>()
-    expectTypeOf(contract.routes).toEqualTypeOf<Readonly<typeof routes>>()
+    expectTypeOf(contract.routes).toExtend<Readonly<typeof routes>>()
     expectTypeOf(contract).toExtend<Contract>()
+    expect(contractNodeKey(contract, contract)).toEqual([])
+    expect(contractNodeKey(contract, contract.routes.users)).toEqual(['users'])
+    expect(contractNodeKey(contract, contract.routes.users.list)).toEqual(['users', 'list'])
+    expect(contractNodeKey(contract, contract.routes.users.list)).toBe(
+      compileContract(contract).routes.find((compiled) => compiled.route === contract.routes.users.list)?.key
+    )
+
+    const foreign = defineContract({
+      routes: { health: route.get('/foreign-health', { responses: textResponses }) },
+    })
+    expect(() => contractNodeKey(contract, foreign.routes.health as never)).toThrow('must belong to its contract')
   })
 
-  test('declares reusable error responses by status', () => {
-    const unauthorized = response.json(z.object({ message: z.string() }))
-    const unavailable = response.text(z.literal('unavailable'))
-    const errors = { 401: unauthorized, 503: unavailable }
+  test('enriches reusable error declarations with transport statuses', () => {
+    const declarations = defineErrors({
+      UNAUTHORIZED: { message: 'Authentication required' },
+      UNAVAILABLE: { message: 'Service unavailable' },
+    })
+    const errors = { 401: declarations.UNAUTHORIZED, 503: declarations.UNAVAILABLE } as const
     const contract = defineContract({
       errors,
       routes: {
@@ -54,12 +69,15 @@ describe('contract declaration', () => {
       },
     })
 
-    expect(contract.errors).toEqual({ 401: unauthorized, 503: unavailable })
-    expect(contract.errors[401]).toBe(unauthorized)
+    expect(contract.errors).toEqual({ 401: [declarations.UNAUTHORIZED], 503: [declarations.UNAVAILABLE] })
+    expect(contract.errors[401][0]).toBe(declarations.UNAUTHORIZED)
     expect(contract.errors).not.toBe(errors)
     expect(Object.isFrozen(contract.errors)).toBe(true)
     expectTypeOf(contract.errors).toEqualTypeOf<
-      Readonly<{ readonly 401: typeof unauthorized; readonly 503: typeof unavailable }>
+      Readonly<{
+        readonly 401: readonly [typeof declarations.UNAUTHORIZED]
+        readonly 503: readonly [typeof declarations.UNAVAILABLE]
+      }>
     >()
   })
 
@@ -70,31 +88,34 @@ describe('contract declaration', () => {
     expect(() => define({ routes: { health }, errors: { 200: response.json() } })).toThrowError(
       'must be an integer between 400 and 599'
     )
-    expect(() => define({ routes: { health }, errors: { 401: {} } })).toThrowError(
-      'must be declared with a response helper'
+    expect(() => define({ routes: { health }, errors: { 401: {} } })).toThrowError('must be declared with defineErrors')
+    expect(() => define({ routes: { health }, errors: { 401: [] } })).toThrowError('must not be an empty array')
+    expect(() => define({ routes: { health }, errors: { 401: [{}] } })).toThrowError(
+      'must be declared with defineErrors'
     )
   })
 
-  test('requires overlapping route and contract-error statuses to share one response definition', () => {
-    const notFound = response.json(z.object({ code: z.literal('NOT_FOUND') }))
+  test('allows several distinct errors to share one status', () => {
+    const declarations = defineErrors({
+      ITEM_NOT_FOUND: { message: 'Item not found' },
+      ORGANIZATION_NOT_FOUND: { message: 'Organization not found' },
+    })
+    const contract = defineContract({
+      errors: { 404: [declarations.ITEM_NOT_FOUND, declarations.ORGANIZATION_NOT_FOUND] },
+      routes: { item: route.get('/item', { responses: { 200: response.json() } }) },
+    })
 
+    expect(contract.errors[404]).toEqual([declarations.ITEM_NOT_FOUND, declarations.ORGANIZATION_NOT_FOUND])
+  })
+
+  test('rejects a route response that overlaps an error status', () => {
+    const declarations = defineErrors({ INVALID_REQUEST: { message: 'Invalid request' } })
     expect(() =>
       defineContract({
-        errors: { 404: notFound },
-        routes: {
-          item: route.get('/item', {
-            responses: { 404: response.json(z.object({ message: z.string() })) },
-          }),
-        },
+        errors: { 400: declarations.INVALID_REQUEST },
+        routes: { item: route.get('/item', { responses: { 400: response.json() } }) },
       })
-    ).toThrowError('response 404 conflicts with the contract error declared for the same status')
-
-    expect(() =>
-      defineContract({
-        errors: { 404: notFound },
-        routes: { item: route.get('/item', { responses: { 404: notFound } }) },
-      })
-    ).not.toThrow()
+    ).toThrowError('response 400 conflicts with a declared error status')
   })
 
   test('base-path rejects empty segments (//)', () => {
@@ -143,10 +164,10 @@ describe('contract declaration', () => {
 
   test('explains how query parameters and fragments should be represented', () => {
     expect(() => defineContract({ basePath: '/api?version=1', routes: { health } })).toThrowError(
-      'Contract base path "/api?version=1" cannot contain a query string; declare query parameters with the route "query" option instead'
+      'Contract base path "/api?version=1" cannot contain a query string; use the route query option'
     )
     expect(() => defineContract({ basePath: '/api#docs', routes: { health } })).toThrowError(
-      'Contract base path "/api#docs" cannot contain a hash fragment; fragments are client-side only and should not be included in contract paths'
+      'Contract base path "/api#docs" cannot contain a hash fragment'
     )
   })
 

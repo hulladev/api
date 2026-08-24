@@ -27,8 +27,8 @@ export type ContractRouteMetadata<ContractType extends Contract = Contract> = Me
   CompiledContractRouteFor<ContractType>
 >
 
-export type ContextInput<ContractType extends Contract = Contract> = {
-  readonly request: Request
+export type ContextInput<ContractType extends Contract = Contract, RequestType = unknown> = {
+  readonly request: RequestType
   readonly route: ContractRouteMetadata<ContractType>
 }
 

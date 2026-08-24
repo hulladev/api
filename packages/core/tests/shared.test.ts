@@ -6,6 +6,7 @@ import type {
   ClientContractRouteMetadata,
   ClientMiddlewareInput,
   ClientMiddlewareNext,
+  ClientTransportRequest,
 } from '../src/client'
 import type {
   ServerContextFactory,
@@ -21,16 +22,17 @@ const contract = defineContract({
   },
 })
 
-test('client and server bindings share context and middleware primitives', () => {
+test('client and server bindings share metadata while keeping transport state client-side', () => {
   type Context = { readonly requestId: string }
 
   expectTypeOf<ClientContractRouteMetadata<typeof contract>>().toEqualTypeOf<ServerRouteMetadata<typeof contract>>()
-  expectTypeOf<ClientContextInput<typeof contract>>().toEqualTypeOf<ServerContextInput<typeof contract>>()
-  expectTypeOf<ClientContextFactory<Context, typeof contract>>().toEqualTypeOf<
-    ServerContextFactory<Context, typeof contract>
-  >()
-  expectTypeOf<ClientMiddlewareInput<Context, typeof contract>>().toEqualTypeOf<
-    ServerMiddlewareInput<Context, typeof contract>
-  >()
+  expectTypeOf<ClientContextInput<typeof contract>['request']>().toEqualTypeOf<ClientTransportRequest>()
+  expectTypeOf<keyof ServerContextInput<typeof contract>>().toEqualTypeOf<'route'>()
+  expectTypeOf<
+    Parameters<ClientContextFactory<Context, typeof contract>>[0]['request']
+  >().toEqualTypeOf<ClientTransportRequest>()
+  expectTypeOf<keyof Parameters<ServerContextFactory<Context, typeof contract>>[0]>().toEqualTypeOf<'route'>()
+  expectTypeOf<ClientMiddlewareInput<Context, typeof contract>['request']>().toEqualTypeOf<ClientTransportRequest>()
+  expectTypeOf<keyof ServerMiddlewareInput<Context, typeof contract>>().toEqualTypeOf<'context' | 'route'>()
   expectTypeOf<ClientMiddlewareNext<string>>().toEqualTypeOf<ServerMiddlewareNext<string>>()
 })

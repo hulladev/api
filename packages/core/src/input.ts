@@ -1,9 +1,9 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { isPromiseLike } from './execution'
 import { isRecord, setOwn } from './object'
-import type { AnyRequestBody, AnyRequestQuery } from './request'
+import type { AnyRequestBody } from './request'
 import type { Route } from './route'
-import { routerParamsForRouteValue, type RouterParamsForRoute } from './router'
+import type { RouterParamsForRoute } from './router'
 import {
   isSchema,
   validateSchemaOutbound,
@@ -16,21 +16,17 @@ import {
 type SchemaInputValue<Schema> = Schema extends AnySchema ? SchemaOutbound<Schema> : Record<never, never>
 type SchemaOutputValue<Schema> = Schema extends AnySchema ? SchemaOutput<Schema> : Record<never, never>
 
-type RequestFieldInput<Name extends string, Declaration> = Declaration extends AnyRequestQuery
+type RequestFieldInput<Name extends string, Declaration> = Declaration extends AnyRequestBody
   ? { readonly [Key in Name]: SchemaOutbound<Declaration['schema']> }
-  : Declaration extends AnyRequestBody
-    ? { readonly [Key in Name]: SchemaOutbound<Declaration['schema']> }
-    : Declaration extends AnySchema
-      ? { readonly [Key in Name]: SchemaOutbound<Declaration> }
-      : object
+  : Declaration extends AnySchema
+    ? { readonly [Key in Name]: SchemaOutbound<Declaration> }
+    : object
 
-type RequestFieldOutput<Name extends string, Declaration> = Declaration extends AnyRequestQuery
+type RequestFieldOutput<Name extends string, Declaration> = Declaration extends AnyRequestBody
   ? { readonly [Key in Name]: SchemaOutput<Declaration['schema']> }
-  : Declaration extends AnyRequestBody
-    ? { readonly [Key in Name]: SchemaOutput<Declaration['schema']> }
-    : Declaration extends AnySchema
-      ? { readonly [Key in Name]: SchemaOutput<Declaration> }
-      : object
+  : Declaration extends AnySchema
+    ? { readonly [Key in Name]: SchemaOutput<Declaration> }
+    : object
 
 type ParamsFieldInput<RouterParams, RouteParams> = RouterParams extends AnySchema
   ? { readonly params: SchemaInputValue<RouterParams> & SchemaInputValue<RouteParams> }
@@ -127,14 +123,19 @@ function combinedRouteInput(
 }
 
 /** Creates a schema for a route's complete client-input to server-input transformation. */
-export function routeInput<const RouteType extends Route>(route: RouteType): RouteInputSchema<RouteType> {
+export function routeInput<const RouteType extends Route>(
+  route: RouteType,
+  mountedParams?: readonly ObjectSchema[]
+): RouteInputSchema<RouteType> {
   if (!isRecord(route) || route.kind !== 'route') throw new TypeError('Route input schema requires a route definition')
 
   const fields: FieldSchema[] = []
-  const routerParams = routerParamsForRouteValue(route)
-  if (routerParams !== undefined) fields.push({ field: 'params', schema: routerParams, merge: true })
-  if ('params' in route && isSchema(route.params)) fields.push({ field: 'params', schema: route.params, merge: true })
-  if ('query' in route && route.query !== undefined) fields.push({ field: 'query', schema: route.query.schema })
+  if (mountedParams === undefined) {
+    if ('params' in route && isSchema(route.params)) fields.push({ field: 'params', schema: route.params, merge: true })
+  } else {
+    for (const schema of mountedParams) fields.push({ field: 'params', schema, merge: true })
+  }
+  if ('query' in route && route.query !== undefined) fields.push({ field: 'query', schema: route.query })
   if ('headers' in route && isSchema(route.headers)) fields.push({ field: 'headers', schema: route.headers })
   if ('body' in route && route.body !== undefined) fields.push({ field: 'body', schema: route.body.schema })
 

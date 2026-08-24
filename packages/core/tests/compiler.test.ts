@@ -1,6 +1,14 @@
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
-import { compileContract, defineContract, response, route, router, type CompiledContractRouteFor } from '../src'
+import {
+  compileContract,
+  defineContract,
+  defineErrors,
+  response,
+  route,
+  router,
+  type CompiledContractRouteFor,
+} from '../src'
 import { compileCanonicalContract } from '../src/route-plan'
 
 const organizationParams = z.object({ organizationId: z.string() })
@@ -72,6 +80,104 @@ describe('contract compiler', () => {
     expectTypeOf<GetUser['route']>().toEqualTypeOf<(typeof contract.routes.organizations)['getUser']>()
   })
 
+  test('flattens recursive routers and accumulates every ancestor parameter', async () => {
+    const organization = z.object({ organizationId: z.string() })
+    const member = z.object({ memberId: z.string() })
+    const permission = z.object({ permissionId: z.string() })
+    const nested = defineContract({
+      basePath: '/api',
+      routes: {
+        organizations: router('/organizations/:organizationId', {
+          params: organization,
+          routes: {
+            members: router('/members/:memberId', {
+              params: member,
+              routes: {
+                permissions: router('/permissions', {
+                  routes: {
+                    byId: route.get('/:permissionId', {
+                      params: permission,
+                      responses: { 200: response.text() },
+                    }),
+                  },
+                }),
+              },
+            }),
+          },
+        }),
+      },
+    })
+
+    const [compiled] = compileContract(nested).routes
+    expect(compiled?.key).toEqual(['organizations', 'members', 'permissions', 'byId'])
+    expect(compiled?.path).toBe('/api/organizations/:organizationId/members/:memberId/permissions/:permissionId')
+    expect(compiled?.pathParameters.map(({ schema }) => schema)).toEqual([organization, member, permission])
+
+    const schema = nested.routeInput(nested.routes.organizations.members.permissions.byId)
+    const result = await schema['~standard'].validate({
+      params: { organizationId: 'org-1', memberId: 'member-1', permissionId: 'read' },
+    })
+    expect(result).toEqual({
+      value: { params: { organizationId: 'org-1', memberId: 'member-1', permissionId: 'read' } },
+    })
+    expectTypeOf<
+      Extract<CompiledContractRouteFor<typeof nested>, { readonly method: 'GET' }>['path']
+    >().toEqualTypeOf<'/api/organizations/:organizationId/members/:memberId/permissions/:permissionId'>()
+  })
+
+  test('compiles flat resource routes and nested router roots to the same endpoint', () => {
+    const params = z.object({ organizationId: z.string() })
+    const responses = { 200: response.json(z.array(z.string())) }
+    const flat = defineContract({
+      basePath: '/api',
+      routes: {
+        organizations: router('/organizations/:organizationId', {
+          params,
+          routes: {
+            listUsers: route.get('/users', { responses }),
+          },
+        }),
+      },
+    })
+    const nested = defineContract({
+      basePath: '/api',
+      routes: {
+        organizations: router('/organizations/:organizationId', {
+          params,
+          routes: {
+            users: router('/users', {
+              routes: {
+                list: route.get('/', { responses }),
+              },
+            }),
+          },
+        }),
+      },
+    })
+
+    const [flatRoute] = compileContract(flat).routes
+    const [nestedRoute] = compileContract(nested).routes
+
+    expect(flatRoute).toMatchObject({
+      key: ['organizations', 'listUsers'],
+      method: 'GET',
+      path: '/api/organizations/:organizationId/users',
+    })
+    expect(nestedRoute).toMatchObject({
+      key: ['organizations', 'users', 'list'],
+      method: 'GET',
+      path: '/api/organizations/:organizationId/users',
+    })
+    expect(nestedRoute?.pathParameters).toEqual(flatRoute?.pathParameters)
+
+    const input = { params: { organizationId: 'org-1' } }
+    const flatInput = flat.routeInput(flat.routes.organizations.listUsers)
+    const nestedInput = nested.routeInput(nested.routes.organizations.users.list)
+
+    expect(flatInput['~standard'].validate(input)).toEqual({ value: input })
+    expect(nestedInput['~standard'].validate(input)).toEqual({ value: input })
+  })
+
   test('caches compilation by immutable contract identity', () => {
     expect(compileContract(contract)).toBe(compileContract(contract))
     expect(compileContract(defineContract({ routes: { health } }))).not.toBe(compileContract(contract))
@@ -79,8 +185,9 @@ describe('contract compiler', () => {
 
   test('compiles one shared client/server execution plan per contract', () => {
     const sharedResponse = response.json(z.object({ id: z.string() }))
+    const failures = defineErrors({ INVALID_USER: { message: 'Invalid user' } })
     const plannedContract = defineContract({
-      errors: { 400: sharedResponse },
+      errors: { 400: failures.INVALID_USER },
       routes: {
         create: route.post('/users/:id', {
           params: z.object({ id: z.string() }),
@@ -104,7 +211,27 @@ describe('contract compiler', () => {
     expect(plannedRoute.decodeQuery).toBeTypeOf('function')
     expect(plannedRoute.headers).toBeDefined()
     expect(plannedRoute.body).toBeDefined()
-    expect(plannedRoute.responses[0]?.[1]).toBe(plan.errors[0]?.[1])
+    expect(plan.errors[0]?.[0]).toBe(400)
+  })
+
+  test('compiles only selected fragment routes without replacing the complete cached plan', () => {
+    const failures = defineErrors({ INVALID_REQUEST: { message: 'Invalid request' } })
+    const plannedContract = defineContract({
+      errors: { 400: failures.INVALID_REQUEST },
+      routes: {
+        health: route.get('/health', { responses: { 200: response.text() } }),
+        inspect: route.get('/inspect', { responses: { 200: response.text() } }),
+      },
+    })
+
+    const selected = compileCanonicalContract(plannedContract, [compileContract(plannedContract).routes[1]!])
+    const complete = compileCanonicalContract(plannedContract)
+
+    expect(selected.routes.map((plan) => plan.compiled.key)).toEqual([['inspect']])
+    expect(complete.routes.map((plan) => plan.compiled.key)).toEqual([['health'], ['inspect']])
+    expect(compileCanonicalContract(plannedContract)).toBe(complete)
+    expect(selected.routes[0]).toBe(complete.routes[1])
+    expect(selected.errors).toBe(complete.errors)
   })
 
   test('preserves prototype-like route keys safely', () => {

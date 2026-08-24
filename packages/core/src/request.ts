@@ -1,7 +1,8 @@
+import { setOwn } from './object'
 import { bytesSchema, formDataSchema, jsonValueSchema, stringSchema, type JsonValue } from './representation'
-import { isSchema, type AnySchema, type NonSchemaOptions, type ObjectSchema, type SchemaInput } from './validation'
+import { isSchema, type AnySchema, type NonSchemaOptions, type SchemaInput } from './validation'
 
-export type QueryWireValue = string | readonly string[] | undefined
+type QueryWireValue = string | readonly string[] | undefined
 export type QueryWireObject = Readonly<Record<string, QueryWireValue>>
 export type TextWireObject = Readonly<Record<string, string | undefined>>
 
@@ -13,7 +14,7 @@ export function textWireObject(value: unknown, name: string): TextWireObject {
 
   const encoded: Record<string, string | undefined> = {}
   for (const [key, field] of Object.entries(value)) {
-    if (field === undefined || typeof field === 'string') encoded[key] = field
+    if (field === undefined || typeof field === 'string') setOwn(encoded, key, field)
     else throw new TypeError(`${name} field "${key}" must be a string or undefined`)
   }
 
@@ -36,13 +37,6 @@ export type RequestBodyDefinition<
 }
 
 export type AnyRequestBody = RequestBodyDefinition<RequestBodyKind, AnySchema, string>
-
-export type RequestQueryDefinition<Schema extends ObjectSchema = ObjectSchema> = {
-  readonly kind: 'request-query'
-  readonly schema: Schema
-}
-
-export type AnyRequestQuery = RequestQueryDefinition<ObjectSchema>
 
 type RequestBodyOptions<ContentType extends string> = NonSchemaOptions & {
   readonly contentType?: ContentType
@@ -101,20 +95,20 @@ export const json = /* @__PURE__ */ defineRequestBodyFactory<
   'application/json'
 >('json', jsonValueSchema, 'application/json')
 
-export const text = /* @__PURE__ */ defineRequestBodyFactory<'text', string, typeof stringSchema, 'text/plain'>(
+const text = /* @__PURE__ */ defineRequestBodyFactory<'text', string, typeof stringSchema, 'text/plain'>(
   'text',
   stringSchema,
   'text/plain'
 )
 
-export const bytes = /* @__PURE__ */ defineRequestBodyFactory<
+const bytes = /* @__PURE__ */ defineRequestBodyFactory<
   'bytes',
   Uint8Array,
   typeof bytesSchema,
   'application/octet-stream'
 >('bytes', bytesSchema, 'application/octet-stream')
 
-export const formData = /* @__PURE__ */ defineRequestBodyFactory<
+const formData = /* @__PURE__ */ defineRequestBodyFactory<
   'form-data',
   FormData,
   typeof formDataSchema,
@@ -134,15 +128,6 @@ export function isRequestBodyDefinition(value: unknown): value is AnyRequestBody
   )
 }
 
-export function isRequestQueryDefinition(value: unknown): value is AnyRequestQuery {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    (value as Partial<AnyRequestQuery>).kind === 'request-query' &&
-    isSchema((value as Partial<AnyRequestQuery>).schema)
-  )
-}
-
 export function mimeEssence(contentType: string): string {
   const separator = contentType.indexOf(';')
   return contentType
@@ -151,4 +136,4 @@ export function mimeEssence(contentType: string): string {
     .toLowerCase()
 }
 
-export const request = /* @__PURE__ */ Object.freeze({ json, text, bytes, formData })
+export const request = { json, text, bytes, formData } as const

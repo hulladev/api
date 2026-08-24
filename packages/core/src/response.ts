@@ -53,7 +53,7 @@ export type RouteResponses = Record<number, AnyRouteResponse>
 export type ResponseBodyValue<Body extends AnyResponseBody> = Body extends { readonly kind: 'empty' }
   ? undefined
   : Body extends { readonly kind: 'raw' }
-    ? Response
+    ? unknown
     : Body extends { readonly kind: 'stream'; readonly schema: infer Schema extends AnySchema }
       ? AsyncIterable<SchemaOutput<Schema>>
       : Body extends { readonly kind: 'stream' }
@@ -246,4 +246,4 @@ export function empty<const Headers extends ResponseHeaders | undefined = undefi
 }
 
 /** Namespace-style response factories for ergonomic route declarations. */
-export const response = /* @__PURE__ */ Object.freeze({ json, text, bytes, formData, stream, raw, empty })
+export const response = { json, text, bytes, formData, stream, raw, empty } as const

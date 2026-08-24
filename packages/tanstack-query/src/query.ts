@@ -1,201 +1,112 @@
-import { definePlugin } from '@hulla/api/plugin'
-import type {
-  APIClientPluginRouteHook,
-  APIClientPluginRouterHook,
-  APIClientRouteArgs,
-  APIClientRouteIfInput,
-  APIClientRouteKey,
-  APIClientRouteKeyPrefix,
-  APIClientRouteOverloads,
-  APIClientRouteResult,
-  APIPluginTypeOpaque,
-  APIProcedureArgs,
-  APIProcedureIfInput,
-  APIProcedureKey,
-  APIProcedureKeyPrefix,
-  APIProcedureOverloads,
-  APIProcedurePluginHook,
-  APIProcedurePluginRouterHook,
-  APIProcedureResult,
-} from '@hulla/api/plugin'
+import { clientRouteIntegration } from '@hulla/api/client'
 
 export type TanStackQueryFunctionContext = {
   readonly signal?: AbortSignal
 }
 
-type QueryClientRouteTypes = {
-  readonly queryKey: APIClientRouteIfInput<
-    APIClientRouteOverloads<
-      readonly [(...args: APIClientRouteArgs) => APIClientRouteKey, () => APIClientRouteKeyPrefix]
-    >,
-    () => APIClientRouteKeyPrefix
-  >
-  readonly queryOptions: APIClientRouteIfInput<
-    (...args: APIClientRouteArgs) => {
-      readonly queryKey: APIClientRouteKey
-      readonly queryFn: (context?: APIPluginTypeOpaque<TanStackQueryFunctionContext>) => APIClientRouteResult
-    },
-    () => {
-      readonly queryKey: APIClientRouteKeyPrefix
-      readonly queryFn: (context?: APIPluginTypeOpaque<TanStackQueryFunctionContext>) => APIClientRouteResult
+type RouteCall = (...args: never[]) => Promise<unknown>
+type RouteInput<Call extends RouteCall> = Parameters<Call> extends readonly [infer Input, ...unknown[]] ? Input : never
+type RouteResult<Call extends RouteCall> = ReturnType<Call>
+type FullKey<Key extends readonly string[], Input> = readonly [...Key, Input]
+
+type QueryKey<Call extends RouteCall, Key extends readonly string[]> = [RouteInput<Call>] extends [never]
+  ? () => readonly [...Key]
+  : {
+      (): readonly [...Key]
+      (input: RouteInput<Call>): FullKey<Key, RouteInput<Call>>
     }
-  >
-  readonly mutationOptions: APIClientRouteIfInput<
-    APIClientRouteOverloads<
-      readonly [
-        (...args: APIClientRouteArgs) => {
-          readonly mutationKey: APIClientRouteKey
-          readonly mutationFn: () => APIClientRouteResult
-        },
-        () => {
-          readonly mutationKey: APIClientRouteKeyPrefix
-          readonly mutationFn: (...args: APIClientRouteArgs) => APIClientRouteResult
-        },
-      ]
-    >,
-    () => {
-      readonly mutationKey: APIClientRouteKeyPrefix
-      readonly mutationFn: () => APIClientRouteResult
+
+type QueryOptions<Call extends RouteCall, Key extends readonly string[]> = [RouteInput<Call>] extends [never]
+  ? () => {
+      readonly queryKey: readonly [...Key]
+      readonly queryFn: (context?: TanStackQueryFunctionContext) => RouteResult<Call>
     }
-  >
-}
-
-type QueryClientRouteHook = APIClientPluginRouteHook<QueryClientRouteTypes>
-
-type QueryClientRouterTypes = {
-  readonly queryKey: () => APIClientRouteKeyPrefix
-}
-
-type QueryClientRouterHook = APIClientPluginRouterHook<QueryClientRouterTypes>
-
-type QueryProcedureTypes = {
-  readonly queryKey: APIProcedureIfInput<
-    APIProcedureOverloads<readonly [(...args: APIProcedureArgs) => APIProcedureKey, () => APIProcedureKeyPrefix]>,
-    () => APIProcedureKeyPrefix
-  >
-  readonly queryOptions: APIProcedureIfInput<
-    (...args: APIProcedureArgs) => {
-      readonly queryKey: APIProcedureKey
-      readonly queryFn: (context?: APIPluginTypeOpaque<TanStackQueryFunctionContext>) => APIProcedureResult
-    },
-    () => {
-      readonly queryKey: APIProcedureKeyPrefix
-      readonly queryFn: (context?: APIPluginTypeOpaque<TanStackQueryFunctionContext>) => APIProcedureResult
+  : (input: RouteInput<Call>) => {
+      readonly queryKey: FullKey<Key, RouteInput<Call>>
+      readonly queryFn: (context?: TanStackQueryFunctionContext) => RouteResult<Call>
     }
-  >
-  readonly mutationOptions: APIProcedureIfInput<
-    APIProcedureOverloads<
-      readonly [
-        (...args: APIProcedureArgs) => {
-          readonly mutationKey: APIProcedureKey
-          readonly mutationFn: () => APIProcedureResult
-        },
-        () => {
-          readonly mutationKey: APIProcedureKeyPrefix
-          readonly mutationFn: (...args: APIProcedureArgs) => APIProcedureResult
-        },
-      ]
-    >,
-    () => {
-      readonly mutationKey: APIProcedureKeyPrefix
-      readonly mutationFn: () => APIProcedureResult
+
+type MutationOptions<Call extends RouteCall, Key extends readonly string[]> = [RouteInput<Call>] extends [never]
+  ? () => {
+      readonly mutationKey: readonly [...Key]
+      readonly mutationFn: () => RouteResult<Call>
     }
-  >
-}
-
-type QueryProcedureHook = APIProcedurePluginHook<QueryProcedureTypes>
-
-type QueryProcedureRouterTypes = {
-  readonly queryKey: () => APIProcedureKeyPrefix
-}
-
-type QueryProcedureRouterHook = APIProcedurePluginRouterHook<QueryProcedureRouterTypes>
-
-export function tanstackQueryPlugin() {
-  const route: QueryClientRouteHook = (context) => {
-    const queryKey = (...args: readonly unknown[]) => context.key.full(...args)
-
-    const queryOptions = (...args: readonly unknown[]) => {
-      if (context.hasInput && args.length === 0) {
-        throw new TypeError('$queryOptions() requires the route input so its query can be executed deterministically.')
+  : {
+      (): {
+        readonly mutationKey: readonly [...Key]
+        readonly mutationFn: (input: RouteInput<Call>) => RouteResult<Call>
       }
-
-      return {
-        queryKey: queryKey(...args),
-        queryFn: (queryContext?: TanStackQueryFunctionContext) =>
-          context.hasInput
-            ? context.call(args[0], { signal: queryContext?.signal })
-            : context.call({ signal: queryContext?.signal }),
+      (input: RouteInput<Call>): {
+        readonly mutationKey: FullKey<Key, RouteInput<Call>>
+        readonly mutationFn: () => RouteResult<Call>
       }
     }
 
-    const mutationOptions = (...args: readonly unknown[]) => {
-      if (context.hasInput && args.length === 0) {
-        return {
-          mutationKey: context.key.prefix,
-          mutationFn: (...nextArgs: readonly unknown[]) => context.call(nextArgs[0]),
-        }
-      }
+export type TanStackQueryRoute<Call extends RouteCall, Key extends readonly string[]> = {
+  readonly queryKey: QueryKey<Call, Key>
+  readonly queryOptions: QueryOptions<Call, Key>
+  readonly mutationOptions: MutationOptions<Call, Key>
+}
 
-      return {
-        mutationKey: context.key.full(...args),
-        mutationFn: () => (context.hasInput ? context.call(args[0]) : context.call()),
-      }
+export type TanStackQueryClient<Client extends object, Prefix extends readonly string[] = readonly []> = {
+  readonly queryKey: () => readonly [...Prefix]
+} & {
+  readonly [Key in keyof Client]: Client[Key] extends RouteCall
+    ? TanStackQueryRoute<Client[Key], readonly [...Prefix, Key & string]>
+    : Client[Key] extends object
+      ? TanStackQueryClient<Client[Key], readonly [...Prefix, Key & string]>
+      : never
+}
+
+function keyWithInput(key: readonly string[], args: readonly unknown[]): readonly unknown[] {
+  return args.length === 0 ? [...key] : [...key, args[0]]
+}
+
+function routeIntegration(call: (...args: readonly unknown[]) => Promise<unknown>, key: readonly string[]) {
+  const integration = clientRouteIntegration(call)
+  if (integration === undefined)
+    throw new TypeError(`TanStack Query route "${key.join('.')}" is not a Hulla client call`)
+
+  const queryKey = (...args: readonly unknown[]) => keyWithInput(key, args)
+  const queryOptions = (...args: readonly unknown[]) => {
+    if (integration.hasInput && args.length === 0) {
+      throw new TypeError('queryOptions() requires the route input so its query can be executed deterministically.')
     }
-
-    return { queryKey, queryOptions, mutationOptions }
+    return {
+      queryKey: queryKey(...args),
+      queryFn: (context?: TanStackQueryFunctionContext) =>
+        integration.hasInput ? call(args[0], { signal: context?.signal }) : call({ signal: context?.signal }),
+    }
   }
-
-  const router: QueryClientRouterHook = (context) => ({
-    queryKey: () => context.key.full(),
-  })
-
-  const procedure: QueryProcedureHook = (context) => {
-    const queryKey = (...args: readonly unknown[]) => context.key.full(...args)
-
-    const queryOptions = (...args: readonly unknown[]) => {
-      if (context.hasInput && args.length === 0) {
-        throw new TypeError(
-          '$queryOptions() requires the procedure input so its query can be executed deterministically.'
-        )
-      }
-
-      return {
-        queryKey: queryKey(...args),
-        queryFn: () => (context.hasInput ? context.call(args[0]) : context.call()),
-      }
-    }
-
-    const mutationOptions = (...args: readonly unknown[]) => {
-      if (context.hasInput && args.length === 0) {
-        return {
-          mutationKey: context.key.prefix,
-          mutationFn: (...nextArgs: readonly unknown[]) => context.call(nextArgs[0]),
+  const mutationOptions = (...args: readonly unknown[]) =>
+    integration.hasInput && args.length === 0
+      ? { mutationKey: [...key], mutationFn: (input: unknown) => call(input) }
+      : {
+          mutationKey: queryKey(...args),
+          mutationFn: () => (integration.hasInput ? call(args[0]) : call()),
         }
-      }
 
-      return {
-        mutationKey: context.key.full(...args),
-        mutationFn: () => (context.hasInput ? context.call(args[0]) : context.call()),
-      }
-    }
+  return { queryKey, queryOptions, mutationOptions }
+}
 
-    return { queryKey, queryOptions, mutationOptions }
+function integrationTree(value: object, key: readonly string[]): Record<string, unknown> {
+  const result: Record<string, unknown> = { queryKey: () => [...key] }
+  for (const [name, child] of Object.entries(value)) {
+    const childKey = [...key, name]
+    Object.defineProperty(result, name, {
+      enumerable: true,
+      value:
+        typeof child === 'function'
+          ? routeIntegration(child as (...args: readonly unknown[]) => Promise<unknown>, childKey)
+          : typeof child === 'object' && child !== null
+            ? integrationTree(child, childKey)
+            : undefined,
+    })
   }
+  return result
+}
 
-  const procedureRouter: QueryProcedureRouterHook = (context) => ({
-    queryKey: () => context.key.full(),
-  })
-
-  return definePlugin({
-    id: 'tanstackQuery',
-    client: {
-      route,
-      router,
-    },
-    procedures: {
-      procedure,
-      router: procedureRouter,
-    },
-  })
+/** Creates a parallel TanStack Query view without extending or copying the client calls. */
+export function createTanStackQuery<const Client extends object>(client: Client): TanStackQueryClient<Client> {
+  return integrationTree(client, []) as TanStackQueryClient<Client>
 }

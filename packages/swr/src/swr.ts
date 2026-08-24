@@ -1,145 +1,87 @@
-import { definePlugin } from '@hulla/api/plugin'
-import type {
-  APIClientPluginRouteHook,
-  APIClientPluginRouterHook,
-  APIClientRouteArgs,
-  APIClientRouteIfInput,
-  APIClientRouteKey,
-  APIClientRouteKeyPrefix,
-  APIClientRouteOverloads,
-  APIClientRouteResult,
-  APIProcedureArgs,
-  APIProcedureIfInput,
-  APIProcedureKey,
-  APIProcedureKeyPrefix,
-  APIProcedureOverloads,
-  APIProcedurePluginHook,
-  APIProcedurePluginRouterHook,
-  APIProcedureResult,
-} from '@hulla/api/plugin'
+import { clientRouteIntegration } from '@hulla/api/client'
 
-type SWRClientRouteTypes = {
-  readonly queryKey: APIClientRouteIfInput<
-    APIClientRouteOverloads<
-      readonly [(...args: APIClientRouteArgs) => APIClientRouteKey, () => APIClientRouteKeyPrefix]
-    >,
-    () => APIClientRouteKeyPrefix
-  >
-  readonly queryOptions: APIClientRouteIfInput<
-    (...args: APIClientRouteArgs) => readonly [APIClientRouteKey, () => APIClientRouteResult],
-    () => readonly [APIClientRouteKeyPrefix, () => APIClientRouteResult]
-  >
-  readonly mutationOptions: APIClientRouteIfInput<
-    APIClientRouteOverloads<
-      readonly [
-        (...args: APIClientRouteArgs) => readonly [APIClientRouteKey, () => APIClientRouteResult],
-        () => readonly [APIClientRouteKeyPrefix, (...args: APIClientRouteArgs) => APIClientRouteResult],
-      ]
-    >,
-    () => readonly [APIClientRouteKeyPrefix, () => APIClientRouteResult]
-  >
-}
+type RouteCall = (...args: never[]) => Promise<unknown>
+type RouteInput<Call extends RouteCall> = Parameters<Call> extends readonly [infer Input, ...unknown[]] ? Input : never
+type RouteResult<Call extends RouteCall> = ReturnType<Call>
+type FullKey<Key extends readonly string[], Input> = readonly [...Key, Input]
 
-type SWRClientRouteHook = APIClientPluginRouteHook<SWRClientRouteTypes>
-
-type SWRClientRouterTypes = {
-  readonly queryKey: () => APIClientRouteKeyPrefix
-}
-
-type SWRClientRouterHook = APIClientPluginRouterHook<SWRClientRouterTypes>
-
-type SWRProcedureTypes = {
-  readonly queryKey: APIProcedureIfInput<
-    APIProcedureOverloads<readonly [(...args: APIProcedureArgs) => APIProcedureKey, () => APIProcedureKeyPrefix]>,
-    () => APIProcedureKeyPrefix
-  >
-  readonly queryOptions: APIProcedureIfInput<
-    (...args: APIProcedureArgs) => readonly [APIProcedureKey, () => APIProcedureResult],
-    () => readonly [APIProcedureKeyPrefix, () => APIProcedureResult]
-  >
-  readonly mutationOptions: APIProcedureIfInput<
-    APIProcedureOverloads<
-      readonly [
-        (...args: APIProcedureArgs) => readonly [APIProcedureKey, () => APIProcedureResult],
-        () => readonly [APIProcedureKeyPrefix, (...args: APIProcedureArgs) => APIProcedureResult],
-      ]
-    >,
-    () => readonly [APIProcedureKeyPrefix, () => APIProcedureResult]
-  >
-}
-
-type SWRProcedureHook = APIProcedurePluginHook<SWRProcedureTypes>
-
-type SWRProcedureRouterTypes = {
-  readonly queryKey: () => APIProcedureKeyPrefix
-}
-
-type SWRProcedureRouterHook = APIProcedurePluginRouterHook<SWRProcedureRouterTypes>
-
-export function swrPlugin() {
-  const route: SWRClientRouteHook = (context) => {
-    const queryKey = (...args: readonly unknown[]) => context.key.full(...args)
-
-    const queryOptions = (...args: readonly unknown[]) => {
-      if (context.hasInput && args.length === 0) {
-        throw new TypeError('$queryOptions() requires the route input so its query can be executed deterministically.')
-      }
-
-      return [queryKey(...args), () => (context.hasInput ? context.call(args[0]) : context.call())] as const
+type QueryKey<Call extends RouteCall, Key extends readonly string[]> = [RouteInput<Call>] extends [never]
+  ? () => readonly [...Key]
+  : {
+      (): readonly [...Key]
+      (input: RouteInput<Call>): FullKey<Key, RouteInput<Call>>
     }
 
-    const mutationOptions = (...args: readonly unknown[]) => {
-      if (context.hasInput && args.length === 0) {
-        return [context.key.prefix, (...nextArgs: readonly unknown[]) => context.call(nextArgs[0])] as const
-      }
+type QueryOptions<Call extends RouteCall, Key extends readonly string[]> = [RouteInput<Call>] extends [never]
+  ? () => readonly [readonly [...Key], () => RouteResult<Call>]
+  : (input: RouteInput<Call>) => readonly [FullKey<Key, RouteInput<Call>>, () => RouteResult<Call>]
 
-      return [queryKey(...args), () => (context.hasInput ? context.call(args[0]) : context.call())] as const
+type MutationOptions<Call extends RouteCall, Key extends readonly string[]> = [RouteInput<Call>] extends [never]
+  ? () => readonly [readonly [...Key], () => RouteResult<Call>]
+  : {
+      (): readonly [readonly [...Key], (input: RouteInput<Call>) => RouteResult<Call>]
+      (input: RouteInput<Call>): readonly [FullKey<Key, RouteInput<Call>>, () => RouteResult<Call>]
     }
 
-    return { queryKey, queryOptions, mutationOptions }
+export type SWRRoute<Call extends RouteCall, Key extends readonly string[]> = {
+  readonly queryKey: QueryKey<Call, Key>
+  readonly queryOptions: QueryOptions<Call, Key>
+  readonly mutationOptions: MutationOptions<Call, Key>
+}
+
+export type SWRClient<Client extends object, Prefix extends readonly string[] = readonly []> = {
+  readonly queryKey: () => readonly [...Prefix]
+} & {
+  readonly [Key in keyof Client]: Client[Key] extends RouteCall
+    ? SWRRoute<Client[Key], readonly [...Prefix, Key & string]>
+    : Client[Key] extends object
+      ? SWRClient<Client[Key], readonly [...Prefix, Key & string]>
+      : never
+}
+
+function keyWithInput(key: readonly string[], args: readonly unknown[]): readonly unknown[] {
+  return args.length === 0 ? [...key] : [...key, args[0]]
+}
+
+function routeIntegration(call: (...args: readonly unknown[]) => Promise<unknown>, key: readonly string[]) {
+  const integration = clientRouteIntegration(call)
+  if (integration === undefined) throw new TypeError(`SWR route "${key.join('.')}" is not a Hulla client call`)
+
+  const queryKey = (...args: readonly unknown[]) => keyWithInput(key, args)
+  const queryOptions = (...args: readonly unknown[]) => {
+    if (integration.hasInput && args.length === 0) {
+      throw new TypeError('queryOptions() requires the route input so its query can be executed deterministically.')
+    }
+    return [queryKey(...args), () => (integration.hasInput ? call(args[0]) : call())] as const
+  }
+  const mutationOptions = (...args: readonly unknown[]) => {
+    if (integration.hasInput && args.length === 0) {
+      return [[...key], (input: unknown) => call(input)] as const
+    }
+    return [queryKey(...args), () => (integration.hasInput ? call(args[0]) : call())] as const
   }
 
-  const router: SWRClientRouterHook = (context) => ({
-    queryKey: () => context.key.full(),
-  })
+  return { queryKey, queryOptions, mutationOptions }
+}
 
-  const procedure: SWRProcedureHook = (context) => {
-    const queryKey = (...args: readonly unknown[]) => context.key.full(...args)
-
-    const queryOptions = (...args: readonly unknown[]) => {
-      if (context.hasInput && args.length === 0) {
-        throw new TypeError(
-          '$queryOptions() requires the procedure input so its query can be executed deterministically.'
-        )
-      }
-
-      return [queryKey(...args), () => (context.hasInput ? context.call(args[0]) : context.call())] as const
-    }
-
-    const mutationOptions = (...args: readonly unknown[]) => {
-      if (context.hasInput && args.length === 0) {
-        return [context.key.prefix, (...nextArgs: readonly unknown[]) => context.call(nextArgs[0])] as const
-      }
-
-      return [queryKey(...args), () => (context.hasInput ? context.call(args[0]) : context.call())] as const
-    }
-
-    return { queryKey, queryOptions, mutationOptions }
+function integrationTree(value: object, key: readonly string[]): Record<string, unknown> {
+  const result: Record<string, unknown> = { queryKey: () => [...key] }
+  for (const [name, child] of Object.entries(value)) {
+    const childKey = [...key, name]
+    Object.defineProperty(result, name, {
+      enumerable: true,
+      value:
+        typeof child === 'function'
+          ? routeIntegration(child as (...args: readonly unknown[]) => Promise<unknown>, childKey)
+          : typeof child === 'object' && child !== null
+            ? integrationTree(child, childKey)
+            : undefined,
+    })
   }
+  return result
+}
 
-  const procedureRouter: SWRProcedureRouterHook = (context) => ({
-    queryKey: () => context.key.full(),
-  })
-
-  return definePlugin({
-    id: 'swr',
-    client: {
-      route,
-      router,
-    },
-    procedures: {
-      procedure,
-      router: procedureRouter,
-    },
-  })
+/** Creates a parallel SWR view without extending or copying the client calls. */
+export function createSWR<const Client extends object>(client: Client): SWRClient<Client> {
+  return integrationTree(client, []) as SWRClient<Client>
 }

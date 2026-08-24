@@ -1,186 +1,177 @@
 import { type ExecutionStep, isPromiseLike, mapExecutionStep } from '../execution'
-import { textWireObject } from '../request'
+import { setOwn } from '../object'
+import type { QueryWireObject } from '../query'
+import { textWireObject, type RequestBodyKind } from '../request'
 import type { CanonicalRoutePlan } from '../route-plan'
 
 export type ClientRequestOptions = {
-  readonly headers?: HeadersInit
+  readonly headers?: Readonly<Record<string, string | undefined>>
   readonly signal?: AbortSignal
 }
 
-export type ClientHeaders = HeadersInit | (() => HeadersInit | undefined | PromiseLike<HeadersInit | undefined>)
+export type ClientHeaders =
+  | Readonly<Record<string, string | undefined>>
+  | (() =>
+      | Readonly<Record<string, string | undefined>>
+      | undefined
+      | PromiseLike<Readonly<Record<string, string | undefined>> | undefined>)
 
-/** The exact transport surface used by the client after it constructs a Web Request. */
-export type ClientFetch = (request: Request) => Response | PromiseLike<Response>
-
-export type ClientTransportOptions = {
-  /** URL prefix placed before the contract base path. Omit it to issue a relative request. */
-  readonly baseUrl?: string | URL
-  readonly fetch?: ClientFetch
-  readonly headers?: ClientHeaders
+export type ClientTransportBody = {
+  readonly kind: RequestBodyKind
+  readonly value: unknown
+  readonly contentType: string
 }
+
+/** A transport-neutral, schema-encoded client invocation. */
+export type ClientTransportRequest = {
+  readonly key: readonly string[]
+  readonly method: string
+  readonly path: string
+  readonly query?: QueryWireObject
+  readonly headers: Record<string, string>
+  readonly body?: ClientTransportBody
+  readonly signal?: AbortSignal
+}
+
+export type ClientTransportResponse = {
+  readonly status: number
+  readonly headers: Readonly<Record<string, string>>
+  /** The adapter-native response, event, or message when one exists. */
+  readonly native?: unknown
+  /** Reads the response using the representation selected by its declared status. */
+  readonly readBody: (kind: 'bytes' | 'form-data' | 'json' | 'raw' | 'stream' | 'text') => ExecutionStep<unknown>
+}
+
+export type ClientTransport = (request: ClientTransportRequest) => ExecutionStep<ClientTransportResponse>
 
 export type ClientRequestCreator = (
   input: Readonly<Record<string, unknown>>,
   options: ClientRequestOptions
-) => ExecutionStep<Request>
+) => ExecutionStep<ClientTransportRequest>
 
-function normalizedBaseUrl(baseUrl: string | URL | undefined): string {
-  const prefix = baseUrl === undefined ? '' : String(baseUrl).replace(/\/+$/, '')
-  return prefix
-}
-
-function appendBaseUrl(prefix: string, path: string): string {
-  if (prefix === '') return path
-  return path === '/' ? prefix || '/' : `${prefix}${path}`
-}
-
-export function assertClientBaseUrl(baseUrl: string | URL | undefined): void {
-  if (baseUrl === undefined) return
-  const value = String(baseUrl)
-  if (value.includes('?')) throw new TypeError(`Client base URL "${value}" cannot contain a query string`)
-  if (value.includes('#')) throw new TypeError(`Client base URL "${value}" cannot contain a hash fragment`)
-}
-
-function assignHeaders(target: Headers, source: HeadersInit | undefined): void {
+function assignHeaders(
+  target: Record<string, string>,
+  source: Readonly<Record<string, string | undefined>> | undefined
+): void {
   if (source === undefined) return
-  new Headers(source).forEach((value, key) => target.set(key, value))
-}
-
-type CompiledBody = {
-  readonly body: BodyInit
-  readonly contentType: string | null
-}
-
-function compileBodySerializer(representation: string, contentType: string): (value: unknown) => CompiledBody {
-  switch (representation) {
-    case 'json': {
-      return (value) => {
-        const encoded = JSON.stringify(value)
-        if (encoded === undefined) throw new TypeError('JSON request body cannot encode to undefined')
-        return { body: encoded, contentType }
-      }
-    }
-    case 'text':
-      return (value) => {
-        if (typeof value !== 'string') throw new TypeError('Text request body must encode to a string')
-        return { body: value, contentType }
-      }
-    case 'bytes':
-      return (value) => {
-        if (!(value instanceof Uint8Array)) throw new TypeError('Byte request body must encode to a Uint8Array')
-        return { body: value as BodyInit, contentType }
-      }
-    case 'form-data':
-      return (value) => {
-        if (!(value instanceof FormData)) throw new TypeError('Form data request body must encode to FormData')
-        return { body: value, contentType: null }
-      }
-    default:
-      throw new TypeError(`Unsupported request body representation "${representation}"`)
+  for (const [name, value] of Object.entries(source)) {
+    const normalized = name.toLowerCase()
+    if (value === undefined) delete target[normalized]
+    else setOwn(target, normalized, value)
   }
 }
 
 function mergedHeaders(
-  configured: HeadersInit | undefined,
-  options: HeadersInit | undefined,
+  configured: Readonly<Record<string, string | undefined>> | undefined,
+  options: Readonly<Record<string, string | undefined>> | undefined,
   routeHeaders: Readonly<Record<string, string | undefined>> | undefined,
-  contentType: string | null | undefined
-): HeadersInit | undefined {
-  if (configured === undefined && options === undefined && routeHeaders === undefined) {
-    return contentType === undefined || contentType === null ? undefined : { 'content-type': contentType }
-  }
-
-  const headers = new Headers()
+  contentType: string | undefined
+): Record<string, string> {
+  const headers: Record<string, string> = {}
   assignHeaders(headers, configured)
   assignHeaders(headers, options)
-  if (routeHeaders !== undefined) {
-    for (const [key, value] of Object.entries(routeHeaders)) {
-      if (value === undefined) headers.delete(key)
-      else headers.set(key, value)
-    }
-  }
-  if (contentType === null) headers.delete('content-type')
-  else if (contentType !== undefined) headers.set('content-type', contentType)
+  assignHeaders(headers, routeHeaders)
+  if (contentType !== undefined) setOwn(headers, 'content-type', contentType)
   return headers
 }
 
-function requestValue(
-  url: string,
-  method: string,
+function transportRequest(
+  plan: CanonicalRoutePlan,
+  path: string,
   options: ClientRequestOptions,
-  headers: HeadersInit | undefined,
-  body: BodyInit | undefined
-): Request {
-  const signal = options.signal
-  if (method === 'GET' && headers === undefined && body === undefined && signal === undefined) {
-    return new Request(url)
+  headers: Record<string, string>,
+  query?: QueryWireObject,
+  body?: ClientTransportBody
+): ClientTransportRequest {
+  return {
+    key: plan.compiled.key,
+    method: plan.compiled.method,
+    path,
+    ...(query === undefined ? {} : { query }),
+    headers,
+    ...(body === undefined ? {} : { body }),
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
   }
+}
 
-  const init: RequestInit = { method }
-  if (headers !== undefined) init.headers = headers
-  if (body !== undefined) init.body = body
-  if (signal !== undefined) init.signal = signal
-  return new Request(url, init)
+function encodedBody(kind: RequestBodyKind, contentType: string, value: unknown): ClientTransportBody {
+  switch (kind) {
+    case 'json':
+      break
+    case 'text':
+      if (typeof value !== 'string') throw new TypeError('Text request body must encode to a string')
+      break
+    case 'bytes':
+      if (!(value instanceof Uint8Array)) throw new TypeError('Byte request body must encode to a Uint8Array')
+      break
+    case 'form-data':
+      break
+  }
+  return { kind, value, contentType }
 }
 
 export function compileClientRequest(
   plan: CanonicalRoutePlan,
-  transport: ClientTransportOptions
+  configuredHeaders?: ClientHeaders
 ): ClientRequestCreator {
   const compiled = plan.compiled
-  const baseUrl = normalizedBaseUrl(transport.baseUrl)
-  const staticUrl = compiled.pathParameters.length === 0 ? appendBaseUrl(baseUrl, compiled.path) : undefined
   const encodePath = plan.encodePath
   const encodeQuery = plan.encodeQuery
   const encodeHeaders = plan.headers?.encode
   const hasRouteHeaders = plan.headers !== undefined
   const encodeBody = plan.body?.schema.encode
   const hasBody = plan.body !== undefined
-  const serializeBody =
-    plan.body === undefined
-      ? undefined
-      : compileBodySerializer(plan.body.declaration.representation, plan.body.declaration.contentType)
-  const configuredHeaders = transport.headers
+  const staticPath = encodePath === undefined ? compiled.path : undefined
 
   const routeHeaders = (value: unknown): ExecutionStep<Readonly<Record<string, string | undefined>>> =>
     encodeHeaders === undefined
       ? textWireObject(value, 'headers')
       : mapExecutionStep(encodeHeaders(value), (encoded) => textWireObject(encoded, 'headers'))
-  const requestBody = (value: unknown): ExecutionStep<CompiledBody> =>
-    encodeBody === undefined
-      ? serializeBody!(value)
-      : mapExecutionStep(encodeBody(value), (encoded) => serializeBody!(encoded))
-
-  if (staticUrl !== undefined && encodeQuery === undefined && !hasRouteHeaders && hasBody) {
-    return (input, options) => {
-      return mapExecutionStep(requestBody(input['body']), (serialized) => {
-        const configured = typeof configuredHeaders === 'function' ? configuredHeaders() : configuredHeaders
-        return mapExecutionStep(configured, (resolvedHeaders) =>
-          requestValue(
-            staticUrl,
-            compiled.method,
-            options,
-            mergedHeaders(resolvedHeaders, options.headers, undefined, serialized.contentType),
-            serialized.body
-          )
+  const requestBody = (value: unknown): ExecutionStep<ClientTransportBody> => {
+    const body = plan.body!
+    return encodeBody === undefined
+      ? encodedBody(body.declaration.representation, body.declaration.contentType, value)
+      : mapExecutionStep(encodeBody(value), (encoded) =>
+          encodedBody(body.declaration.representation, body.declaration.contentType, encoded)
         )
-      })
-    }
   }
 
   if (
-    staticUrl !== undefined &&
+    staticPath !== undefined &&
     encodeQuery === undefined &&
     !hasRouteHeaders &&
     !hasBody &&
     configuredHeaders === undefined
   ) {
-    return (_input, options) => requestValue(staticUrl, compiled.method, options, options.headers, undefined)
+    return (_input, options) =>
+      transportRequest(plan, staticPath, options, mergedHeaders(undefined, options.headers, undefined, undefined))
+  }
+
+  if (staticPath !== undefined && encodeQuery === undefined && !hasRouteHeaders && hasBody) {
+    return (input, options) =>
+      mapExecutionStep(requestBody(input['body']), (body) => {
+        const configured = typeof configuredHeaders === 'function' ? configuredHeaders() : configuredHeaders
+        return mapExecutionStep(configured, (resolvedHeaders) =>
+          transportRequest(
+            plan,
+            staticPath,
+            options,
+            mergedHeaders(
+              resolvedHeaders,
+              options.headers,
+              undefined,
+              body.kind === 'form-data' ? undefined : body.contentType
+            ),
+            undefined,
+            body
+          )
+        )
+      })
   }
 
   return (input, options) => {
     const values = [
-      staticUrl ?? encodePath!(input['params'] as Readonly<Record<string, unknown>>),
+      staticPath ?? encodePath!(input['params'] as Readonly<Record<string, unknown>>),
       encodeQuery?.(input['query'] as never),
       typeof configuredHeaders === 'function' ? configuredHeaders() : configuredHeaders,
       hasRouteHeaders ? routeHeaders(input['headers']) : undefined,
@@ -188,22 +179,21 @@ export function compileClientRequest(
     ] as const
     type ResolvedValues = readonly [
       path: string,
-      query: URLSearchParams | undefined,
-      configuredHeaders: HeadersInit | undefined,
+      query: QueryWireObject | undefined,
+      configuredHeaders: Readonly<Record<string, string | undefined>> | undefined,
       routeHeaders: Readonly<Record<string, string | undefined>> | undefined,
-      body: CompiledBody | undefined,
+      body: ClientTransportBody | undefined,
     ]
     const resolved = values.some(isPromiseLike) ? Promise.all(values) : values
-    return mapExecutionStep(resolved as ExecutionStep<ResolvedValues>, (parts) => {
-      const [path, query, resolvedConfiguredHeaders, encodedRouteHeaders, encodedBody] = parts
-      const queryString = query && query.size > 0 ? `?${query.toString()}` : ''
-      return requestValue(
-        `${staticUrl ?? appendBaseUrl(baseUrl, path)}${queryString}`,
-        compiled.method,
+    return mapExecutionStep(resolved as ExecutionStep<ResolvedValues>, ([path, query, configured, route, body]) =>
+      transportRequest(
+        plan,
+        path,
         options,
-        mergedHeaders(resolvedConfiguredHeaders, options.headers, encodedRouteHeaders, encodedBody?.contentType),
-        encodedBody?.body
+        mergedHeaders(configured, options.headers, route, body?.kind === 'form-data' ? undefined : body?.contentType),
+        query,
+        body
       )
-    })
+    )
   }
 }

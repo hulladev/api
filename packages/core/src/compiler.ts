@@ -4,7 +4,7 @@ import { getContractState } from './contract-state'
 import type { HttpMethod } from './http'
 import type { JoinRoutePaths } from './paths'
 import type { Route } from './route'
-import type { AnyRouter, Router } from './router'
+import type { AnyRouter, RouterChildrenFor } from './router'
 import type { ObjectSchema } from './validation'
 
 export type CompiledPathParameters = {
@@ -29,38 +29,34 @@ export type CompiledContractRoute<
 
 type StringKey<Value> = Extract<keyof Value, string>
 
-type CompiledRouterRoute<
-  BasePath extends string,
-  RouterKey extends string,
-  RouterPath extends string,
-  RouterType extends AnyRouter,
-> = {
-  readonly [RouteKey in Exclude<StringKey<RouterType>, '$meta'>]: RouterType[RouteKey] extends Route<
-    infer _Method,
-    infer RoutePath
-  >
-    ? CompiledContractRoute<
-        RouterType[RouteKey],
-        readonly [RouterKey, RouteKey],
-        JoinRoutePaths<readonly [BasePath, RouterPath, RoutePath]>
-      >
-    : never
-}[Exclude<StringKey<RouterType>, '$meta'>]
-
-type CompiledDefinition<BasePath extends string, Key extends string, Definition extends ContractRoute> =
+type CompiledDefinition<
+  PathPrefix extends string,
+  KeyPrefix extends readonly string[],
+  Key extends string,
+  Definition extends ContractRoute,
+> =
   Definition extends Route<infer _Method, infer RoutePath>
-    ? CompiledContractRoute<Definition, readonly [Key], JoinRoutePaths<readonly [BasePath, RoutePath]>>
-    : Definition extends Router<infer RouterPath>
-      ? CompiledRouterRoute<BasePath, Key, RouterPath, Definition>
+    ? CompiledContractRoute<Definition, readonly [...KeyPrefix, Key], JoinRoutePaths<readonly [PathPrefix, RoutePath]>>
+    : Definition extends AnyRouter
+      ? CompiledRouteTree<
+          JoinRoutePaths<readonly [PathPrefix, Definition['$meta']['path']]>,
+          RouterChildrenFor<Definition>,
+          readonly [...KeyPrefix, Key]
+        >
       : never
 
-export type CompiledContractRouteFor<ContractType extends Contract = Contract> = {
-  readonly [Key in StringKey<ContractType['routes']>]: CompiledDefinition<
-    ContractType['basePath'],
-    Key,
-    ContractType['routes'][Key]
-  >
-}[StringKey<ContractType['routes']>]
+type CompiledRouteTree<
+  PathPrefix extends string,
+  Routes extends Readonly<Record<string, ContractRoute>>,
+  KeyPrefix extends readonly string[] = readonly [],
+> = {
+  readonly [Key in StringKey<Routes>]: CompiledDefinition<PathPrefix, KeyPrefix, Key, Routes[Key]>
+}[StringKey<Routes>]
+
+export type CompiledContractRouteFor<ContractType extends Contract = Contract> = CompiledRouteTree<
+  ContractType['basePath'],
+  ContractType['routes']
+>
 
 export type CompiledContract<ContractType extends Contract = Contract> = {
   readonly kind: 'compiled-contract'

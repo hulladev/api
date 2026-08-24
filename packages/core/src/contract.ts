@@ -1,35 +1,98 @@
 import type { CompiledContractRoute, CompiledPathParameters } from './compiler'
-import { getContractState } from './contract-state'
+import { findContractMount, getContractState, type ContractMount } from './contract-state'
+import {
+  isErrorDeclaration,
+  type AnyErrorDeclaration,
+  type ErrorStatusMap,
+  type NormalizedErrorStatusMap,
+} from './declared-errors'
 import { HTTP_METHODS, type HttpMethod } from './http'
 import { routeInput } from './input'
-import { isRecord } from './object'
+import { isRecord, setOwn } from './object'
 import { assertBasePath, joinRoutePaths, pathParamNames, routePathShape } from './paths'
-import { routeOutput, type RouteResponses } from './response'
+import { routeOutput } from './response'
 import type { Route } from './route'
-import { isRouter, routerEntries, type AnyRouter } from './router'
+import { isRouter, routerRoutes, type AnyRouter, type RouterRoutes } from './router'
 import type { ObjectSchema } from './validation'
+
+declare const contractNodeType: unique symbol
 
 export type ContractRoute = Route | AnyRouter
 
 export type ContractRoutes = Readonly<Record<string, ContractRoute>>
 
+type MountedNode<Key extends readonly string[]> = {
+  readonly [contractNodeType]?: Key
+}
+
+type MountedRouter<Definition extends AnyRouter, Key extends readonly string[]> = Definition &
+  MountedNode<Key> & {
+    readonly [Child in keyof RouterRoutes<Definition>]: Child extends keyof Definition
+      ? MountedContractRoute<Extract<Definition[Child], ContractRoute>, readonly [...Key, Child & string]>
+      : never
+  }
+
+type MountedContractRoute<Definition extends ContractRoute, Key extends readonly string[]> = Definition extends Route
+  ? Definition & MountedNode<Key>
+  : Definition extends AnyRouter
+    ? MountedRouter<Definition, Key>
+    : never
+
+export type MountedContractRoutes<Routes extends ContractRoutes> = {
+  readonly [Key in keyof Routes]: MountedContractRoute<Routes[Key], readonly [Key & string]>
+}
+
+type ContractRoutesFor<Routes extends ContractRoutes> = string extends keyof Routes
+  ? Readonly<Routes>
+  : Readonly<MountedContractRoutes<Routes>>
+
 export type Contract<
   BasePath extends string = string,
   Routes extends ContractRoutes = ContractRoutes,
-  Errors extends RouteResponses = RouteResponses,
+  Errors extends NormalizedErrorStatusMap = NormalizedErrorStatusMap,
 > = {
   readonly kind: 'contract'
   readonly basePath: BasePath
-  readonly routes: Readonly<Routes>
+  readonly routes: ContractRoutesFor<Routes>
   readonly errors: Readonly<Errors>
   readonly routeInput: typeof routeInput
   readonly routeOutput: typeof routeOutput
+} & MountedNode<readonly []>
+
+type NestedContractNode<Definition> = Definition extends AnyRouter
+  ?
+      | Definition
+      | {
+          [Key in Exclude<keyof Definition, '$meta' | typeof contractNodeType>]: NestedContractNode<Definition[Key]>
+        }[Exclude<keyof Definition, '$meta' | typeof contractNodeType>]
+  : Definition
+
+export type ContractNodeFor<ContractType extends Contract> =
+  | ContractType
+  | {
+      [Key in keyof ContractType['routes']]: NestedContractNode<ContractType['routes'][Key]>
+    }[keyof ContractType['routes']]
+
+export type ContractNodeKey<Node> = Node extends {
+  readonly [contractNodeType]?: infer Key extends readonly string[]
+}
+  ? Key
+  : never
+
+/** Returns the canonical mounted key for a route, router, or contract node. */
+export function contractNodeKey<const ContractType extends Contract, const Node extends ContractNodeFor<ContractType>>(
+  contract: ContractType,
+  node: Node
+): ContractNodeKey<Node> {
+  const mount = findContractMount(contract, node)
+  if (mount === null || mount === undefined) throw new TypeError('Contract node must belong to its contract')
+  return mount.key as ContractNodeKey<Node>
 }
 
 export type ContractOptions<
   BasePath extends string = string,
   Routes extends ContractRoutes = ContractRoutes,
-  Errors extends RouteResponses = RouteResponses,
+  Errors extends ErrorStatusMap = ErrorStatusMap,
 > = {
   readonly basePath?: BasePath
   readonly routes: Routes
@@ -47,7 +110,7 @@ type RouteRegistry = {
   routes?: Map<string, RegisteredRoute>
 }
 
-const emptyErrors = Object.freeze({}) as Readonly<RouteResponses>
+const emptyErrors = Object.freeze({}) as Readonly<NormalizedErrorStatusMap>
 
 function assertRoute(value: unknown, name: string): asserts value is Route {
   if (
@@ -108,7 +171,7 @@ function compiledRoute(
 ): CompiledContractRoute {
   const ownParameters = compilePathParameters(route.path, 'params' in route ? route.params : undefined)
   return {
-    key,
+    key: Object.freeze([...key]),
     method: route.method,
     path,
     pathParameters: ownParameters === undefined ? [...pathParameters] : [...pathParameters, ownParameters],
@@ -116,56 +179,75 @@ function compiledRoute(
   }
 }
 
-function validateResponseStatuses(route: Route, name: string, errors: RouteResponses): void {
-  for (const [key, declaration] of Object.entries(route.responses)) {
-    const status = Number(key)
-    const error = errors[status]
-    if (error !== undefined && error !== declaration) {
-      throw new TypeError(
-        `Contract route "${name}" response ${status} conflicts with the contract error declared for the same status`
-      )
-    }
-  }
-}
-
 /** @internal Validates a contract shape while producing the route metadata consumed by every runtime. */
 export function compileContractRouteDefinitions(
   basePath: string,
   routes: ContractRoutes,
-  errors: RouteResponses
+  errors: NormalizedErrorStatusMap
 ): readonly CompiledContractRoute[] {
   const registry: RouteRegistry = {}
   const compiledRoutes: CompiledContractRoute[] = []
-  const hasErrors = errors !== emptyErrors
+  const seen = new Set<object>()
 
-  for (const [name, value] of Object.entries(routes)) {
-    const router = isRouter(value)
-    if (!isRecord(value) || (!router && value.kind !== 'route')) {
-      throw new TypeError(`Contract route "${name}" must be a route or router definition`)
-    }
+  const visit = (
+    definitions: ContractRoutes,
+    keyPrefix: readonly string[],
+    pathPrefix: readonly string[],
+    pathParameters: readonly CompiledPathParameters[],
+    parameterNames: ReadonlySet<string>
+  ): void => {
+    for (const [name, value] of Object.entries(definitions)) {
+      const nestedRouter = isRouter(value)
+      if (!isRecord(value) || (!nestedRouter && value.kind !== 'route')) {
+        throw new TypeError(`Contract route "${[...keyPrefix, name].join('.')}" must be a route or router definition`)
+      }
+      const qualifiedKey = [...keyPrefix, name]
+      const qualifiedName = `routes.${qualifiedKey.join('.')}`
+      if (seen.has(value)) {
+        throw new TypeError(`Contract declaration "${qualifiedName}" is mounted more than once`)
+      }
+      seen.add(value)
 
-    if (!router) {
-      assertRoute(value, name)
-      if (hasErrors) validateResponseStatuses(value, `routes.${name}`, errors)
-      const path = joinRoutePaths(basePath, value.path)
-      registerRoute(registry, `routes.${name}`, path, value)
-      compiledRoutes.push(compiledRoute([name], path, [], value))
-      continue
-    }
+      const ownPath = nestedRouter ? value.$meta.path : value.path
+      const ownNames = pathParamNames(ownPath)
+      const conflicts = ownNames.filter((parameter) => parameterNames.has(parameter))
+      if (conflicts.length > 0) {
+        throw new TypeError(
+          `Contract declaration "${qualifiedName}" redeclares ${conflicts.length === 1 ? 'parameter' : 'parameters'} ${conflicts.map((parameter) => `"${parameter}"`).join(', ')}`
+        )
+      }
+      const nextNames = new Set(parameterNames)
+      for (const parameter of ownNames) nextNames.add(parameter)
 
-    assertRouter(value, name)
-    const metadata = value.$meta
-    const routerParameters = compilePathParameters(metadata.path, 'params' in metadata ? metadata.params : undefined)
-    const pathParameters = routerParameters === undefined ? [] : [routerParameters]
-    for (const [routeName, routeValue] of routerEntries(value)) {
-      const qualifiedName = `routes.${name}.${routeName}`
-      assertRoute(routeValue, qualifiedName)
-      if (hasErrors) validateResponseStatuses(routeValue, qualifiedName, errors)
-      const path = joinRoutePaths(basePath, metadata.path, routeValue.path)
-      registerRoute(registry, qualifiedName, path, routeValue)
-      compiledRoutes.push(compiledRoute([name, routeName], path, pathParameters, routeValue))
+      if (!nestedRouter) {
+        assertRoute(value, qualifiedKey.join('.'))
+        for (const status of Object.keys(value.responses)) {
+          if (errors[Number(status)] !== undefined) {
+            throw new TypeError(
+              `Contract route "${qualifiedName}" response ${status} conflicts with a declared error status`
+            )
+          }
+        }
+        const path = joinRoutePaths(...pathPrefix, value.path)
+        registerRoute(registry, qualifiedName, path, value)
+        compiledRoutes.push(compiledRoute(qualifiedKey, path, pathParameters, value))
+        continue
+      }
+
+      assertRouter(value, qualifiedKey.join('.'))
+      const metadata = value.$meta
+      const routerParameters = compilePathParameters(metadata.path, 'params' in metadata ? metadata.params : undefined)
+      visit(
+        routerRoutes(value),
+        qualifiedKey,
+        [...pathPrefix, metadata.path],
+        routerParameters === undefined ? pathParameters : [...pathParameters, routerParameters],
+        nextNames
+      )
     }
   }
+
+  visit(routes, [], [basePath], [], new Set())
 
   if (compiledRoutes.length === 0) {
     throw new TypeError('Contract must declare at least one route')
@@ -173,11 +255,13 @@ export function compileContractRouteDefinitions(
   return compiledRoutes
 }
 
-function copyErrors(errors: unknown): Readonly<RouteResponses> {
+function copyErrors(errors: unknown): Readonly<NormalizedErrorStatusMap> {
   if (errors === undefined) return emptyErrors
   if (!isRecord(errors)) throw new TypeError('Contract errors must be an object')
 
-  const copy: RouteResponses = {}
+  const copy: Record<number, readonly AnyErrorDeclaration[]> = {}
+  const codes = new Set<string>()
+  const declarations = new Set<object>()
 
   for (const [key, declaration] of Object.entries(errors)) {
     const status = Number(key)
@@ -186,21 +270,63 @@ function copyErrors(errors: unknown): Readonly<RouteResponses> {
       throw new TypeError(`Contract error status "${key}" must be an integer between 400 and 599`)
     }
 
-    if (!isRecord(declaration) || declaration['kind'] !== 'response') {
-      throw new TypeError(`Contract error ${status} must be declared with a response helper`)
-    }
-
-    copy[status] = declaration as RouteResponses[number]
+    const values = Array.isArray(declaration) ? declaration : [declaration]
+    if (values.length === 0) throw new TypeError(`Contract error ${status} must not be an empty array`)
+    const declared = values.map((value, index) => {
+      if (!isErrorDeclaration(value)) {
+        throw new TypeError(`Contract error ${status} at index ${index} must be declared with defineErrors`)
+      }
+      if (codes.has(value.code)) throw new TypeError(`Contract error code "${value.code}" is declared more than once`)
+      if (declarations.has(value)) {
+        throw new TypeError(`Contract error ${value.code} cannot be assigned to more than one status`)
+      }
+      codes.add(value.code)
+      declarations.add(value)
+      return value
+    })
+    copy[status] = Object.freeze(declared)
   }
 
   return Object.freeze(copy)
 }
 
+function mountContractRoutes(routes: Readonly<Record<string, unknown>>): ContractRoutes {
+  const mounted: Record<string, ContractRoute> = {}
+  for (const [key, definition] of Object.entries(routes)) setOwn(mounted, key, definition as ContractRoute)
+  return Object.freeze(mounted)
+}
+
+function registerContractMounts(
+  definitions: ContractRoutes,
+  compiledRoutes: readonly CompiledContractRoute[],
+  mounts: Map<object, ContractMount>,
+  keyPrefix: readonly string[] = [],
+  startIndex = 0
+): number {
+  let index = startIndex
+  for (const [key, definition] of Object.entries(definitions)) {
+    if (!isRouter(definition)) {
+      const compiled = compiledRoutes[index++]!
+      mounts.set(definition, { key: compiled.key, kind: 'route', routes: [compiled] })
+      continue
+    }
+    const nodeKey = Object.freeze([...keyPrefix, key])
+    const subtreeStart = index
+    index = registerContractMounts(routerRoutes(definition), compiledRoutes, mounts, nodeKey, index)
+    mounts.set(definition, {
+      key: nodeKey,
+      kind: 'router',
+      routes: compiledRoutes.slice(subtreeStart, index),
+    })
+  }
+  return index
+}
+
 export function defineContract<
   const Routes extends ContractRoutes,
   const BasePath extends string = '',
-  const Errors extends RouteResponses = {},
->(options: ContractOptions<BasePath, Routes, Errors>): Contract<BasePath, Routes, Errors>
+  const Errors extends ErrorStatusMap = {},
+>(options: ContractOptions<BasePath, Routes, Errors>): Contract<BasePath, Routes, NormalizedErrorStatusMap<Errors>>
 
 export function defineContract(options: ContractOptions): Contract {
   if (!isRecord(options)) throw new TypeError('Contract options must be an object')
@@ -213,19 +339,35 @@ export function defineContract(options: ContractOptions): Contract {
     throw new TypeError('Contract routes must be an object')
   }
 
-  const routes = Object.freeze({ ...options.routes }) as ContractRoutes
+  const routes = mountContractRoutes(options.routes)
   const errors = copyErrors(options.errors)
 
   const compiledRoutes = compileContractRouteDefinitions(basePath, routes, errors)
-  const contract = Object.freeze({
+  let contract: Contract
+  const contractRouteInput = ((route: Route) => {
+    const mount = findContractMount(contract, route)
+    if (mount === null || mount === undefined || mount.kind !== 'route') {
+      throw new TypeError('Route input schema route must belong to its contract')
+    }
+    return routeInput(
+      route,
+      mount.routes[0]!.pathParameters.map(({ schema }) => schema)
+    )
+  }) as typeof routeInput
+  contract = Object.freeze({
     kind: 'contract',
     basePath,
     routes,
     errors,
-    routeInput,
+    routeInput: contractRouteInput,
     routeOutput,
-  })
+  }) as unknown as Contract
   const state = getContractState(contract)
+  const mounts = new Map<object, ContractMount>([
+    [contract, { key: Object.freeze([]), kind: 'contract', routes: compiledRoutes }],
+  ])
+  registerContractMounts(routes, compiledRoutes, mounts)
+  state.mounts = mounts
   state.routes = compiledRoutes
   return contract
 }

@@ -30,7 +30,6 @@ describe('response declaration', () => {
       raw: rawResponse,
       empty: emptyResponse,
     })
-    expect(Object.isFrozen(response)).toBe(true)
     expect(jsonResponse(schema)).toEqual(response.json(schema))
   })
 

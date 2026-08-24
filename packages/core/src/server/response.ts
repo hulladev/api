@@ -7,7 +7,7 @@ type ResponseBodyFields<ResponseDefinition extends AnyRouteResponse> = ResponseD
 }
   ? { readonly body?: never }
   : ResponseDefinition['body'] extends { readonly kind: 'raw' }
-    ? { readonly body: Response; readonly headers?: never }
+    ? { readonly body: unknown; readonly headers?: never }
     : ResponseDefinition['body'] extends {
           readonly kind: 'stream'
           readonly schema: infer Schema extends AnySchema
@@ -25,7 +25,7 @@ type ResponseHeaderFields<ResponseDefinition extends AnyRouteResponse> = Respons
   ? object
   : ResponseDefinition['headers'] extends ResponseHeaders
     ? { readonly headers: SchemaOutbound<ResponseDefinition['headers']> }
-    : { readonly headers?: HeadersInit }
+    : { readonly headers?: Readonly<Record<string, string>> }
 
 type ResponseBodyArguments<ResponseDefinition extends AnyRouteResponse> = ResponseDefinition['body'] extends {
   readonly kind: 'empty'
@@ -39,7 +39,7 @@ type ResponseHeaderArguments<ResponseDefinition extends AnyRouteResponse> = Resp
   ? readonly []
   : ResponseDefinition['headers'] extends ResponseHeaders
     ? readonly [headers: SchemaOutbound<ResponseDefinition['headers']>]
-    : readonly [headers?: HeadersInit]
+    : readonly [headers?: Readonly<Record<string, string>>]
 
 export type ServerResponseResultFor<Status extends number, ResponseDefinition extends AnyRouteResponse> = {
   readonly status: Status
@@ -70,7 +70,7 @@ export type ServerErrorResult<
   readonly [CurrentStatus in Status]: ServerResponseResultFor<CurrentStatus, Errors[CurrentStatus]>
 }[Status]
 
-export const createServerResponse = ((status: number, body?: unknown, headers?: HeadersInit) => ({
+export const createServerResponse = ((status: number, body?: unknown, headers?: Readonly<Record<string, string>>) => ({
   status,
   ...(body === undefined ? {} : { body }),
   ...(headers === undefined ? {} : { headers }),

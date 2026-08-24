@@ -1,4 +1,3 @@
-import type { Awaitable } from './context'
 import type { ExecutionStep } from './execution'
 
 export type MiddlewareInput<Context extends object, RequestType, Route> = {
@@ -22,6 +21,51 @@ export function assertMiddlewares(
   values: readonly unknown[]
 ): asserts values is readonly ((...args: never[]) => unknown)[] {
   for (const value of values) assertMiddleware(label, value)
+}
+
+export type MiddlewarePlan<Middleware, Route> = readonly [
+  all: readonly Middleware[],
+  global: readonly Middleware[],
+  routes?: ReadonlyMap<Route, readonly Middleware[]>,
+]
+
+export function createMiddlewarePlan<Middleware, Route>(): MiddlewarePlan<Middleware, Route> {
+  return [[], []]
+}
+
+export function appendMiddlewarePlan<Middleware, Route>(
+  label: string,
+  plan: MiddlewarePlan<Middleware, Route>,
+  values: readonly unknown[],
+  routesFor: (node: unknown) => readonly Route[]
+): MiddlewarePlan<Middleware, Route> {
+  if (values.length === 1) {
+    assertMiddleware(label, values[0])
+    const middleware = values[0] as Middleware
+    if (plan[2] === undefined)
+      return [
+        [...plan[0], middleware],
+        [...plan[1], middleware],
+      ]
+    const routes = new Map(plan[2])
+    for (const [route, middlewares] of routes) routes.set(route, [...middlewares, middleware])
+    return [[...plan[0], middleware], [...plan[1], middleware], routes]
+  }
+  if (values.length !== 2) assertMiddleware(label, undefined)
+  assertMiddleware(label, values[1])
+  const middleware = values[1] as Middleware
+  const routes = new Map(plan[2])
+  for (const route of routesFor(values[0])) {
+    routes.set(route, [...(routes.get(route) ?? plan[1]), middleware])
+  }
+  return [[...plan[0], middleware], plan[1], routes]
+}
+
+export function routeMiddlewares<Middleware, Route>(
+  plan: MiddlewarePlan<Middleware, Route>,
+  route: Route
+): readonly Middleware[] {
+  return plan[2]?.get(route) ?? plan[1]
 }
 
 export type MiddlewareDispatchErrors = {
@@ -53,15 +97,4 @@ export function dispatchMiddlewareSteps<Input extends object, Result>(
   }
 
   return dispatch(0)
-}
-
-/** Executes a middleware stack with a single-use next action at every layer. */
-export async function dispatchMiddlewares<Input extends object, Result>(
-  middlewares: readonly unknown[],
-  input: Input,
-  terminal: () => Awaitable<Result>,
-  errors: MiddlewareDispatchErrors
-): Promise<Result> {
-  const result = dispatchMiddlewareSteps(middlewares, input, async () => terminal(), errors)
-  return result
 }

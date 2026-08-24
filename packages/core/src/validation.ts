@@ -16,7 +16,10 @@ export type IdentitySchema<Value = unknown> = StandardSchemaV1<Value, Value>
 /** Prevents an all-optional options overload from accepting a Standard Schema object. */
 export type NonSchemaOptions = { readonly '~standard'?: never }
 
-export type ObjectSchema = StandardSchemaV1<Readonly<Record<string, unknown>>, Readonly<Record<string, unknown>>>
+export type ObjectSchema<
+  Input extends Readonly<Record<string, unknown>> = Readonly<Record<string, unknown>>,
+  Output extends Readonly<Record<string, unknown>> = Readonly<Record<string, unknown>>,
+> = StandardSchemaV1<Input, Output>
 
 declare const asyncSchemaType: unique symbol
 
@@ -35,6 +38,8 @@ export type SchemaExecutionPlan<Schema extends AnySchema = AnySchema> = {
 type HullaCodecProperties<Wire, Application> = {
   readonly version: 1
   readonly encode: StandardSchemaV1<Application, Wire>
+  /** The schema describing the codec's HTTP-side representation. */
+  readonly wire: StandardSchemaV1<Wire, Wire>
 }
 
 declare const codecSchemaType: unique symbol
@@ -123,6 +128,9 @@ export function codec<const WireSchema extends AnySchema, const ApplicationSchem
   type Application = SchemaOutput<ApplicationSchema>
   const wire = wireSchema as StandardSchemaV1<Wire, Wire>
   const application = applicationSchema as StandardSchemaV1<Application, Application>
+  const wireStandard = wire['~standard'] as StandardSchemaV1<Wire, Wire>['~standard'] & {
+    readonly jsonSchema?: unknown
+  }
   const encode: StandardSchemaV1<Application, Wire> = {
     '~standard': {
       version: 1 as const,
@@ -136,8 +144,9 @@ export function codec<const WireSchema extends AnySchema, const ApplicationSchem
       version: 1 as const,
       vendor: '@hulla/api',
       validate: codecValidation(wire, application, options.decode),
+      ...(wireStandard.jsonSchema === undefined ? {} : { jsonSchema: wireStandard.jsonSchema }),
     },
-    '~hulla': { version: 1 as const, encode },
+    '~hulla': { version: 1 as const, encode, wire },
   } as CodecSchema<Wire, Application>
 }
 
@@ -290,4 +299,4 @@ export function encodeSchema<Wire, Application>(
   }
 }
 
-export const validation = /* @__PURE__ */ Object.freeze({ async: asyncSchema })
+export const validation = { async: asyncSchema } as const

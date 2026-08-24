@@ -1,18 +1,9 @@
 import { annotateAPIErrorIssues, type APIError, type APIErrorIssue, type QueryTransportErrorCode } from './errors'
 import { type ExecutionStep, mapExecutionStep } from './execution'
 import { hasOwn, isPlainRecord, setOwn } from './object'
-import { isRequestQueryDefinition, type AnyRequestQuery, type RequestQueryDefinition } from './request'
-import {
-  compileSchemaExecution,
-  isSchema,
-  type ObjectSchema,
-  type SchemaOutbound,
-  type SchemaOutput,
-} from './validation'
+import { compileSchemaExecution, type ObjectSchema, type SchemaOutbound, type SchemaOutput } from './validation'
 
 export type { QueryTransportErrorCode } from './errors'
-
-export type NormalizedRequestQuery<Schema extends ObjectSchema = ObjectSchema> = RequestQueryDefinition<Schema>
 
 export type QueryTransportIssue = APIErrorIssue & {
   readonly location: 'query'
@@ -37,21 +28,13 @@ export class QueryTransportError extends TypeError implements APIError<QueryTran
   }
 }
 
-export function normalizeRequestQuery<const Schema extends ObjectSchema>(
-  declaration: Schema | RequestQueryDefinition<Schema>
-): NormalizedRequestQuery<Schema> {
-  const schema = isRequestQueryDefinition(declaration) ? declaration.schema : declaration
-  if (!isSchema(schema)) throw new TypeError('Request query must be declared with an object Standard Schema')
-  return Object.freeze({ kind: 'request-query', schema })
-}
+export type QueryEncoder<Query extends ObjectSchema> = (value: SchemaOutbound<Query>) => ExecutionStep<QueryWireObject>
 
-export type QueryEncoder<Query extends AnyRequestQuery> = (
-  value: SchemaOutbound<Query['schema']>
-) => ExecutionStep<URLSearchParams>
+type QueryWireValue = string | readonly string[] | undefined
+export type QueryWireObject = Readonly<Record<string, QueryWireValue>>
+export type QuerySource = URLSearchParams | Readonly<Record<string, unknown>>
 
-export type QueryDecoder<Query extends AnyRequestQuery> = (
-  parameters: URLSearchParams
-) => ExecutionStep<SchemaOutput<Query['schema']>>
+export type QueryDecoder<Query extends ObjectSchema> = (parameters: QuerySource) => ExecutionStep<SchemaOutput<Query>>
 
 function scalarText(value: unknown, key: string): string {
   if (typeof value === 'string') return value
@@ -62,25 +45,33 @@ function scalarText(value: unknown, key: string): string {
   )
 }
 
-function encodedQuery(value: unknown): URLSearchParams {
+function encodedQuery(value: unknown): QueryWireObject {
   if (!isPlainRecord(value)) throw new QueryTransportError('invalid-query-value', 'Encoded query must be an object')
 
-  const parameters = new URLSearchParams()
+  const parameters: Record<string, string | readonly string[] | undefined> = {}
   for (const [key, field] of Object.entries(value)) {
-    if (field === undefined) continue
+    if (field === undefined) {
+      setOwn(parameters, key, undefined)
+      continue
+    }
     if (!Array.isArray(field)) {
-      parameters.append(key, scalarText(field, key))
+      setOwn(parameters, key, scalarText(field, key))
       continue
     }
     if (field.length === 0) {
       throw new QueryTransportError('empty-query-array', `Query field "${key}" cannot encode an empty array`, key)
     }
-    for (const item of field) parameters.append(key, scalarText(item, key))
+    setOwn(
+      parameters,
+      key,
+      field.map((item) => scalarText(item, key))
+    )
   }
   return parameters
 }
 
-function queryInput(parameters: URLSearchParams): Readonly<Record<string, string | string[]>> {
+function queryInput(parameters: QuerySource): Readonly<Record<string, unknown>> {
+  if (!(parameters instanceof URLSearchParams)) return parameters
   const input: Record<string, string | string[]> = {}
   for (const [key, value] of parameters) {
     const existing = input[key]
@@ -91,28 +82,14 @@ function queryInput(parameters: URLSearchParams): Readonly<Record<string, string
   return input
 }
 
-export function compileQueryEncoder<const Query extends AnyRequestQuery>(query: Query): QueryEncoder<Query> {
-  const encode = compileSchemaExecution(query.schema, { location: 'query' }).encode
+export function compileQueryEncoder<const Query extends ObjectSchema>(query: Query): QueryEncoder<Query> {
+  const encode = compileSchemaExecution(query, { location: 'query' }).encode
   return encode === undefined
     ? (encodedQuery as QueryEncoder<Query>)
     : (value) => mapExecutionStep(encode(value), encodedQuery)
 }
 
-export function compileQueryDecoder<const Query extends AnyRequestQuery>(query: Query): QueryDecoder<Query> {
-  const decode = compileSchemaExecution(query.schema, { location: 'query' }).decode
+export function compileQueryDecoder<const Query extends ObjectSchema>(query: Query): QueryDecoder<Query> {
+  const decode = compileSchemaExecution(query, { location: 'query' }).decode
   return (parameters) => decode(queryInput(parameters))
-}
-
-export async function encodeQuery<const Query extends AnyRequestQuery>(
-  query: Query,
-  value: SchemaOutbound<Query['schema']>
-): Promise<URLSearchParams> {
-  return compileQueryEncoder(query)(value)
-}
-
-export async function decodeQuery<const Query extends AnyRequestQuery>(
-  query: Query,
-  parameters: URLSearchParams
-): Promise<SchemaOutput<Query['schema']>> {
-  return compileQueryDecoder(query)(parameters)
 }

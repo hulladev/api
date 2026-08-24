@@ -5,8 +5,33 @@ export type {
   CompiledContractRouteFor,
   CompiledPathParameters,
 } from './compiler'
-export { defineContract } from './contract'
-export type { Contract, ContractOptions, ContractRoute, ContractRoutes } from './contract'
+export { contractNodeKey, defineContract } from './contract'
+export type {
+  Contract,
+  ContractNodeFor,
+  ContractNodeKey,
+  ContractOptions,
+  ContractRoute,
+  ContractRoutes,
+  MountedContractRoutes,
+} from './contract'
+export { DeclaredError, defineErrors, isDeclaredError, isErrorDeclaration } from './declared-errors'
+export type {
+  AnyErrorDeclaration,
+  ClientErrorMode,
+  ClientErrorResponseResult,
+  DeclaredErrorOptions,
+  DeclaredErrorOptionsWithoutData,
+  DefinedErrors,
+  ErrorDeclaration,
+  ErrorDefinition,
+  ErrorDefinitions,
+  ErrorFactories,
+  ErrorInstance,
+  ErrorStatusMap,
+  ErrorWire,
+  NormalizedErrorStatusMap,
+} from './declared-errors'
 export { annotateAPIErrorIssues, isAPIError, toAPIProblem } from './errors'
 export type {
   APIError,
@@ -24,8 +49,6 @@ export type {
   ServerRuntimeErrorCode,
 } from './errors'
 export type { HttpMethod } from './http'
-export { definePlugin } from './plugin'
-export type { APIPlugin } from './plugin'
 export { QueryTransportError } from './query'
 export { codec, validation } from './validation'
 export type { AsyncSchema, CodecOptions, CodecSchema, IdentitySchema, ObjectSchema, SchemaOutbound } from './validation'

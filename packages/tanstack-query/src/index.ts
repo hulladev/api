@@ -1,2 +1,2 @@
-export { tanstackQueryPlugin } from './query'
-export type { TanStackQueryFunctionContext } from './query'
+export { createTanStackQuery } from './query'
+export type { TanStackQueryClient, TanStackQueryFunctionContext, TanStackQueryRoute } from './query'

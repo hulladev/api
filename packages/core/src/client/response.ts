@@ -1,9 +1,12 @@
+import { DeclaredError, type ClientErrorMode } from '../declared-errors'
 import { annotateAPIErrorIssues, type APIError, type APIErrorIssue, type ClientResponseErrorCode } from '../errors'
+import { isRecord } from '../object'
 import { mimeEssence } from '../request'
 import type { AnyRouteResponse, ResponseBodyValue, ResponseHeaders, RouteResponses } from '../response'
-import type { CanonicalResponsePlan } from '../route-plan'
+import type { CanonicalErrorDeclarationPlan, CanonicalResponsePlan } from '../route-plan'
 import type { StreamFormat } from '../stream'
 import type { SchemaOutput } from '../validation'
+import type { ClientTransportResponse } from './request'
 
 export type { ClientResponseErrorCode } from '../errors'
 
@@ -16,7 +19,7 @@ type ClientResponseBodyFields<ResponseDefinition extends AnyRouteResponse> = Res
 type ClientResponseHeaderFields<ResponseDefinition extends AnyRouteResponse> =
   ResponseDefinition['headers'] extends ResponseHeaders
     ? { readonly headers: SchemaOutput<ResponseDefinition['headers']> }
-    : { readonly headers: Headers }
+    : { readonly headers: Readonly<Record<string, string>> }
 
 type ClientResponseBodyArguments<ResponseDefinition extends AnyRouteResponse> = ResponseDefinition['body'] extends {
   readonly kind: 'empty'
@@ -27,7 +30,7 @@ type ClientResponseBodyArguments<ResponseDefinition extends AnyRouteResponse> = 
 type ClientResponseHeaderArguments<ResponseDefinition extends AnyRouteResponse> =
   ResponseDefinition['headers'] extends ResponseHeaders
     ? readonly [headers: SchemaOutput<ResponseDefinition['headers']>]
-    : readonly [headers?: Headers]
+    : readonly [headers?: Readonly<Record<string, string>>]
 
 export type ClientResponseResultFor<Status extends number, ResponseDefinition extends AnyRouteResponse> = {
   readonly status: Status
@@ -46,9 +49,9 @@ export type ClientResponseFactory<Responses extends RouteResponses> = <Status ex
   ]
 ) => ClientResponseResultFor<Status, Responses[Status]>
 
-export const createClientResponse = ((status: number, body?: unknown, headers?: Headers) => ({
+export const createClientResponse = ((status: number, body?: unknown, headers?: Readonly<Record<string, string>>) => ({
   status,
-  headers: headers ?? (body instanceof Response ? body.headers : new Headers()),
+  headers: headers ?? {},
   ...(body === undefined ? {} : { body }),
 })) as ClientResponseFactory<RouteResponses>
 
@@ -60,9 +63,14 @@ export type ClientResponseIssue = APIErrorIssue & {
 export class ClientResponseError extends Error implements APIError<ClientResponseErrorCode, ClientResponseIssue> {
   readonly code: ClientResponseErrorCode
   readonly issues: readonly ClientResponseIssue[]
-  readonly response: Response
+  readonly response: ClientTransportResponse
 
-  constructor(code: ClientResponseErrorCode, response: Response, message: string, options?: ErrorOptions) {
+  constructor(
+    code: ClientResponseErrorCode,
+    response: ClientTransportResponse,
+    message: string,
+    options?: ErrorOptions
+  ) {
     super(message, options)
     this.name = 'ClientResponseError'
     this.code = code
@@ -79,32 +87,11 @@ type DecodableStreamPlan = {
   readonly format: StreamFormat<unknown>
 }
 
-export type ClientResponseDecoder = (response: Response) => Promise<unknown>
+export type ClientResponseDecoder = (response: ClientTransportResponse) => Promise<unknown>
 
-function responseBytes(response: Response): AsyncIterable<Uint8Array> {
-  async function* read(): AsyncIterable<Uint8Array> {
-    if (response.body === null) {
-      throw new ClientResponseError('missing-body', response, `Response ${response.status} has no stream body`)
-    }
-
-    const reader = response.body.getReader()
-    try {
-      while (true) {
-        const result = await reader.read()
-        if (result.done) return
-        yield result.value
-      }
-    } finally {
-      reader.releaseLock()
-    }
-  }
-
-  return read()
-}
-
-function decodedStream(response: Response, plan: DecodableStreamPlan): AsyncIterable<unknown> {
+function decodedStream(source: AsyncIterable<Uint8Array>, plan: DecodableStreamPlan): AsyncIterable<unknown> {
   async function* decode(): AsyncIterable<unknown> {
-    for await (const value of plan.format.decode(responseBytes(response))) {
+    for await (const value of plan.format.decode(source)) {
       yield await plan.decode(value)
     }
   }
@@ -112,9 +99,9 @@ function decodedStream(response: Response, plan: DecodableStreamPlan): AsyncIter
   return decode()
 }
 
-function assertContentType(response: Response, expected: string | undefined): void {
+function assertContentType(response: ClientTransportResponse, expected: string | undefined): void {
   if (expected === undefined) return
-  const header = response.headers.get('content-type') ?? ''
+  const header = response.headers['content-type'] ?? ''
   if (header === expected || header.startsWith(`${expected};`)) return
 
   const received = mimeEssence(header)
@@ -127,35 +114,64 @@ function assertContentType(response: Response, expected: string | undefined): vo
   }
 }
 
-function compileBodyDecoder(plan: CanonicalResponsePlan): (response: Response) => Promise<unknown> {
+export function compileClientErrorResponse(
+  status: number,
+  declarations: readonly CanonicalErrorDeclarationPlan[],
+  mode: ClientErrorMode
+): ClientResponseDecoder {
+  const byCode = new Map(declarations.map((plan) => [plan.declaration.code, plan]))
+  return async (response) => {
+    assertContentType(response, 'application/json')
+    const value = await response.readBody('json')
+    const body = isRecord(value) ? value : undefined
+    const code = body?.['code']
+    const message = body?.['message']
+    const plan = typeof code === 'string' ? byCode.get(code) : undefined
+    if (plan === undefined || typeof message !== 'string') {
+      throw new ClientResponseError('invalid-error-response', response, `Invalid declared error response ${status}`)
+    }
+    const data = plan.data === undefined ? undefined : await plan.data.decode(body!['data'])
+    if (mode === 'throw') throw new DeclaredError(plan.declaration, data, message)
+    return {
+      status,
+      headers: response.headers,
+      body: { code, message, ...(plan.data === undefined ? {} : { data }) },
+    }
+  }
+}
+
+function compileBodyDecoder(plan: CanonicalResponsePlan): (response: ClientTransportResponse) => Promise<unknown> {
   const definition = plan.definition
   const body = definition.body
   switch (body.kind) {
     case 'empty':
       return async () => undefined
     case 'raw':
-      return async (response) => response
+      return async (response) => response.native ?? response.readBody('raw')
     case 'json': {
       const decode = plan.body!.decode
-      return async (response) => decode(await response.json())
+      return async (response) => decode(await response.readBody('json'))
     }
     case 'text': {
       const decode = plan.body!.decode
-      return async (response) => decode(await response.text())
+      return async (response) => decode(await response.readBody('text'))
     }
     case 'bytes': {
       const decode = plan.body!.decode
-      return async (response) => decode(new Uint8Array(await response.arrayBuffer()))
+      return async (response) => decode(await response.readBody('bytes'))
     }
     case 'form-data': {
       const decode = plan.body!.decode
-      return async (response) => decode(await response.formData())
+      return async (response) => decode(await response.readBody('form-data'))
     }
     case 'stream': {
-      if (!('schema' in body)) return async (response) => responseBytes(response)
+      if (!('schema' in body)) {
+        return async (response) => response.readBody('stream') as Promise<AsyncIterable<Uint8Array>>
+      }
       const decode = plan.body!.decode
       const streamPlan = { decode, format: body.format as unknown as StreamFormat<unknown> }
-      return async (response) => decodedStream(response, streamPlan)
+      return async (response) =>
+        decodedStream((await response.readBody('stream')) as AsyncIterable<Uint8Array>, streamPlan)
     }
   }
 }
@@ -176,7 +192,7 @@ export function compileClientResponse(plan: CanonicalResponsePlan): ClientRespon
     const [headers, body] =
       decodeHeaders === undefined
         ? [response.headers, await decodeBody(response)]
-        : await Promise.all([decodeHeaders(Object.fromEntries(response.headers.entries())), decodeBody(response)])
+        : await Promise.all([decodeHeaders(response.headers), decodeBody(response)])
 
     return empty ? { status: response.status, headers } : { status: response.status, headers, body }
   }

@@ -8,7 +8,7 @@ export type JsonValue =
   | readonly JsonValue[]
   | { readonly [key: string]: JsonValue | undefined }
 
-export function isJsonValue(value: unknown, ancestors = new Set<object>()): value is JsonValue {
+function isJsonValue(value: unknown, ancestors = new Set<object>()): value is JsonValue {
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return true
   if (typeof value === 'number') return Number.isFinite(value)
   if (typeof value !== 'object') return false
@@ -28,6 +28,7 @@ export function isJsonValue(value: unknown, ancestors = new Set<object>()): valu
 function identitySchema<const Value>(definition: {
   readonly name: string
   readonly check: (value: unknown) => value is Value
+  readonly jsonSchema?: Readonly<Record<string, unknown>>
 }): StandardSchemaV1<Value> {
   return Object.freeze({
     '~standard': Object.freeze({
@@ -35,6 +36,14 @@ function identitySchema<const Value>(definition: {
       vendor: 'hulla',
       validate: (value: unknown): StandardSchemaV1.Result<Value> =>
         definition.check(value) ? { value } : { issues: [{ message: `Expected ${definition.name}` }] },
+      ...(definition.jsonSchema === undefined
+        ? {}
+        : {
+            jsonSchema: {
+              input: () => definition.jsonSchema!,
+              output: () => definition.jsonSchema!,
+            },
+          }),
     }),
   })
 }
@@ -42,11 +51,13 @@ function identitySchema<const Value>(definition: {
 export const jsonValueSchema = /* @__PURE__ */ identitySchema({
   name: 'a JSON value',
   check: isJsonValue,
+  jsonSchema: {},
 })
 
 export const stringSchema = /* @__PURE__ */ identitySchema({
   name: 'a string',
   check: (value: unknown): value is string => typeof value === 'string',
+  jsonSchema: { type: 'string' },
 })
 
 export const bytesSchema = /* @__PURE__ */ identitySchema({

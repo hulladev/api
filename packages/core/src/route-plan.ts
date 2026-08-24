@@ -3,24 +3,19 @@ import type { RouteMetadata } from './context'
 import type { Contract } from './contract'
 import { compileContractRoutes } from './contract-compiler'
 import { getContractState } from './contract-state'
+import { errorFactories, type AnyErrorDeclaration } from './declared-errors'
 import {
   compilePathParameterDecoder,
   compilePathParameterEncoder,
   type PathParameterDecoder,
   type PathParameterEncoder,
 } from './parameters'
-import {
-  compileQueryDecoder,
-  compileQueryEncoder,
-  normalizeRequestQuery,
-  type QueryDecoder,
-  type QueryEncoder,
-} from './query'
-import { mimeEssence, type AnyRequestBody, type AnyRequestQuery } from './request'
+import { compileQueryDecoder, compileQueryEncoder, type QueryDecoder, type QueryEncoder } from './query'
+import { mimeEssence, type AnyRequestBody } from './request'
 import type { AnyRouteResponse } from './response'
-import { compileSchemaExecution, type AnySchema, type SchemaStep } from './validation'
+import { compileSchemaExecution, type AnySchema, type ObjectSchema, type SchemaStep } from './validation'
 
-type RuntimeQuery = AnyRequestQuery
+type RuntimeQuery = ObjectSchema
 type RuntimeSchemaExecutionPlan = {
   readonly decode: (value: unknown) => SchemaStep<unknown>
   readonly encode?: (value: unknown) => SchemaStep<unknown>
@@ -41,6 +36,13 @@ export type CanonicalResponsePlan = {
 
 export type CanonicalResponseEntry = readonly [status: number, response: CanonicalResponsePlan]
 
+export type CanonicalErrorDeclarationPlan = {
+  readonly declaration: AnyErrorDeclaration
+  readonly data?: RuntimeSchemaExecutionPlan
+}
+
+type CanonicalErrorEntry = readonly [status: number, errors: readonly CanonicalErrorDeclarationPlan[]]
+
 export type CanonicalRoutePlan = {
   readonly compiled: CompiledContractRoute
   readonly metadata: RouteMetadata
@@ -57,10 +59,12 @@ export type CanonicalRoutePlan = {
 
 export type CanonicalContractPlan = {
   readonly routes: readonly CanonicalRoutePlan[]
-  readonly errors: readonly CanonicalResponseEntry[]
+  readonly errors: readonly CanonicalErrorEntry[]
+  readonly errorFactories: Readonly<Record<string, AnyErrorDeclaration>>
 }
 
 const responsePlans = new WeakMap<object, CanonicalResponsePlan>()
+const routePlans = new WeakMap<object, CanonicalRoutePlan>()
 const emptyPattern: readonly string[] = []
 
 function pathSegments(path: string): readonly string[] {
@@ -94,13 +98,32 @@ function compileResponses(responses: Readonly<Record<number, AnyRouteResponse>>)
   return Object.entries(responses).map(([status, definition]) => [Number(status), compileResponsePlan(definition)])
 }
 
+function compileContractErrors(contract: Contract): readonly CanonicalErrorEntry[] {
+  const state = getContractState(contract)
+  if (state.canonicalErrors !== undefined) return state.canonicalErrors as readonly CanonicalErrorEntry[]
+  const errors = Object.entries(contract.errors).map(
+    ([status, declarations]) =>
+      [
+        Number(status),
+        declarations.map((declaration) => ({
+          declaration,
+          ...(declaration.data === undefined ? {} : { data: compileRuntimeSchema(declaration.data, 'response') }),
+        })),
+      ] as const
+  )
+  state.canonicalErrors = errors
+  return errors
+}
+
 function compileRoutePlan(compiled: CompiledContractRoute): CanonicalRoutePlan {
+  const cached = routePlans.get(compiled)
+  if (cached !== undefined) return cached
   const route = compiled.route
-  const query = 'query' in route ? (normalizeRequestQuery(route.query as AnyRequestQuery) as RuntimeQuery) : undefined
+  const query = 'query' in route ? (route.query as RuntimeQuery) : undefined
   const body = 'body' in route ? route.body : undefined
   const hasPathParameters = compiled.pathParameters.length > 0
 
-  return {
+  const plan: CanonicalRoutePlan = {
     compiled,
     metadata: { key: compiled.key, method: compiled.method, path: compiled.path },
     pattern: pathSegments(compiled.path),
@@ -129,17 +152,25 @@ function compileRoutePlan(compiled: CompiledContractRoute): CanonicalRoutePlan {
         }),
     responses: compileResponses(route.responses),
   }
+  routePlans.set(compiled, plan)
+  return plan
 }
 
 /** @internal Compiles route-invariant client/server execution data once per contract. */
-export function compileCanonicalContract(contract: Contract): CanonicalContractPlan {
-  const routes = compileContractRoutes(contract)
+export function compileCanonicalContract(
+  contract: Contract,
+  selectedRoutes?: readonly CompiledContractRoute[]
+): CanonicalContractPlan {
+  const complete = selectedRoutes === undefined
   const state = getContractState(contract)
-  if (state.canonical !== undefined) return state.canonical as CanonicalContractPlan
+  if (complete && state.canonical !== undefined) return state.canonical as CanonicalContractPlan
+  const plannedRoutes = selectedRoutes ?? compileContractRoutes(contract)
+  const errors = compileContractErrors(contract)
   const plan = {
-    routes: routes.map(compileRoutePlan),
-    errors: compileResponses(contract.errors),
+    routes: plannedRoutes.map(compileRoutePlan),
+    errors,
+    errorFactories: errors.length === 0 ? {} : errorFactories(contract.errors),
   }
-  state.canonical = plan
+  if (complete) state.canonical = plan
   return plan
 }

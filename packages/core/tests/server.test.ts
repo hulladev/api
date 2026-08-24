@@ -1,6 +1,7 @@
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
 import { defineContract, type Contract } from '../src/contract'
+import { defineErrors } from '../src/declared-errors'
 import { response } from '../src/response'
 import { route } from '../src/route'
 import { router } from '../src/router'
@@ -9,11 +10,11 @@ import {
   type ServerContextFactory,
   type ServerHandlersOf,
   type ServerImplementation,
+  type ServerImplementationFragment,
   type ServerMiddleware,
   type ServerResponseResult,
   type ServerRouteMetadata,
 } from '../src/server'
-import { createServerResponse } from '../src/server/response'
 
 const dateTime = z.codec(z.iso.datetime(), z.date(), {
   decode: (value) => new Date(value),
@@ -22,10 +23,11 @@ const dateTime = z.codec(z.iso.datetime(), z.date(), {
 
 const user = z.object({ id: z.string(), organizationId: z.string(), createdAt: dateTime })
 const apiError = response.json(z.object({ code: z.enum(['CONFLICT', 'UNAUTHORIZED']), message: z.string().optional() }))
+const sharedErrors = defineErrors({ UNAUTHORIZED: { message: 'Authentication required' } })
 
 const contract = defineContract({
   basePath: '/api',
-  errors: { 401: apiError },
+  errors: { 401: sharedErrors.UNAUTHORIZED },
   routes: {
     health: route.get('/health', { responses: { 200: response.text(z.literal('ok')) } }),
     organizations: router('/organizations/:organizationId', {
@@ -97,14 +99,12 @@ describe('defineServer', () => {
 
   test('infers context, input, metadata, and exact direct responses from one complete tree', () => {
     const server = defineServer(contract, {
-      context: ({ request, route: metadata }) => ({
-        requestId: request.headers.get('x-request-id') ?? metadata.key.join('.'),
-      }),
+      context: ({ route: metadata }) => ({ requestId: metadata.key.join('.') }),
     })
-    const implementation = server.build({
+    const implementation = server.implement({
       health(input) {
         expectTypeOf(input.context.requestId).toEqualTypeOf<string>()
-        expectTypeOf(input.request.signal).toEqualTypeOf<AbortSignal>()
+        expectTypeOf(input).not.toHaveProperty('request')
         expectTypeOf(input.route.path).toEqualTypeOf<'/api/health'>()
         return { status: 200, body: 'ok' }
       },
@@ -147,9 +147,74 @@ describe('defineServer', () => {
     type AppHandlers = ServerHandlersOf<typeof server>
     const health = { health: () => ({ status: 200, body: 'ok' }) } satisfies Pick<AppHandlers, 'health'>
     const organizations = { organizations: handlers().organizations } satisfies Pick<AppHandlers, 'organizations'>
-    const implementation = server.build({ ...health, ...organizations })
+    const implementation = server.implement({ ...health, ...organizations })
 
     expect(implementation.handlers.health).toBe(health.health)
+  })
+
+  test('creates typed implementation fragments and composes complete servers from them', () => {
+    const server = defineServer(contract, { context: () => ({ requestId: 'request-1' }) })
+    const health = server.implement(contract.routes.health, function health(input) {
+      expectTypeOf(input.context.requestId).toEqualTypeOf<string>()
+      expectTypeOf(input.route.key).toEqualTypeOf<readonly ['health']>()
+      return { status: 200, body: 'ok' }
+    })
+    const organizations = server.implement(contract.routes.organizations, handlers().organizations)
+    const implementation = server.implement(health, organizations)
+
+    expectTypeOf(health).toExtend<
+      ServerImplementationFragment<typeof contract, { requestId: string }, readonly ['health']>
+    >()
+    expect(implementation.handlers.health).toBe(health.handlers)
+    expect(implementation.handlers.organizations.createUser).toBe(organizations.handlers.createUser)
+
+    const invalidFragments = () => {
+      // @ts-expect-error Fragment composition must cover every contract handler.
+      server.implement(health)
+      // @ts-expect-error Router implementation fragments must cover their selected node.
+      server.implement(contract.routes.organizations, { listUsers: handlers().organizations.listUsers })
+      // @ts-expect-error Contract nodes must come from the server contract.
+      server.implement(route.get('/unknown', { responses: { 200: response.text() } }), handlers().health)
+    }
+    expectTypeOf(invalidFragments).toBeFunction()
+  })
+
+  test('rejects duplicate and foreign implementation fragments', () => {
+    const server = defineServer(contract)
+    const health = server.implement(contract.routes.health, handlers().health)
+    const organizations = server.implement(contract.routes.organizations, handlers().organizations)
+    const foreign = defineServer(contract).implement(contract.routes.health, handlers().health)
+
+    expect(() => server.implement(health, health, organizations)).toThrowError(
+      expect.objectContaining({ code: 'duplicate-handler', handlerKeys: ['health'] })
+    )
+    expect(() => server.implement(foreign, organizations)).toThrowError(
+      expect.objectContaining({ code: 'foreign-implementation' })
+    )
+  })
+
+  test('rejects mounting one declaration more than once', () => {
+    const byId = route.get('/:id', {
+      params: z.object({ id: z.string() }),
+      responses: { 200: response.text() },
+    })
+    expect(() =>
+      defineContract({
+        routes: {
+          users: router('/users', { routes: { byId } }),
+          admins: router('/admins', { routes: { byId } }),
+        },
+      })
+    ).toThrowError('Contract declaration "routes.admins.byId" is mounted more than once')
+  })
+
+  test('allows one declaration to be shared by independent contracts', () => {
+    const shared = route.get('/shared', { responses: { 200: response.text() } })
+    const first = defineContract({ routes: { first: shared } })
+    const second = defineContract({ routes: { second: shared } })
+
+    expect(first.routes.first).toBe(shared)
+    expect(second.routes.second).toBe(shared)
   })
 
   test('rejects invalid handler results at compile time', () => {
@@ -159,27 +224,27 @@ describe('defineServer', () => {
 
     const invalidHandlers = () => {
       // @ts-expect-error A complete handler tree is required.
-      server.build({ health: valid.health })
-      server.build({
+      server.implement({ health: valid.health })
+      server.implement({
         ...valid,
         // @ts-expect-error Handler results cannot contain undeclared envelope fields.
         health: () => extra,
       })
-      server.build({
+      // @ts-expect-error The response body must match its selected status.
+      server.implement({
         ...valid,
-        // @ts-expect-error The response body must match its selected status.
         health: () => ({ status: 200, body: 'unhealthy' }),
       })
-      server.build({
+      // @ts-expect-error The status must be declared by the route.
+      server.implement({
         ...valid,
-        // @ts-expect-error The status must be declared by the route.
         health: () => ({ status: 201, body: 'ok' }),
       })
-      server.build({
+      // @ts-expect-error The handler must cover both declared statuses.
+      server.implement({
         ...valid,
         organizations: {
           ...valid.organizations,
-          // @ts-expect-error The handler must cover both declared statuses.
           createUser: () => ({
             status: 201,
             body: { id: 'user-1', organizationId: 'organization-1', createdAt: new Date() },
@@ -193,17 +258,28 @@ describe('defineServer', () => {
   })
 
   test('checks complete, unknown, and invalid handler entries at the JavaScript boundary', () => {
-    const build = defineServer(contract).build as unknown as (handlers: unknown) => unknown
+    const server = defineServer(contract)
+    const implement = server.implement as unknown as (...values: readonly unknown[]) => unknown
 
-    expect(() => build({ health: handlers().health })).toThrowError(
+    expect(() => implement({ health: handlers().health })).toThrowError(
       expect.objectContaining({ code: 'missing-handler' })
     )
-    expect(() => build({ ...handlers(), unknown: () => undefined })).toThrowError(
+    expect(() => implement({ ...handlers(), unknown: () => undefined })).toThrowError(
       expect.objectContaining({ code: 'unknown-handler', handlerKeys: ['unknown'] })
     )
-    expect(() => build({ ...handlers(), health: 'invalid' })).toThrowError(
+    expect(() => implement({ ...handlers(), health: 'invalid' })).toThrowError(
       expect.objectContaining({ code: 'invalid-handler', handlerKeys: ['health'] })
     )
+    expect(() =>
+      implement(route.get('/foreign', { responses: { 200: response.text() } }), handlers().health)
+    ).toThrowError(expect.objectContaining({ code: 'foreign-contract-node' }))
+  })
+
+  test('rejects invalid definition options at the JavaScript boundary', () => {
+    const define = defineServer as unknown as (contract: unknown, options: unknown) => unknown
+
+    expect(() => define(contract, null)).toThrowError('Server options must be an object')
+    expect(() => define(contract, { context: 'invalid' })).toThrowError('Server context must be a function')
   })
 
   test('types direct middleware errors and preserves a flat contract-scoped stack', async () => {
@@ -213,11 +289,11 @@ describe('defineServer', () => {
       expectTypeOf(metadata.path).toExtend<string>()
       return next()
     })
-    const authenticate = base.middleware(async ({ next, response }) =>
-      Math.random() > 0.5 ? next() : response(401, { code: 'UNAUTHORIZED' })
+    const authenticate = base.middleware(async ({ errors, next }) =>
+      Math.random() > 0.5 ? next() : errors.UNAUTHORIZED()
     )
-    const server = base.use(timing, authenticate)
-    const implementation = server.build(handlers())
+    const server = base.use(timing).use(authenticate)
+    const implementation = server.implement(handlers())
 
     expectTypeOf(implementation.middlewares).toEqualTypeOf<
       readonly ServerMiddleware<{ requestId: string }, typeof contract>[]
@@ -227,8 +303,7 @@ describe('defineServer', () => {
       implementation.middlewares[0]?.({
         context: { requestId: 'request-1' },
         next: async () => 'adapter-result',
-        request: new Request('https://example.test'),
-        response: createServerResponse,
+        errors: sharedErrors,
         route: { key: ['health'], method: 'GET', path: '/api/health' },
       })
     ).resolves.toBe('adapter-result')
@@ -241,7 +316,7 @@ describe('defineServer', () => {
       return server
     }
 
-    const implementation = defineServer(contract).build(handlers())
+    const implementation = defineServer(contract).implement(handlers())
     expect(defineTestAdapter(implementation)).toBe(implementation)
   })
 
@@ -270,7 +345,7 @@ describe('defineServer', () => {
         }),
       },
     })
-    const implementation = defineServer(keyedContract).build({
+    const implementation = defineServer(keyedContract).implement({
       ['__proto__']: () => ({ status: 200, body: 'ok' }),
       'group.member': () => ({ status: 200, body: 'flat' }),
       group: { member: () => ({ status: 200, body: 'nested' }) },

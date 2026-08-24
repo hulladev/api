@@ -20,9 +20,3 @@ export function setOwn(target: Record<string, unknown>, key: string, value: unkn
     writable: true,
   })
 }
-
-export function copyRecord(source: Readonly<Record<string, unknown>>): Record<string, unknown> {
-  const target: Record<string, unknown> = {}
-  for (const [key, value] of Object.entries(source)) setOwn(target, key, value)
-  return target
-}
