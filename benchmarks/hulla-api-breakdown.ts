@@ -1,11 +1,12 @@
 import { codec, defineContract, response, route } from '@hulla/api'
+import { createAdapterHandler } from '@hulla/api/adapters'
 import { defineClient } from '@hulla/api/client'
-import { createFetchHandler, defineServer } from '@hulla/api/server'
+import { createFetchHandler, fetchTransport, withFetchContext } from '@hulla/api/fetch'
+import { defineServer } from '@hulla/api/server'
 import { ndjson } from '@hulla/api/stream'
-import { createWireHandler } from '@hulla/api/wire'
 import { z } from 'zod'
+import { encodeValue } from './fixtures/scenario'
 import type { Benchmark } from './harness'
-import { encodeValue } from './scenario'
 
 const parameterSchema = z.object({ id: z.string() })
 const querySchema = z.object({ limit: z.string().regex(/^\d+$/) })
@@ -25,7 +26,7 @@ const transportContract = defineContract({
 })
 const transportServer = defineServer(transportContract)
 const transportHandler = createFetchHandler(
-  transportServer.build({
+  transportServer.implement({
     item: (input) => ({
       status: 200,
       body: { id: input.params.id, limit: input.query.limit, token: input.headers['x-token'] },
@@ -33,9 +34,8 @@ const transportHandler = createFetchHandler(
   })
 )
 const transportClient = defineClient(transportContract, {
-  baseUrl: 'https://bench.local',
-  fetch: transportHandler,
-}).build()
+  transport: fetchTransport({ baseUrl: 'https://bench.local', fetch: transportHandler }),
+}).create()
 
 async function directTransport(): Promise<void> {
   const params = parameterSchema.parse({ id: transportValue.id })
@@ -63,7 +63,7 @@ const middlewareContract = defineContract({
   routes: { protected: route.get('/protected', { responses: { 200: response.text(middlewareOutput) } }) },
 })
 const middlewareServerBase = defineServer(middlewareContract, {
-  context: ({ request }) => ({ token: request.headers.get('authorization') ?? '' }),
+  context: withFetchContext(({ request }) => ({ token: request.headers.get('authorization') ?? '' })),
 })
 const serverMiddleware = middlewareServerBase.middleware(({ context, next }) => {
   if (context.token !== 'Bearer benchmark') throw new Error('Missing benchmark token')
@@ -71,11 +71,10 @@ const serverMiddleware = middlewareServerBase.middleware(({ context, next }) => 
 })
 const middlewareServer = middlewareServerBase.use(serverMiddleware)
 const middlewareHandler = createFetchHandler(
-  middlewareServer.build({ protected: ({ response }) => response(200, 'ok') })
+  middlewareServer.implement({ protected: ({ response }) => response(200, 'ok') })
 )
 const middlewareClientBase = defineClient(middlewareContract, {
-  baseUrl: 'https://bench.local',
-  fetch: middlewareHandler,
+  transport: fetchTransport({ baseUrl: 'https://bench.local', fetch: middlewareHandler }),
   headers: { authorization: 'Bearer benchmark' },
   context: ({ request }) => ({ method: request.method }),
 })
@@ -83,7 +82,7 @@ const clientMiddleware = middlewareClientBase.middleware(({ context, next }) => 
   if (context.method !== 'GET') throw new Error('Unexpected method')
   return next()
 })
-const middlewareClient = middlewareClientBase.use(clientMiddleware).build()
+const middlewareClient = middlewareClientBase.use(clientMiddleware).create()
 
 async function directMiddleware(): Promise<void> {
   const request = new Request('https://bench.local/protected', {
@@ -107,7 +106,7 @@ const failureContract = defineContract({
   },
 })
 const failureServer = defineServer(failureContract)
-const failureHandler = createFetchHandler(failureServer.build({ failure: () => ({ status: 204 }) }))
+const failureHandler = createFetchHandler(failureServer.implement({ failure: () => ({ status: 204 }) }))
 const invalidBody = JSON.stringify({ count: -1 })
 
 async function directFailure(): Promise<void> {
@@ -149,11 +148,11 @@ const adapterContract = defineContract({
   },
 })
 const adapterServer = defineServer(adapterContract)
-const adapterImplementation = adapterServer.build({
+const adapterImplementation = adapterServer.implement({
   execute: (input) => ({ status: 200, body: { doubled: input.body.value * 2 } }),
 })
 const adapterFetch = createFetchHandler(adapterImplementation)
-const adapterWire = createWireHandler(adapterImplementation)
+const adapterWire = createAdapterHandler(adapterImplementation)
 const adapterRequest = new Request('https://bench.local/execute', { method: 'POST' })
 
 async function directWireDispatch(): Promise<void> {
@@ -187,9 +186,9 @@ async function hullaApiWireDispatch(): Promise<void> {
     headers: { 'content-type': 'application/json' },
     body: { value: adapterValue, contentType: 'application/json' },
   })
-  if (responseValue.body.kind !== 'json') throw new Error('Unexpected wire response representation')
+  if (responseValue.body.kind !== 'json') throw new Error('Unexpected adapter response representation')
   const output = adapterOutput.parse(responseValue.body.value)
-  if (output.doubled !== 42) throw new Error('Unexpected wire adapter result')
+  if (output.doubled !== 42) throw new Error('Unexpected adapter result')
 }
 
 const nativeDateCodec = z.object({
@@ -212,8 +211,10 @@ const codecContract = defineContract({
   },
 })
 const codecServer = defineServer(codecContract)
-const codecHandler = createFetchHandler(codecServer.build({ echo: (input) => ({ status: 200, body: input.body }) }))
-const codecClient = defineClient(codecContract, { baseUrl: 'https://bench.local', fetch: codecHandler }).build()
+const codecHandler = createFetchHandler(codecServer.implement({ echo: (input) => ({ status: 200, body: input.body }) }))
+const codecClient = defineClient(codecContract, {
+  transport: fetchTransport({ baseUrl: 'https://bench.local', fetch: codecHandler }),
+}).create()
 
 async function directCodecRoundtrip(): Promise<void> {
   const clientWire = z.encode(nativeDateCodec, codecValue)
@@ -242,8 +243,10 @@ const streamContract = defineContract({
   routes: { events: route.get('/events', { responses: { 200: response.stream(ndjson(chunkSchema)) } }) },
 })
 const streamServer = defineServer(streamContract)
-const streamHandler = createFetchHandler(streamServer.build({ events: () => ({ status: 200, body: chunks }) }))
-const streamClient = defineClient(streamContract, { baseUrl: 'https://bench.local', fetch: streamHandler }).build()
+const streamHandler = createFetchHandler(streamServer.implement({ events: () => ({ status: 200, body: chunks }) }))
+const streamClient = defineClient(streamContract, {
+  transport: fetchTransport({ baseUrl: 'https://bench.local', fetch: streamHandler }),
+}).create()
 
 async function directStream(): Promise<void> {
   const encoder = new TextEncoder()
@@ -280,7 +283,7 @@ export const hullaApiBreakdownBenchmarks: readonly Benchmark[] = (
   [
     { runtime: 'Direct Fetch', scenario: 'wire-dispatch', run: directWireDispatch },
     { runtime: '@hulla/api Fetch', scenario: 'wire-dispatch', run: hullaApiFetchDispatch },
-    { runtime: '@hulla/api Wire', scenario: 'wire-dispatch', run: hullaApiWireDispatch },
+    { runtime: '@hulla/api Adapter', scenario: 'wire-dispatch', run: hullaApiWireDispatch },
     { runtime: 'Direct Fetch', scenario: 'dynamic-http', run: directTransport },
     {
       runtime: '@hulla/api',

@@ -1,9 +1,9 @@
 import { defineContract, response, route } from '@hulla/api'
+import { createAdapterHandler } from '@hulla/api/adapters'
 import { defineServer } from '@hulla/api/server'
-import { createWireHandler } from '@hulla/api/wire'
 import { z } from 'zod'
+import { encodeValue } from './fixtures/scenario'
 import type { Benchmark } from './harness'
-import { encodeValue } from './scenario'
 
 const routeCount = 256
 const targetIndex = routeCount - 1
@@ -25,7 +25,7 @@ const staticHandlers = Object.fromEntries(
     () => ({ status: 200 as const, body: { id: targetId, index } }),
   ])
 )
-const staticWire = createWireHandler(defineServer(staticContract).build(staticHandlers))
+const staticWire = createAdapterHandler(defineServer(staticContract).implement(staticHandlers))
 
 const dynamicRoutes = Object.fromEntries(
   Array.from({ length: routeCount }, (_, index) => [
@@ -46,7 +46,7 @@ const dynamicHandlers = Object.fromEntries(
     }),
   ])
 )
-const dynamicWire = createWireHandler(defineServer(dynamicContract).build(dynamicHandlers))
+const dynamicWire = createAdapterHandler(defineServer(dynamicContract).implement(dynamicHandlers))
 
 const directStaticRoutes = new Map(
   Array.from(
@@ -107,8 +107,8 @@ async function hullaApiDynamicDispatch(): Promise<void> {
 export const routeScalingBenchmarks: readonly Benchmark[] = (
   [
     { runtime: 'Direct Fetch', scenario: 'large-static-dispatch', run: directStaticDispatch },
-    { runtime: '@hulla/api Wire', scenario: 'large-static-dispatch', run: hullaApiStaticDispatch },
+    { runtime: '@hulla/api Adapter', scenario: 'large-static-dispatch', run: hullaApiStaticDispatch },
     { runtime: 'Direct Fetch', scenario: 'large-dynamic-dispatch', run: directDynamicDispatch },
-    { runtime: '@hulla/api Wire', scenario: 'large-dynamic-dispatch', run: hullaApiDynamicDispatch },
+    { runtime: '@hulla/api Adapter', scenario: 'large-dynamic-dispatch', run: hullaApiDynamicDispatch },
   ] satisfies readonly Benchmark[]
 ).map((benchmark) => ({ ...benchmark, profile: 'focused' }))

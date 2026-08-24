@@ -1,11 +1,15 @@
 import { createTRPCClient, httpLink } from '@trpc/client'
 import { initTRPC } from '@trpc/server'
 import { fetchRequestHandler } from '@trpc/server/adapters/fetch'
-import type { Benchmark } from './harness'
+import { z } from 'zod'
 import {
   assertCreatedUser,
+  assertCollection,
   assertHealth,
   assertLarge,
+  assertResource,
+  collectionOutput,
+  collectionResult,
   createUserInput,
   createUserOutput,
   createUserValue,
@@ -13,11 +17,25 @@ import {
   encodeValue,
   healthOutput,
   healthValue,
+  headerValue,
   largeInput,
   largeOutput,
   largeResult,
   largeValue,
-} from './scenario'
+  organizationParams,
+  queryValue,
+  resourceHeaders,
+  resourceOutput,
+  resourceParams,
+  resourceQuery,
+  resourceResult,
+  resourceValue,
+  updateBody,
+  updateBodyValue,
+  updateQuery,
+  updateQueryValue,
+} from './fixtures/scenario'
+import type { Benchmark } from './harness'
 
 /** tRPC's HTTP client link and Fetch adapter. */
 const t = initTRPC.create()
@@ -25,6 +43,24 @@ const appRouter = t.router({
   health: t.procedure.query(() => encodeValue(healthOutput, healthValue)),
   createUser: t.procedure.input(createUserInput).mutation(() => encodeValue(createUserOutput, createdUserValue)),
   large: t.procedure.input(largeInput).mutation(() => encodeValue(largeOutput, largeResult)),
+  resource: t.procedure
+    .input(resourceParams)
+    .query(({ input }) => encodeValue(resourceOutput, { ...resourceResult, ...input })),
+  collection: t.procedure
+    .input(z.object({ params: organizationParams, query: resourceQuery, headers: resourceHeaders }))
+    .query(({ input }) =>
+      encodeValue(collectionOutput, {
+        ...collectionResult,
+        organizationId: input.params.organizationId,
+        cursor: input.query.cursor,
+        limit: Number(input.query.limit),
+        roles: input.query.role,
+        token: input.headers['x-tenant-token'],
+      })
+    ),
+  update: t.procedure
+    .input(z.object({ params: resourceParams, query: updateQuery, headers: resourceHeaders, body: updateBody }))
+    .mutation(({ input }) => encodeValue(resourceOutput, { ...input.params, ...input.body })),
 })
 
 const client = createTRPCClient<typeof appRouter>({
@@ -115,6 +151,46 @@ export const trpcBenchmarks: readonly Benchmark[] = [
     scenario: 'large-json-post',
     async run() {
       assertLarge(await client.large.mutate(encodeValue(largeInput, largeValue)))
+    },
+  },
+]
+
+export const trpcApplicationBenchmarks: readonly Benchmark[] = [
+  {
+    profile: 'application',
+    runtime: 'tRPC',
+    scenario: 'path-parameter-read',
+    async run() {
+      assertResource(await client.resource.query(encodeValue(resourceParams, resourceValue)))
+    },
+  },
+  {
+    profile: 'application',
+    runtime: 'tRPC',
+    scenario: 'query-header-read',
+    async run() {
+      assertCollection(
+        await client.collection.query({
+          params: encodeValue(organizationParams, { organizationId: resourceValue.organizationId }),
+          query: encodeValue(resourceQuery, queryValue),
+          headers: encodeValue(resourceHeaders, headerValue),
+        })
+      )
+    },
+  },
+  {
+    profile: 'application',
+    runtime: 'tRPC',
+    scenario: 'mixed-update',
+    async run() {
+      assertResource(
+        await client.update.mutate({
+          params: encodeValue(resourceParams, resourceValue),
+          query: encodeValue(updateQuery, updateQueryValue),
+          headers: encodeValue(resourceHeaders, headerValue),
+          body: encodeValue(updateBody, updateBodyValue),
+        })
+      )
     },
   },
 ]

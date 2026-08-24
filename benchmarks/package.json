@@ -4,20 +4,32 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "bench": "bun package-size.ts && bun fetch-roundtrip.ts",
+    "analyze:size": "bun package-size.ts --analyze",
+    "bench": "bun package-size.ts && bun fetch-roundtrip.ts && bun runners/adapters.ts",
+    "bench:adapters": "bun runners/adapters.ts",
+    "bench:implementations": "bun runners/server-implementations.ts",
     "bench:node": "bun package-size.ts && bun build fetch-roundtrip.ts --target=node --packages=external --outfile=node-runner.mjs && node node-runner.mjs",
+    "check:size": "bun package-size.ts --check",
+    "test": "vitest run harness/index.test.ts adapters/cohorts.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@hono/zod-validator": "^0.9.0",
     "@hulla/api": "workspace:*",
+    "@hulla/api-express": "workspace:*",
+    "@hulla/api-next": "workspace:*",
+    "@hulla/api-tanstack-start": "workspace:*",
     "@orpc/client": "^1.15.0",
     "@orpc/server": "^1.15.0",
     "@trpc/client": "^11.18.0",
     "@trpc/server": "^11.18.0",
     "@ts-rest/core": "^3.52.1",
+    "@ts-rest/express": "^3.52.1",
     "@ts-rest/serverless": "^3.52.1",
+    "@types/express": "^5.0.6",
+    "express": "^5.2.1",
     "hono": "^4.13.2",
+    "next": "^16.3.0",
     "zod": "^4.4.3"
   }
 }

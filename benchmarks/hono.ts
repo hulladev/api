@@ -1,11 +1,14 @@
 import { zValidator } from '@hono/zod-validator'
 import { Hono } from 'hono'
 import { hc } from 'hono/client'
-import type { Benchmark } from './harness'
 import {
   assertCreatedUser,
+  assertCollection,
   assertHealth,
   assertLarge,
+  assertResource,
+  collectionOutput,
+  collectionResult,
   createUserInput,
   createUserOutput,
   createUserValue,
@@ -13,11 +16,25 @@ import {
   encodeValue,
   healthOutput,
   healthValue,
+  headerValue,
   largeInput,
   largeOutput,
   largeResult,
   largeValue,
-} from './scenario'
+  organizationParams,
+  queryValue,
+  resourceHeaders,
+  resourceOutput,
+  resourceParams,
+  resourceQuery,
+  resourceResult,
+  resourceValue,
+  updateBody,
+  updateBodyValue,
+  updateQuery,
+  updateQueryValue,
+} from './fixtures/scenario'
+import type { Benchmark } from './harness'
 
 /** Hono's server-derived RPC client and Fetch application. */
 const app = new Hono()
@@ -30,6 +47,43 @@ const app = new Hono()
     context.req.valid('json')
     return context.json(encodeValue(largeOutput, largeResult))
   })
+  .get('/organizations/:organizationId/users/:userId', zValidator('param', resourceParams), (context) => {
+    const params = context.req.valid('param')
+    return context.json(encodeValue(resourceOutput, { ...resourceResult, ...params }))
+  })
+  .get(
+    '/organizations/:organizationId/users',
+    zValidator('param', organizationParams),
+    zValidator('query', resourceQuery),
+    zValidator('header', resourceHeaders),
+    (context) => {
+      const params = context.req.valid('param')
+      const query = context.req.valid('query')
+      const headers = context.req.valid('header')
+      return context.json(
+        encodeValue(collectionOutput, {
+          ...collectionResult,
+          organizationId: params.organizationId,
+          cursor: query.cursor,
+          limit: Number(query.limit),
+          roles: query.role,
+          token: headers['x-tenant-token'],
+        })
+      )
+    }
+  )
+  .patch(
+    '/organizations/:organizationId/users/:userId',
+    zValidator('param', resourceParams),
+    zValidator('query', updateQuery),
+    zValidator('header', resourceHeaders),
+    zValidator('json', updateBody),
+    (context) => {
+      const params = context.req.valid('param')
+      const body = context.req.valid('json')
+      return context.json(encodeValue(resourceOutput, { ...params, ...body }))
+    }
+  )
 const inMemoryFetch: typeof globalThis.fetch = async (input, init) => app.fetch(new Request(input, init))
 const client = hc<typeof app>('https://bench.local', {
   fetch: inMemoryFetch,
@@ -103,6 +157,47 @@ export const honoBenchmarks: readonly Benchmark[] = [
     async run() {
       const input = encodeValue(largeInput, largeValue)
       assertLarge(await (await client.large.$post({ json: input })).json())
+    },
+  },
+]
+
+export const honoApplicationBenchmarks: readonly Benchmark[] = [
+  {
+    profile: 'application',
+    runtime: 'Hono RPC',
+    scenario: 'path-parameter-read',
+    async run() {
+      const response = await client.organizations[':organizationId'].users[':userId'].$get({
+        param: encodeValue(resourceParams, resourceValue),
+      })
+      assertResource(await response.json())
+    },
+  },
+  {
+    profile: 'application',
+    runtime: 'Hono RPC',
+    scenario: 'query-header-read',
+    async run() {
+      const response = await client.organizations[':organizationId'].users.$get({
+        param: encodeValue(organizationParams, { organizationId: resourceValue.organizationId }),
+        query: encodeValue(resourceQuery, queryValue),
+        header: encodeValue(resourceHeaders, headerValue),
+      })
+      assertCollection(await response.json())
+    },
+  },
+  {
+    profile: 'application',
+    runtime: 'Hono RPC',
+    scenario: 'mixed-update',
+    async run() {
+      const response = await client.organizations[':organizationId'].users[':userId'].$patch({
+        param: encodeValue(resourceParams, resourceValue),
+        query: encodeValue(updateQuery, updateQueryValue),
+        header: encodeValue(resourceHeaders, headerValue),
+        json: encodeValue(updateBody, updateBodyValue),
+      })
+      assertResource(await response.json())
     },
   },
 ]

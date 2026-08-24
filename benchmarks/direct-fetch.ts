@@ -1,8 +1,11 @@
-import type { Benchmark } from './harness'
 import {
   assertCreatedUser,
+  assertCollection,
   assertHealth,
   assertLarge,
+  assertResource,
+  collectionOutput,
+  collectionResult,
   createUserInput,
   createUserOutput,
   createUserValue,
@@ -10,11 +13,25 @@ import {
   encodeValue,
   healthOutput,
   healthValue,
+  headerValue,
   largeInput,
   largeOutput,
   largeResult,
   largeValue,
-} from './scenario'
+  organizationParams,
+  queryValue,
+  resourceHeaders,
+  resourceOutput,
+  resourceParams,
+  resourceQuery,
+  resourceResult,
+  resourceValue,
+  updateBody,
+  updateBodyValue,
+  updateQuery,
+  updateQueryValue,
+} from './fixtures/scenario'
+import type { Benchmark } from './harness'
 
 /** Lower-bound Fetch implementation without a contract framework. */
 const handler = async (request: Request): Promise<Response> => {
@@ -47,6 +64,102 @@ const nativeHandler = async (request: Request): Promise<Response> => {
   }
   return new Response(null, { status: 404 })
 }
+
+async function applicationHandler(request: Request): Promise<Response> {
+  const url = new URL(request.url)
+  const segments = url.pathname.split('/').filter(Boolean).map(decodeURIComponent)
+  if (segments[0] !== 'organizations' || segments[2] !== 'users') return new Response(null, { status: 404 })
+  const organizationId = segments[1]
+  const userId = segments[3]
+  if (request.method === 'GET' && userId !== undefined) {
+    const params = resourceParams.parse({ organizationId, userId })
+    return Response.json(encodeValue(resourceOutput, { ...resourceResult, ...params }))
+  }
+  if (request.method === 'GET') {
+    const params = organizationParams.parse({ organizationId })
+    const query = resourceQuery.parse({
+      cursor: url.searchParams.get('cursor'),
+      limit: url.searchParams.get('limit'),
+      role: url.searchParams.getAll('role'),
+    })
+    const headers = resourceHeaders.parse(Object.fromEntries(request.headers.entries()))
+    return Response.json(
+      encodeValue(collectionOutput, {
+        ...collectionResult,
+        organizationId: params.organizationId,
+        cursor: query.cursor,
+        limit: Number(query.limit),
+        roles: query.role,
+        token: headers['x-tenant-token'],
+      })
+    )
+  }
+  if (request.method === 'PATCH' && userId !== undefined) {
+    const params = resourceParams.parse({ organizationId, userId })
+    updateQuery.parse({ notify: url.searchParams.get('notify') })
+    resourceHeaders.parse(Object.fromEntries(request.headers.entries()))
+    const body = updateBody.parse(await request.json())
+    return Response.json(encodeValue(resourceOutput, { ...params, ...body }))
+  }
+  return new Response(null, { status: 404 })
+}
+
+function resourcePath(): string {
+  return `/organizations/${encodeURIComponent(resourceValue.organizationId)}/users/${encodeURIComponent(resourceValue.userId)}`
+}
+
+export const directFetchApplicationBenchmarks: readonly Benchmark[] = [
+  {
+    profile: 'application',
+    runtime: 'Direct Fetch',
+    scenario: 'path-parameter-read',
+    async run() {
+      const params = encodeValue(resourceParams, resourceValue)
+      const response = await applicationHandler(
+        new Request(
+          `https://bench.local/organizations/${encodeURIComponent(params.organizationId)}/users/${encodeURIComponent(params.userId)}`
+        )
+      )
+      assertResource(await response.json())
+    },
+  },
+  {
+    profile: 'application',
+    runtime: 'Direct Fetch',
+    scenario: 'query-header-read',
+    async run() {
+      const params = encodeValue(organizationParams, { organizationId: resourceValue.organizationId })
+      const query = encodeValue(resourceQuery, queryValue)
+      const headers = encodeValue(resourceHeaders, headerValue)
+      const search = new URLSearchParams({ cursor: query.cursor, limit: query.limit })
+      for (const role of query.role) search.append('role', role)
+      const response = await applicationHandler(
+        new Request(`https://bench.local/organizations/${encodeURIComponent(params.organizationId)}/users?${search}`, {
+          headers,
+        })
+      )
+      assertCollection(await response.json())
+    },
+  },
+  {
+    profile: 'application',
+    runtime: 'Direct Fetch',
+    scenario: 'mixed-update',
+    async run() {
+      const query = encodeValue(updateQuery, updateQueryValue)
+      const headers = encodeValue(resourceHeaders, headerValue)
+      const body = encodeValue(updateBody, updateBodyValue)
+      const response = await applicationHandler(
+        new Request(`https://bench.local${resourcePath()}?notify=${query.notify}`, {
+          method: 'PATCH',
+          headers: { ...headers, 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+      )
+      assertResource(await response.json())
+    },
+  },
+]
 
 export const directFetchNativeBenchmarks: readonly Benchmark[] = [
   {

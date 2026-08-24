@@ -1,6 +1,7 @@
 import { defineContract, response, route } from '@hulla/api'
 import { defineClient } from '@hulla/api/client'
-import { createFetchHandler, defineServer } from '@hulla/api/server'
+import { createFetchHandler, fetchTransport } from '@hulla/api/fetch'
+import { defineServer } from '@hulla/api/server'
 import { createORPCClient } from '@orpc/client'
 import { RPCLink } from '@orpc/client/fetch'
 import { os, type RouterClient } from '@orpc/server'
@@ -13,8 +14,8 @@ import { createFetchHandler as createTsRestHandler, tsr } from '@ts-rest/serverl
 import { Hono } from 'hono'
 import { hc } from 'hono/client'
 import type { z } from 'zod'
+import { assertHealth, encodeValue, healthOutput, healthValue } from './fixtures/scenario'
 import type { Benchmark } from './harness'
-import { assertHealth, encodeValue, healthOutput, healthValue } from './scenario'
 
 type HealthOutput = z.infer<typeof healthOutput>
 
@@ -28,8 +29,10 @@ async function hullaApiFirstCall(): Promise<void> {
     routes: { health: route.get('/health', { responses: { 200: response.json(healthOutput) } }) },
   })
   const server = defineServer(contract)
-  const handler = createFetchHandler(server.build({ health: () => ({ status: 200, body: healthValue }) }))
-  const client = defineClient(contract, { baseUrl: 'https://bench.local', fetch: handler }).build()
+  const handler = createFetchHandler(server.implement({ health: () => ({ status: 200, body: healthValue }) }))
+  const client = defineClient(contract, {
+    transport: fetchTransport({ baseUrl: 'https://bench.local', fetch: handler }),
+  }).create()
   const result = await client.health()
   if (result.status !== 200 || !result.body.ok) throw new Error('Unexpected cold @hulla/api result')
 }

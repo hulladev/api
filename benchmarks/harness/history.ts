@@ -4,30 +4,35 @@ import { appendFile, mkdir, readFile, readdir } from 'node:fs/promises'
 import { arch, cpus, hostname, platform, release } from 'node:os'
 import { dirname, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { benchmarkScenarios, type BenchmarkScenario } from '../fixtures/scenario'
 import {
+  compareBenchmarkSamples,
   runtimeLabel,
   summarizeBenchmarkResult,
+  type BenchmarkDimensions,
   type BenchmarkOptions,
   type BenchmarkProfile,
   type BenchmarkResult,
-} from './harness'
-import { benchmarkScenarios, type BenchmarkScenario } from './scenario'
+} from './index'
 
-type StoredResult = {
+type StoredResult = Partial<BenchmarkDimensions> & {
+  readonly iterations?: number
   readonly profile: BenchmarkProfile
   readonly runtime: string
   readonly runtimeKey?: string
+  readonly runs?: number
   readonly samples: readonly number[]
   readonly scenario: BenchmarkScenario
+  readonly warmup?: number
 }
 
-type SourceRevision = {
+export type SourceRevision = {
   readonly commit: string
   readonly dirty: boolean
   readonly packageVersion: string
 }
 
-type BenchmarkEnvironment = {
+export type BenchmarkEnvironment = {
   readonly architecture: string
   readonly cpu: string
   readonly host: string
@@ -40,30 +45,35 @@ type HistoryRecord = {
   readonly environment: BenchmarkEnvironment
   readonly fingerprint: string
   readonly iterations: number
+  readonly minSampleTimeMs?: number
+  readonly methodologyVersion?: number
   readonly results: readonly StoredResult[]
   readonly source?: SourceRevision
   readonly timestamp: string
-  readonly version: 1
+  readonly version: 1 | 2 | 3 | 4
   readonly warmup: number
 }
 
 export type BenchmarkHistory = {
   readonly compatibleRuns: number
   readonly currentLabel: string
+  readonly environment: BenchmarkEnvironment
+  readonly fingerprint: string
   readonly path: string
   readonly previousLabel?: string
   readonly results: readonly BenchmarkResult[]
+  readonly source: SourceRevision
   readonly totalRuns: number
 }
 
 const benchmarkDirectory = dirname(fileURLToPath(import.meta.url))
-const repositoryDirectory = resolve(benchmarkDirectory, '..')
+const repositoryDirectory = resolve(benchmarkDirectory, '../..')
+const benchmarkRoot = resolve(repositoryDirectory, 'benchmarks')
 const corePackagePath = resolve(repositoryDirectory, 'packages/core/package.json')
 const fingerprintPaths = [
-  resolve(repositoryDirectory, 'packages/core/src'),
-  resolve(repositoryDirectory, 'packages/core/package.json'),
-  benchmarkDirectory,
-  resolve(benchmarkDirectory, 'package.json'),
+  resolve(repositoryDirectory, 'packages'),
+  benchmarkRoot,
+  resolve(benchmarkRoot, 'package.json'),
   resolve(repositoryDirectory, 'bun.lock'),
   resolve(repositoryDirectory, 'package.json'),
 ]
@@ -125,7 +135,7 @@ async function sourceRevision(): Promise<SourceRevision> {
     '--short',
     '--untracked-files=all',
     '--',
-    'packages/core',
+    'packages',
     'benchmarks',
     'bun.lock',
     'package.json',
@@ -142,12 +152,36 @@ function storedResult(value: unknown): value is StoredResult {
   const result = value as Partial<StoredResult>
   return (
     typeof result.profile === 'string' &&
+    (result.iterations === undefined || typeof result.iterations === 'number') &&
     typeof result.runtime === 'string' &&
     (result.runtimeKey === undefined || typeof result.runtimeKey === 'string') &&
     typeof result.scenario === 'string' &&
     result.scenario in benchmarkScenarios &&
     Array.isArray(result.samples) &&
-    result.samples.every((sample) => typeof sample === 'number' && Number.isFinite(sample))
+    result.samples.every((sample) => typeof sample === 'number' && Number.isFinite(sample)) &&
+    (result.warmup === undefined || typeof result.warmup === 'number')
+  )
+}
+
+function storedDimensions(result: StoredResult): boolean {
+  return (
+    (result.adapter === 'express' || result.adapter === 'fetch' || result.adapter === 'none') &&
+    typeof result.functionality === 'string' &&
+    (result.implementation === '@hulla/api' ||
+      result.implementation === 'direct' ||
+      result.implementation === 'hono' ||
+      result.implementation === 'orpc' ||
+      result.implementation === 'trpc' ||
+      result.implementation === 'ts-rest') &&
+    (result.phase === 'construction' ||
+      result.phase === 'dispatch' ||
+      result.phase === 'registration' ||
+      result.phase === 'roundtrip') &&
+    (result.protocol === 'direct' || result.protocol === 'rest' || result.protocol === 'rpc') &&
+    (result.suite === 'adapter' ||
+      result.suite === 'application' ||
+      result.suite === 'authoring' ||
+      result.suite === 'diagnostic')
   )
 }
 
@@ -176,13 +210,18 @@ function historyRecord(value: unknown): value is HistoryRecord {
   if (typeof value !== 'object' || value === null) return false
   const record = value as Partial<HistoryRecord>
   return (
-    record.version === 1 &&
+    (record.version === 1 || record.version === 2 || record.version === 3 || record.version === 4) &&
     typeof record.fingerprint === 'string' &&
     typeof record.iterations === 'number' &&
+    (record.minSampleTimeMs === undefined || typeof record.minSampleTimeMs === 'number') &&
+    (record.methodologyVersion === undefined || typeof record.methodologyVersion === 'number') &&
     typeof record.warmup === 'number' &&
     storedEnvironment(record.environment) &&
     Array.isArray(record.results) &&
     record.results.every(storedResult) &&
+    (record.version < 3 || record.results.every(storedDimensions)) &&
+    (record.version !== 4 ||
+      record.results.every((result) => typeof result.iterations === 'number' && typeof result.warmup === 'number')) &&
     (record.source === undefined || storedSource(record.source))
   )
 }
@@ -240,9 +279,9 @@ function aggregateResults(
     for (const result of record.results) {
       const key = resultKey(result)
       const aggregate = collected.get(key)
-      if (aggregate === undefined) collected.set(key, { runs: 1, samples: [...result.samples] })
+      if (aggregate === undefined) collected.set(key, { runs: result.runs ?? 1, samples: [...result.samples] })
       else {
-        aggregate.runs += 1
+        aggregate.runs += result.runs ?? 1
         aggregate.samples.push(...result.samples)
       }
     }
@@ -257,7 +296,10 @@ function aggregateResults(
       result.scenario,
       aggregate.samples,
       aggregate.runs,
-      result.runtimeKey
+      result.runtimeKey,
+      undefined,
+      result.iterations,
+      result.warmup
     )
   })
 }
@@ -269,7 +311,7 @@ function median(values: readonly number[]): number {
   return (sorted[middle - 1]! + sorted[middle]!) / 2
 }
 
-function previousMedians(records: readonly HistoryRecord[]): ReadonlyMap<string, number> {
+function previousSamples(records: readonly HistoryRecord[]): ReadonlyMap<string, readonly number[]> {
   const samples = new Map<string, number[]>()
   for (const record of records) {
     for (const result of record.results) {
@@ -279,7 +321,7 @@ function previousMedians(records: readonly HistoryRecord[]): ReadonlyMap<string,
       else values.push(...result.samples)
     }
   }
-  return new Map([...samples].map(([key, values]) => [key, median(values)]))
+  return samples
 }
 
 function revisionLabel(record: HistoryRecord): string {
@@ -302,16 +344,44 @@ export async function persistBenchmarkHistory(
     environment: currentEnvironment,
     fingerprint,
     iterations: options.iterations,
-    results: results.map(({ profile, runtime, runtimeKey, samples, scenario }) => ({
-      profile,
-      runtime,
-      runtimeKey,
-      samples,
-      scenario,
-    })),
+    minSampleTimeMs: options.minSampleTimeMs,
+    methodologyVersion: 2,
+    results: results.map(
+      ({
+        adapter,
+        functionality,
+        implementation,
+        iterations,
+        phase,
+        profile,
+        protocol,
+        runtime,
+        runtimeKey,
+        runs,
+        samples,
+        scenario,
+        suite,
+        warmup,
+      }) => ({
+        adapter,
+        functionality,
+        implementation,
+        iterations,
+        phase,
+        profile,
+        protocol,
+        runtime,
+        runtimeKey,
+        runs,
+        samples,
+        scenario,
+        suite,
+        warmup,
+      })
+    ),
     source,
     timestamp: new Date().toISOString(),
-    version: 1,
+    version: 4,
     warmup: options.warmup,
   }
   const stored = await readHistory(path)
@@ -322,6 +392,8 @@ export async function persistBenchmarkHistory(
   const comparable = records.filter(
     (candidate) =>
       candidate.iterations === options.iterations &&
+      (candidate.minSampleTimeMs ?? 0) === options.minSampleTimeMs &&
+      candidate.methodologyVersion === 2 &&
       candidate.warmup === options.warmup &&
       sameEnvironment(candidate.environment, currentEnvironment)
   )
@@ -331,23 +403,36 @@ export async function persistBenchmarkHistory(
     previousRecord === undefined
       ? undefined
       : comparable.filter((candidate) => candidate.fingerprint === previousRecord.fingerprint)
-  const medians = previous === undefined ? undefined : previousMedians(previous)
-  const aggregated = aggregateResults(results, compatible).map((result) => {
-    const previousMedian = medians?.get(resultKey(result))
-    return previousMedian === undefined
-      ? result
-      : {
-          ...result,
-          medianChange: previousMedian === 0 ? 0 : result.median / previousMedian - 1,
-          previousMedian,
-        }
+  const samples = previous === undefined ? undefined : previousSamples(previous)
+  const current = aggregateResults(results, compatible)
+  const aggregated = current.map((result) => {
+    const prior = samples?.get(resultKey(result))
+    if (prior === undefined) return result
+    const direct = result.runtimeKey.startsWith('Direct ')
+      ? undefined
+      : current.find(
+          (candidate) =>
+            candidate.profile === result.profile &&
+            candidate.scenario === result.scenario &&
+            candidate.runtimeKey.startsWith('Direct ')
+        )
+    const priorDirect = direct === undefined ? undefined : samples?.get(resultKey(direct))
+    return {
+      ...result,
+      comparison: compareBenchmarkSamples(result.samples, prior, direct?.samples, priorDirect),
+      previousMedian: median(prior),
+    }
   })
+  const compatibleRuns = compatible.reduce((total, candidate) => total + (candidate.results[0]?.runs ?? 1), 0)
   return {
-    compatibleRuns: compatible.length,
+    compatibleRuns,
     currentLabel: revisionLabel(record),
+    environment: currentEnvironment,
+    fingerprint,
     path,
     ...(previousRecord === undefined ? {} : { previousLabel: revisionLabel(previousRecord) }),
     results: aggregated,
-    totalRuns: records.length,
+    source,
+    totalRuns: records.reduce((total, candidate) => total + (candidate.results[0]?.runs ?? 1), 0),
   }
 }

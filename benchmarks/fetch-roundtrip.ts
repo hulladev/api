@@ -1,23 +1,31 @@
 import { readFile } from 'node:fs/promises'
 import { coldStartBenchmarks } from './cold-start'
-import { directFetchBenchmarks, directFetchNativeBenchmarks } from './direct-fetch'
+import { directFetchApplicationBenchmarks, directFetchBenchmarks, directFetchNativeBenchmarks } from './direct-fetch'
 import {
   benchmarkOptions,
   printPackageSizes,
   printResults,
-  runBenchmarks,
+  runBenchmarkRuns,
   writeBenchmarkReport,
+  writeBenchmarkSnapshot,
   type Benchmark,
+  type IndependentAdapterCohortResult,
   type PackageSizeResult,
 } from './harness'
-import { persistBenchmarkHistory } from './history'
-import { honoBenchmarks, honoNativeBenchmarks } from './hono'
-import { hullaApiBenchmarks, hullaApiNativeBenchmarks } from './hulla-api'
+import { persistBenchmarkHistory } from './harness/history'
+import { honoApplicationBenchmarks, honoBenchmarks, honoNativeBenchmarks } from './hono'
+import {
+  hullaApiApplicationBenchmarks,
+  hullaApiBenchmarks,
+  hullaApiInProcessBenchmarks,
+  hullaApiNativeBenchmarks,
+} from './hulla-api'
 import { hullaApiBreakdownBenchmarks } from './hulla-api-breakdown'
-import { orpcBenchmarks, orpcNativeBenchmarks } from './orpc'
+import { orpcApplicationBenchmarks, orpcBenchmarks, orpcNativeBenchmarks } from './orpc'
 import { routeScalingBenchmarks } from './route-scaling'
-import { trpcBenchmarks, trpcNativeBenchmarks } from './trpc'
-import { tsRestBenchmarks, tsRestNativeBenchmarks } from './ts-rest'
+import { serverImplementationBenchmarks } from './suites/server-implementations'
+import { trpcApplicationBenchmarks, trpcBenchmarks, trpcNativeBenchmarks } from './trpc'
+import { tsRestApplicationBenchmarks, tsRestBenchmarks, tsRestNativeBenchmarks } from './ts-rest'
 
 async function packageVersion(path: string): Promise<string> {
   const contents = JSON.parse(await readFile(new URL(path, import.meta.url), 'utf8')) as { version?: unknown }
@@ -45,7 +53,22 @@ function versionedRuntime(runtime: string): string {
 const packageSizes = (
   JSON.parse(await readFile(new URL('./results/package-size.json', import.meta.url), 'utf8')) as PackageSizeResult[]
 ).map((result) => ({ ...result, runtime: versionedRuntime(result.runtime) }))
+let adapterCohorts: readonly IndependentAdapterCohortResult[] = []
+try {
+  const adapterSnapshot = JSON.parse(
+    await readFile(new URL('./results/adapters-latest.json', import.meta.url), 'utf8')
+  ) as { readonly cohorts?: readonly IndependentAdapterCohortResult[] }
+  adapterCohorts = adapterSnapshot.cohorts ?? []
+} catch (cause) {
+  if (typeof cause !== 'object' || cause === null || !('code' in cause) || cause.code !== 'ENOENT') throw cause
+}
 const benchmarks: readonly Benchmark[] = [
+  ...directFetchApplicationBenchmarks,
+  ...hullaApiApplicationBenchmarks,
+  ...trpcApplicationBenchmarks,
+  ...orpcApplicationBenchmarks,
+  ...tsRestApplicationBenchmarks,
+  ...honoApplicationBenchmarks,
   ...directFetchNativeBenchmarks,
   ...hullaApiNativeBenchmarks,
   ...trpcNativeBenchmarks,
@@ -54,6 +77,7 @@ const benchmarks: readonly Benchmark[] = [
   ...honoNativeBenchmarks,
   ...directFetchBenchmarks,
   ...hullaApiBenchmarks,
+  ...hullaApiInProcessBenchmarks,
   ...trpcBenchmarks,
   ...orpcBenchmarks,
   ...tsRestBenchmarks,
@@ -61,16 +85,22 @@ const benchmarks: readonly Benchmark[] = [
   ...coldStartBenchmarks,
   ...hullaApiBreakdownBenchmarks,
   ...routeScalingBenchmarks,
+  ...serverImplementationBenchmarks,
 ].map((benchmark) => ({ ...benchmark, runtimeKey: benchmark.runtime, runtime: versionedRuntime(benchmark.runtime) }))
-const results = await runBenchmarks(benchmarks, options)
+const results = await runBenchmarkRuns(benchmarks, options, (completed, total) => {
+  console.error(`Benchmark run ${completed}/${total}`)
+})
 const historyPath = process.env['BENCH_HISTORY'] ?? new URL('./results/history.ndjson', import.meta.url).pathname
 const history = await persistBenchmarkHistory(results, options, historyPath)
 
 printResults(history.results, options, history.compatibleRuns, history.previousLabel)
 printPackageSizes(packageSizes)
 const reportPath = process.env['BENCH_REPORT'] ?? new URL('./results/latest.md', import.meta.url).pathname
-await writeBenchmarkReport(history.results, packageSizes, options, reportPath, history)
+await writeBenchmarkReport(history.results, packageSizes, options, reportPath, history, adapterCohorts)
+const snapshotPath = process.env['BENCH_JSON'] ?? new URL('./results/latest.json', import.meta.url).pathname
+await writeBenchmarkSnapshot(history.results, packageSizes, options, snapshotPath, history)
 console.log(
   `\nBenchmark history: ${history.path} (${history.compatibleRuns} compatible, ${history.totalRuns} total runs)`
 )
-console.log(`\nDetailed report: ${reportPath}`)
+console.log(`\nHuman report: ${reportPath}`)
+console.log(`\nMachine-readable snapshot: ${snapshotPath}`)
