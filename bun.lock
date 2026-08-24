@@ -44,6 +44,17 @@
         "zod": "^4.4.3",
       },
     },
+    "packages/cloudflare": {
+      "name": "@hulla/api-cloudflare",
+      "version": "2.0.0",
+      "devDependencies": {
+        "@hulla/api": "workspace:*",
+        "zod": "^4.4.3",
+      },
+      "peerDependencies": {
+        "@hulla/api": "^2.0.0",
+      },
+    },
     "packages/core": {
       "name": "@hulla/api",
       "version": "2.0.0",
@@ -287,6 +298,8 @@
     "@hulla/api": ["@hulla/api@workspace:packages/core"],
 
     "@hulla/api-benchmarks": ["@hulla/api-benchmarks@workspace:benchmarks"],
+
+    "@hulla/api-cloudflare": ["@hulla/api-cloudflare@workspace:packages/cloudflare"],
 
     "@hulla/api-express": ["@hulla/api-express@workspace:packages/express"],
 
