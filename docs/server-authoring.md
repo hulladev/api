@@ -1,6 +1,6 @@
 # Server authoring
 
-`defineServer()` binds a contract to context, middleware, and handler implementations. `implement(handlers)` implements the root contract, while `implement(node, handlers)` exhaustively implements one route or recursive router fragment. Root implementations and smaller fragments are transport-neutral values consumed by the Fetch handler or a framework adapter. `implement(...fragments)` composes enough smaller fragments to cover the root contract.
+`defineServer()` binds a contract to context, middleware, and handler implementations. `implement(handlers)` implements the root contract, while `implement(node, handlers)` exhaustively implements one route or recursive router fragment. Implementations and fragments remain portable unless their server definition declares a native adapter requirement. `implement(...fragments)` composes enough smaller fragments to cover the root contract.
 
 ```ts
 import { defineServer } from '@hulla/api/server'
@@ -14,6 +14,26 @@ const server = defineServer(contract, {
 ```
 
 The context factory's resolved object is inferred once and exposed as `input.context` in every middleware and route handler.
+
+Declare an adapter when the context needs host-native values. The descriptor contributes those values to the factory's
+input type and intentionally binds every implementation and fragment created from that definition:
+
+```ts
+import { fetchAdapter } from '@hulla/api/fetch'
+
+const server = defineServer(contract, {
+  adapter: fetchAdapter(),
+  context: ({ request, route }) => ({
+    signal: request.signal,
+    route,
+  }),
+})
+```
+
+Omit `adapter` when context uses only route metadata or request-independent services. That implementation can be mounted
+through any compatible adapter or `inProcessTransport()`. Declaring an adapter without a context factory is also valid
+when an application wants to enforce one deployment target. Compatibility is checked once when the implementation is
+mounted; adapter selection adds no per-request dispatch or route metadata.
 
 Keep the factory for request-scoped identity and shared state. If a dependency is expensive and only some routes need it, return a lazy memoized function such as `user: once(() => loadUser())`; an object mapping of eager functions would otherwise push caching, errors, and lifecycle rules into the framework.
 
@@ -211,24 +231,25 @@ import { createFetchHandler } from '@hulla/api/fetch'
 export const fetch = createFetchHandler(implementation)
 ```
 
-`createFetchHandler()` accepts either a complete implementation or a fragment and handles Fetch request extraction and response construction. Use `withFetchContext()` when the context factory needs the native Fetch `Request`:
+`createFetchHandler()` accepts either a complete implementation or a fragment and handles Fetch request extraction and response construction. Declare `fetchAdapter()` when the context factory needs the native Fetch `Request`:
 
 ```ts
-import { createFetchHandler, withFetchContext } from '@hulla/api/fetch'
+import { createFetchHandler, fetchAdapter } from '@hulla/api/fetch'
 
 const server = defineServer(contract, {
-  context: withFetchContext(({ request, route }) => ({
+  adapter: fetchAdapter(),
+  context: ({ request, route }) => ({
     requestId: request.headers.get('x-request-id') ?? crypto.randomUUID(),
     routeKey: route.key,
-  })),
+  }),
 })
 ```
 
-Native context helpers are adapter-bound. An implementation using `withFetchContext()` can be mounted only through the
-Fetch adapter; Express and Next.js provide their own helpers. An incompatible mount, including
+An adapter declaration binds the implementation and every fragment created by that server definition. The implementation
+above can be mounted only through the Fetch adapter. An incompatible mount, including
 `inProcessTransport(implementation)`, fails when the adapter is created. Keep the ordinary `defineServer()` context
-factory when it needs only `route` metadata or request-independent services and the implementation should remain
-portable across adapters.
+factory and omit `adapter` when it needs only `route` metadata or request-independent services and the implementation
+should remain portable across adapters.
 
 `createAdapterRuntime()` from `@hulla/api/adapters` compiles individually executable routes for native framework routers, while `createAdapterHandler()` adds the shared matcher for catch-all and function adapters. The runtime accepts already-extracted native values and never constructs a Fetch `Request` or `Response`; each adapter owns request extraction, lifecycle integration, and response writing.
 

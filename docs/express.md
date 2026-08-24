@@ -68,23 +68,24 @@ APIs with backpressure.
 
 ## Express state in Hulla context
 
-Portable handlers do not receive a Fetch-shaped request. Use `withContext(factory)` when context construction needs
+Portable handlers do not receive a Fetch-shaped request. Declare `expressAdapter()` when context construction needs
 Express state installed by earlier middleware, such as Passport's `user`, session data, or `res.locals`:
 
 ```ts
 import express from 'express'
-import { register, withContext } from '@hulla/api-express'
+import { expressAdapter, register } from '@hulla/api-express'
 import { defineServer } from '@hulla/api/server'
 
 const app = express()
 
 const server = defineServer(contract, {
-  context: withContext<{ tenant: string }>()(({ request, response, locals, route }) => ({
+  adapter: expressAdapter<{ tenant: string }>(),
+  context: ({ request, response, locals, route }) => ({
     route,
     user: request.user,
     tenant: locals.tenant,
     requestId: response.getHeader('x-request-id'),
-  })),
+  }),
 })
 
 const implementation = server.implement(handlers)
@@ -95,10 +96,10 @@ Inside the factory:
 
 - `request` is Express's native `Request`, including declaration-merging additions from middleware packages.
 - `response` is Express's native `Response`.
-- `locals` is the current `res.locals` object. Supply its object type to the curried `withContext<Locals>()(...)` form;
-  use direct `withContext(...)` when custom locals typing is unnecessary.
+- `locals` is the current `res.locals` object. Supply its object type to `expressAdapter<Locals>()`; omit the type when
+  custom locals typing is unnecessary.
 
-`withContext()` creates an ordinary adapter-bound Hulla context factory; it is not attached to an app or router.
+`expressAdapter()` declares the implementation's native context requirement; it is not attached to an app or router.
 `register()` alone performs route registration. Hulla still owns the declared response write, so context code should not
 independently finish the response.
 
@@ -111,12 +112,13 @@ does not introduce another middleware system:
 
 ```ts
 register(app, implementation, {
-  onError({ error, phase, defaultResponse }) {
-    console.error(phase, error)
+  onError({ error, phase, request, response, locals, defaultResponse }) {
+    console.error(phase, request.originalUrl, response.statusCode, locals, error)
     return defaultResponse
   },
 })
 ```
 
-Returning `undefined` from `onError` keeps the default response. Errors raised while Express reads or writes the
-transport are passed to the next Express error handler.
+The hook receives the native Express request, response, and `res.locals` in the same input object as the portable error
+fields. Returning `undefined` keeps the default response. Errors raised while Express reads or writes the transport are
+passed to the next Express error handler.

@@ -39,12 +39,13 @@ The two parameter layers remain separate:
 TanStack Start server routes cannot expose Hulla's `QUERY` method. `createServerRouteHandlers()` rejects an implementation
 or fragment containing one instead of silently leaving the operation unreachable.
 
-The optional error hook receives Hulla's protocol-safe default `Response` and native request:
+The optional error hook receives one object containing Hulla's protocol-safe default `Response`, the native request,
+Start middleware context, host-route params, and route metadata:
 
 ```ts
 createServerRouteHandlers(implementation, {
-  onError({ error, phase, defaultResponse }) {
-    console.error(phase, error)
+  onError({ error, phase, request, startContext, startParams, defaultResponse }) {
+    console.error(phase, request.url, startContext, startParams, error)
     return defaultResponse
   },
 })
@@ -52,12 +53,12 @@ createServerRouteHandlers(implementation, {
 
 ## Native Start context
 
-Use `withContext()` when Hulla context construction needs the native request, wildcard params, or context installed by
-Start request middleware. Pass the middleware context and host parameter types to the curried form:
+Declare `tanStackStartAdapter()` when Hulla context construction needs the native request, wildcard params, or context
+installed by Start request middleware. Pass the middleware context and host parameter types to the adapter:
 
 ```ts
 import { defineServer } from '@hulla/api/server'
-import { withContext } from '@hulla/api-tanstack-start/server'
+import { tanStackStartAdapter } from '@hulla/api-tanstack-start/server'
 
 type StartContext = {
   readonly session: { readonly userId: string }
@@ -68,14 +69,13 @@ type StartParams = {
 }
 
 const server = defineServer(contract, {
-  context: withContext<StartContext, StartParams>()(
-    ({ request, route, startContext, startParams }) => ({
-      operation: route.key,
-      session: startContext.session,
-      splat: startParams._splat,
-      userAgent: request.headers.get('user-agent'),
-    })
-  ),
+  adapter: tanStackStartAdapter<StartContext, StartParams>(),
+  context: ({ request, route, startContext, startParams }) => ({
+    operation: route.key,
+    session: startContext.session,
+    splat: startParams._splat,
+    userAgent: request.headers.get('user-agent'),
+  }),
 })
 ```
 
@@ -132,7 +132,7 @@ shared contract.
   framework-neutral `@hulla/api-tanstack-query` integration can wrap a Hulla client when needed.
 - Start server functions own same-origin application RPC and their serialization boundary. Do not wrap them around a
   Hulla HTTP call merely to reuse this adapter; use a native server function for internal operations.
-- Start request middleware owns request-wide authentication, logging, and platform context. Use `withContext()` only to
+- Start request middleware owns request-wide authentication, logging, and platform context. Declare the Start adapter to
   consume the established context inside contract handlers rather than repeating that work in Hulla middleware.
 
 This keeps one owner for each concern: Start for application execution and data flow, Hulla for shared HTTP contracts.

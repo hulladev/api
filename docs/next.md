@@ -28,32 +28,42 @@ Next Route Handlers cannot expose Hulla's `QUERY` method. `createRouteHandler()`
 fragment containing one, rather than leaving that route silently unreachable. Such a contract needs a host that can
 register the method or a separate HTTP-facing contract using a supported method.
 
-Use `withContext()` when server context needs `NextRequest` features such as `cookies` or `nextUrl`:
+Declare `nextAdapter()` when server context needs `NextRequest` features such as `cookies` or `nextUrl`:
 
 ```ts
 import { defineServer } from '@hulla/api/server'
-import { withContext } from '@hulla/api-next/server'
+import { nextAdapter } from '@hulla/api-next/server'
 
 type ApiRouteContext = RouteContext<'/api/[[...hulla]]'>
 
 const server = defineServer(contract, {
-  context: withContext<ApiRouteContext>()(async ({ request, route, routeContext }) => ({
+  adapter: nextAdapter<ApiRouteContext>(),
+  context: async ({ request, route, routeContext }) => ({
     session: request.cookies.get('session')?.value,
     catchAll: (await routeContext.params).hulla,
     route,
-  })),
+  }),
 })
 ```
 
-The curried form preserves Next's generated path-specific `RouteContext` parameter type. Use direct
-`withContext(...)` when the generic `Record<string, string | string[] | undefined>` parameter shape is sufficient.
+The generic preserves Next's generated path-specific `RouteContext` parameter type. Omit it when the generic
+`Record<string, string | string[] | undefined>` parameter shape is sufficient.
 
-The context helper is adapter-bound. Mounting an implementation that uses it through Express, the generic Fetch adapter,
+The adapter declaration is inherited by every implementation and fragment. Mounting one through Express, generic Fetch,
 or `inProcessTransport()` fails immediately with an adapter mismatch instead of treating another native request as a
 `NextRequest`. Context factories that use only portable route metadata remain usable through every adapter.
 
-`createRouteHandler()` also accepts `onError`; its input contains the native `NextRequest` and a clone of the default
-`Response`.
+`createRouteHandler()` also accepts `onError`. Its single input object contains the native `NextRequest`, the typed
+`routeContext`, route metadata, and a clone of the protocol-safe default `Response`:
+
+```ts
+createRouteHandler(implementation, {
+  onError({ error, phase, request, routeContext, defaultResponse }) {
+    console.error(phase, request.nextUrl.pathname, routeContext, error)
+    return defaultResponse
+  },
+})
+```
 
 ## Server-side fetch and the Data Cache
 
@@ -143,8 +153,8 @@ export async function renameUser(id: string, name: string) {
 ```
 
 If the Hulla server and action share a process, `inProcessTransport()` can avoid a loopback HTTP request while preserving
-the encoded client/server boundary, provided its server context is portable. An implementation using Next's
-`withContext()` intentionally rejects in-process mounting; extract request-independent services or use a portable context
+the encoded client/server boundary, provided its server context is portable. An implementation declaring
+`nextAdapter()` intentionally rejects in-process mounting; extract request-independent services or use a portable context
 factory in that case. Calling a shared service directly is also appropriate when an HTTP-shaped response is unnecessary.
 Server Action arguments must still be treated as untrusted and authorization must run inside the action or downstream
 implementation.

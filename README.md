@@ -24,6 +24,7 @@ The first vertical slice includes:
 - explicit TanStack Query and SWR client wrappers with no core plugin hooks
 - an advanced `@hulla/api/adapters` server-adapter boundary
 - a streaming `@hulla/api-express` server integration for complete implementations and route fragments
+- a Module Worker `@hulla/api-cloudflare` integration with typed bindings and execution context
 - an App Router and Data Cache-aware `@hulla/api-next` integration for Next.js
 - a contract-backed `@hulla/api-tanstack-start` wildcard server-route integration for TanStack Start
 - optional `@hulla/api/procedure` functions with exact sync/async return types, validation, context, and middleware
@@ -44,6 +45,8 @@ Structured operational errors, Standard Schema issue compatibility, and protocol
 Bidirectional OpenAPI generation, typed sidecars, docstrings, and drift checks are covered in
 [`docs/openapi.md`](./docs/openapi.md).
 Express server deployment is covered in [`docs/express.md`](./docs/express.md).
+Cloudflare Module Workers, native bindings, execution context, and adapter scope are covered in
+[`docs/cloudflare.md`](./docs/cloudflare.md).
 Next.js Route Handlers, server-side fetching, caching, and Server Action composition are covered in
 [`docs/next.md`](./docs/next.md).
 TanStack Start contract-backed server routes, native context, framework boundaries, and fragment deployment are covered in
@@ -85,6 +88,7 @@ packages/core/
   tests/            Contract laws and vertical-slice tests
 packages/openapi/   OpenAPI exporter, importer, typed sidecars, docstrings, and CLI
 packages/express/   native-routing Express server adapter over the route runtime
+packages/cloudflare/ Cloudflare Module Worker adapter over the Fetch runtime
 packages/next/      Next.js App Router handler and extended Fetch transport helpers
 packages/tanstack-start/ TanStack Start wildcard server-route adapter
 ```
