@@ -22,20 +22,19 @@ The adapter accepts complete implementations and deployable fragments. Routing, 
 streaming, declared errors, and protocol-safe 404/405 responses have the same behavior as `createFetchHandler()`.
 Cloudflare Workers pass arbitrary HTTP methods to `fetch`, so Hulla `QUERY` routes remain available.
 
-Declare `cloudflareAdapter()` with Wrangler's generated `Env` type when handlers need bindings or Worker lifecycle APIs:
+Use `cloudflareContext()` with Wrangler's generated `Env` type when handlers need bindings or Worker lifecycle APIs:
 
 ```ts
 import { defineServer } from '@hulla/api/server'
-import { cloudflareAdapter } from '@hulla/api-cloudflare'
+import { cloudflareContext } from '@hulla/api-cloudflare'
 
 const server = defineServer(contract, {
-  adapter: cloudflareAdapter<Env>(),
-  context: ({ env, ctx, request, route }) => ({
+  context: cloudflareContext<Env>()(({ env, ctx, request, route }) => ({
     database: env.DB,
     request,
     route,
     defer: ctx.waitUntil.bind(ctx),
-  }),
+  })),
 })
 ```
 
@@ -46,15 +45,14 @@ factory also uses newer APIs such as `ctx.props`, `ctx.exports`, or `ctx.tracing
 
 ```ts
 const server = defineServer(contract, {
-  adapter: cloudflareAdapter<Env, ExecutionContext>(),
-  context: ({ env, ctx }) => ({
+  context: cloudflareContext<Env, ExecutionContext>()(({ env, ctx }) => ({
     service: env.API,
     caller: ctx.props,
-  }),
+  })),
 })
 ```
 
-The adapter declaration is inherited by implementations and fragments. They fail immediately if mounted through generic
+The native context requirement is inherited by implementations and fragments. They fail immediately if mounted through generic
 Fetch adapter, Express, or the in-process transport. Context factories using only portable route metadata remain usable
 through every adapter.
 

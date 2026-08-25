@@ -28,21 +28,20 @@ Next Route Handlers cannot expose Hulla's `QUERY` method. `createRouteHandler()`
 fragment containing one, rather than leaving that route silently unreachable. Such a contract needs a host that can
 register the method or a separate HTTP-facing contract using a supported method.
 
-Declare `nextAdapter()` when server context needs `NextRequest` features such as `cookies` or `nextUrl`:
+Use `nextContext()` when server context needs `NextRequest` features such as `cookies` or `nextUrl`:
 
 ```ts
 import { defineServer } from '@hulla/api/server'
-import { nextAdapter } from '@hulla/api-next/server'
+import { nextContext } from '@hulla/api-next/server'
 
 type ApiRouteContext = RouteContext<'/api/[[...hulla]]'>
 
 const server = defineServer(contract, {
-  adapter: nextAdapter<ApiRouteContext>(),
-  context: async ({ request, route, routeContext }) => ({
+  context: nextContext<ApiRouteContext>()(async ({ request, route, routeContext }) => ({
     session: request.cookies.get('session')?.value,
     catchAll: (await routeContext.params).hulla,
     route,
-  }),
+  })),
 })
 ```
 
@@ -154,7 +153,7 @@ export async function renameUser(id: string, name: string) {
 
 If the Hulla server and action share a process, `inProcessTransport()` can avoid a loopback HTTP request while preserving
 the encoded client/server boundary, provided its server context is portable. An implementation declaring
-`nextAdapter()` intentionally rejects in-process mounting; extract request-independent services or use a portable context
+`nextContext()` intentionally rejects in-process mounting; extract request-independent services or use a portable context
 factory in that case. Calling a shared service directly is also appropriate when an HTTP-shaped response is unnecessary.
 Server Action arguments must still be treated as untrusted and authorization must run inside the action or downstream
 implementation.

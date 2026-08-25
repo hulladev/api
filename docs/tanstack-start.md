@@ -53,12 +53,12 @@ createServerRouteHandlers(implementation, {
 
 ## Native Start context
 
-Declare `tanStackStartAdapter()` when Hulla context construction needs the native request, wildcard params, or context
-installed by Start request middleware. Pass the middleware context and host parameter types to the adapter:
+Use `tanStackStartContext()` when Hulla context construction needs the native request, wildcard params, or context
+installed by Start request middleware. Pass the middleware context and host parameter types to the helper:
 
 ```ts
 import { defineServer } from '@hulla/api/server'
-import { tanStackStartAdapter } from '@hulla/api-tanstack-start/server'
+import { tanStackStartContext } from '@hulla/api-tanstack-start/server'
 
 type StartContext = {
   readonly session: { readonly userId: string }
@@ -69,13 +69,12 @@ type StartParams = {
 }
 
 const server = defineServer(contract, {
-  adapter: tanStackStartAdapter<StartContext, StartParams>(),
-  context: ({ request, route, startContext, startParams }) => ({
+  context: tanStackStartContext<StartContext, StartParams>()(({ request, route, startContext, startParams }) => ({
     operation: route.key,
     session: startContext.session,
     splat: startParams._splat,
     userAgent: request.headers.get('user-agent'),
-  }),
+  })),
 })
 ```
 

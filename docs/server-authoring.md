@@ -15,25 +15,23 @@ const server = defineServer(contract, {
 
 The context factory's resolved object is inferred once and exposed as `input.context` in every middleware and route handler.
 
-Declare an adapter when the context needs host-native values. The descriptor contributes those values to the factory's
-input type and intentionally binds every implementation and fragment created from that definition:
+Wrap the factory with the host context helper when it needs native values. The helper contributes those values to the
+input type and binds every implementation and fragment created from that definition:
 
 ```ts
-import { fetchAdapter } from '@hulla/api/fetch'
+import { fetchContext } from '@hulla/api/fetch'
 
 const server = defineServer(contract, {
-  adapter: fetchAdapter(),
-  context: ({ request, route }) => ({
+  context: fetchContext(({ request, route }) => ({
     signal: request.signal,
     route,
-  }),
+  })),
 })
 ```
 
-Omit `adapter` when context uses only route metadata or request-independent services. That implementation can be mounted
-through any compatible adapter or `inProcessTransport()`. Declaring an adapter without a context factory is also valid
-when an application wants to enforce one deployment target. Compatibility is checked once when the implementation is
-mounted; adapter selection adds no per-request dispatch or route metadata.
+Use a plain context factory when it needs only route metadata or request-independent services. That implementation can
+be mounted through any compatible adapter or `inProcessTransport()`. Compatibility is checked once when an implementation
+with a native context factory is mounted; adapter selection adds no per-request dispatch or route metadata.
 
 Keep the factory for request-scoped identity and shared state. If a dependency is expensive and only some routes need it, return a lazy memoized function such as `user: once(() => loadUser())`; an object mapping of eager functions would otherwise push caching, errors, and lifecycle rules into the framework.
 
@@ -231,17 +229,16 @@ import { createFetchHandler } from '@hulla/api/fetch'
 export const fetch = createFetchHandler(implementation)
 ```
 
-`createFetchHandler()` accepts either a complete implementation or a fragment and handles Fetch request extraction and response construction. Declare `fetchAdapter()` when the context factory needs the native Fetch `Request`:
+`createFetchHandler()` accepts either a complete implementation or a fragment and handles Fetch request extraction and response construction. Use `fetchContext()` when the context factory needs the native Fetch `Request`:
 
 ```ts
-import { createFetchHandler, fetchAdapter } from '@hulla/api/fetch'
+import { createFetchHandler, fetchContext } from '@hulla/api/fetch'
 
 const server = defineServer(contract, {
-  adapter: fetchAdapter(),
-  context: ({ request, route }) => ({
+  context: fetchContext(({ request, route }) => ({
     requestId: request.headers.get('x-request-id') ?? crypto.randomUUID(),
     routeKey: route.key,
-  }),
+  })),
 })
 ```
 

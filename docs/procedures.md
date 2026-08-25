@@ -47,4 +47,4 @@ export const users = {
 }
 ```
 
-For route-derived schemas, use `contract.routeInput(route)` or `contract.routeOutput(route, status)` when the complete directional schema is useful. Procedures accept schemas, not HTTP body or response descriptors.
+For route-derived schemas, use `contractInput(contract, route)` or `routeOutput(route, status)` when the complete directional schema is useful. Procedures accept schemas, not HTTP body or response descriptors.
