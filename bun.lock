@@ -36,6 +36,7 @@
         "@trpc/client": "^11.18.0",
         "@trpc/server": "^11.18.0",
         "@ts-rest/core": "^3.52.1",
+        "@ts-rest/core-rc": "npm:@ts-rest/core@3.53.0-rc.1",
         "@ts-rest/express": "^3.52.1",
         "@ts-rest/serverless": "^3.52.1",
         "@types/express": "^5.0.6",
@@ -617,6 +618,8 @@
     "@trpc/server": ["@trpc/server@11.18.0", "", { "peerDependencies": { "typescript": ">=5.7.2" }, "bin": { "intent": "bin/intent.js" } }, "sha512-JAvXOuNTxgXjIDfQaOvDq1j66LMNfDJUH1IU7Slfn8EvRv2EkH6ehu3A7zpYhjO0syHHiYg77v2lG2JFJgvw7Q=="],
 
     "@ts-rest/core": ["@ts-rest/core@3.52.1", "", { "peerDependencies": { "@types/node": "^18.18.7 || >=20.8.4", "zod": "^3.22.3" }, "optionalPeers": ["@types/node", "zod"] }, "sha512-tAjz7Kxq/grJodcTA1Anop4AVRDlD40fkksEV5Mmal88VoZeRKAG8oMHsDwdwPZz+B/zgnz0q2sF+cm5M7Bc7g=="],
+
+    "@ts-rest/core-rc": ["@ts-rest/core@3.53.0-rc.1", "", { "peerDependencies": { "@types/node": "^18.18.7 || >=20.8.4" }, "optionalPeers": ["@types/node"] }, "sha512-hDMXqKHSys6w+kXFW1Q6EvN8QgRvtXKXJ2TpYByKI4TquaPjiTOv99aLD26X4LNRzdna8Ci1PVyzr0jYZv0oNQ=="],
 
     "@ts-rest/express": ["@ts-rest/express@3.52.1", "", { "peerDependencies": { "@ts-rest/core": "~3.52.0", "express": "^4.0.0", "zod": "^3.22.3" }, "optionalPeers": ["zod"] }, "sha512-ttVynyJSWYnVzn7FazSFvShD5j3Lq1JsIhSKereV2Z51zxWEQwo35CpCO3Q8rELzkfD9CYoT6eNSBJRlJLogIw=="],
 

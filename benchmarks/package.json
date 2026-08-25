@@ -25,6 +25,7 @@
     "@trpc/client": "^11.18.0",
     "@trpc/server": "^11.18.0",
     "@ts-rest/core": "^3.52.1",
+    "@ts-rest/core-rc": "npm:@ts-rest/core@3.53.0-rc.1",
     "@ts-rest/express": "^3.52.1",
     "@ts-rest/serverless": "^3.52.1",
     "@types/express": "^5.0.6",

@@ -114,6 +114,18 @@ const targets: readonly PackageSizeTarget[] = [
     imports: '@ts-rest/core + @ts-rest/serverless/fetch',
     comparison: 'executable',
   },
+  {
+    runtime: 'ts-rest stable core',
+    entry: 'ts-rest-core',
+    imports: '@ts-rest/core@3.52.1',
+    comparison: 'breakdown',
+  },
+  {
+    runtime: 'ts-rest Zod 4 RC core',
+    entry: 'ts-rest-rc',
+    imports: '@ts-rest/core@3.53.0-rc.1',
+    comparison: 'breakdown',
+  },
   { runtime: 'Hono RPC', entry: 'hono', imports: 'hono + hono/client', comparison: 'executable' },
 ]
 
@@ -146,6 +158,7 @@ try {
         '--target=bun',
         '--minify',
         '--external=zod',
+        '--external=zod/*',
         `--outfile=${output.pathname}`,
         ...analysisArguments,
       ],
