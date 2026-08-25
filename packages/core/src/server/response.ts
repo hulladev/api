@@ -1,4 +1,4 @@
-import type { AnyRouteResponse, ResponseHeaders, RouteResponses } from '../response'
+import type { AnyRouteResponse, ResponseHeaders, RouteResponses } from '../contract/response'
 import type { StreamSource } from '../stream'
 import type { AnySchema, SchemaOutbound } from '../validation'
 

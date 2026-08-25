@@ -1,5 +1,5 @@
 import { defineContract, response, route } from '@hulla/api'
-import { cloudflareAdapter, createWorkerHandler, type CloudflareExecutionContext } from '@hulla/api-cloudflare'
+import { cloudflareContext, createWorkerHandler, type CloudflareExecutionContext } from '@hulla/api-cloudflare'
 import { defineServer } from '@hulla/api/server'
 import {
   adapterDynamicOutput,
@@ -38,8 +38,7 @@ const contract = defineContract({
 
 const workerHandler = createWorkerHandler(
   defineServer(contract, {
-    adapter: cloudflareAdapter<Env>(),
-    context: ({ env }) => ({ enabled: env.enabled }),
+    context: cloudflareContext<Env>()(({ env }) => ({ enabled: env.enabled })),
   }).implement({
     static: ({ context }) => ({ status: 200, body: { ok: context.enabled } }),
     dynamic: ({ context, params, query, body }) => ({

@@ -1,7 +1,7 @@
 import type { CompiledContractRouteFor } from './compiler'
 import type { Contract } from './contract'
+import type { Route } from './contract/route'
 import type { ExecutionStep } from './execution'
-import type { Route } from './route'
 
 export type Awaitable<Value> = ExecutionStep<Value>
 

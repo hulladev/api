@@ -1,8 +1,8 @@
 export { fetchTransport } from './client'
 export type { ClientFetch, FetchTransportOptions } from './client'
-export { createFetchHandler, fetchAdapter } from './server'
+export { createFetchHandler, fetchContext } from './server'
 export type {
-  FetchAdapter,
+  FetchContextFactory,
   FetchContextInput,
   FetchHandler,
   FetchServerErrorInput,

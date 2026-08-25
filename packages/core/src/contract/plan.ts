@@ -1,9 +1,7 @@
-import type { CompiledContractRoute } from './compiler'
-import type { RouteMetadata } from './context'
-import type { Contract } from './contract'
-import { compileContractRoutes } from './contract-compiler'
-import { getContractState } from './contract-state'
-import { errorFactories, type AnyErrorDeclaration } from './declared-errors'
+import type { CompiledContractRoute } from '../compiler'
+import type { RouteMetadata } from '../context'
+import { errorFactories, type AnyErrorDeclaration } from '../declared-errors'
+import { compileSchemaExecution, type AnySchema, type ObjectSchema, type SchemaStep } from '../validation'
 import {
   compilePathParameterDecoder,
   compilePathParameterEncoder,
@@ -13,7 +11,8 @@ import {
 import { compileQueryDecoder, compileQueryEncoder, type QueryDecoder, type QueryEncoder } from './query'
 import { mimeEssence, type AnyRequestBody } from './request'
 import type { AnyRouteResponse } from './response'
-import { compileSchemaExecution, type AnySchema, type ObjectSchema, type SchemaStep } from './validation'
+import { compileContractRoutes, getContractState } from './state'
+import type { Contract } from './types'
 
 type RuntimeQuery = ObjectSchema
 type RuntimeSchemaExecutionPlan = {

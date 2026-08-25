@@ -2,11 +2,11 @@ import { describe, expect, expectTypeOf, test } from 'vitest'
 import { createAdapterHandler } from '../src/adapters'
 import { defineClient } from '../src/client'
 import { defineContract } from '../src/contract'
+import { response } from '../src/contract/response'
+import { route } from '../src/contract/route'
+import { router } from '../src/contract/router'
 import { defineErrors } from '../src/declared-errors'
 import { inProcessTransport } from '../src/in-process'
-import { response } from '../src/response'
-import { route } from '../src/route'
-import { router } from '../src/router'
 import { defineServer } from '../src/server'
 
 const contract = defineContract({
@@ -410,7 +410,7 @@ describe('middleware scoping', () => {
 
     const unscopedHealth = base.implement(contract.routes.health, ({ response }) => response(200, 'ok'))
     expect(() => branch.implement(unscopedHealth, userHandlers)).toThrowError(
-      'Server implementation fragment does not inherit the composition scope middleware'
+      'Server fragment has an incompatible middleware scope'
     )
   })
 
@@ -445,7 +445,7 @@ describe('middleware scoping', () => {
 
     const unscopedHealth = base.create(contract.routes.health)
     expect(() => branch.create(unscopedHealth, userCalls)).toThrowError(
-      'Client creation fragment does not inherit the composition scope middleware'
+      'Client fragment has an incompatible middleware scope'
     )
   })
 
@@ -579,13 +579,13 @@ describe('middleware scoping', () => {
         foreignContract.routes.health,
         serverMiddleware
       )
-    ).toThrowError('Server implementation node belongs to a different contract or is not mounted')
+    ).toThrowError('Server node is not mounted in this contract')
     expect(() =>
       (client.use as (node: unknown, middleware: typeof clientMiddleware) => unknown)(
         foreignContract.routes.health,
         clientMiddleware
       )
-    ).toThrowError('Client creation node belongs to a different contract or is not mounted')
+    ).toThrowError('Client node is not mounted in this contract')
     const serverUse = server.use as (...values: readonly unknown[]) => unknown
     const clientUse = client.use as (...values: readonly unknown[]) => unknown
     expect(() => serverUse()).toThrowError('Server middleware must be a function')

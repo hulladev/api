@@ -10,7 +10,7 @@ export default defineConfig({
     'src/compiler.ts',
     'src/errors.ts',
     'src/fetch/index.ts',
-    'src/in-process.ts',
+    'src/in-process/index.ts',
     'src/procedure.ts',
     'src/server/index.ts',
     'src/stream.ts',

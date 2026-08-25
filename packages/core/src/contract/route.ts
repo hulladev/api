@@ -1,4 +1,4 @@
-import type { HttpMethod } from './http'
+import { isSchema, type AnySchema, type ObjectSchema, type SchemaInput } from '../validation'
 import { assertRoutePath, type PathParamOptions, type PathParams, type PathParamsFor } from './paths'
 import type { JsonValue } from './representation'
 import {
@@ -10,7 +10,10 @@ import {
   type TextWireObject,
 } from './request'
 import type { RouteResponses } from './response'
-import { isSchema, type AnySchema, type ObjectSchema, type SchemaInput } from './validation'
+
+export const HTTP_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'QUERY'] as const
+
+export type HttpMethod = (typeof HTTP_METHODS)[number]
 
 export type RouteQuery = ObjectSchema
 export type RouteHeaders = ObjectSchema

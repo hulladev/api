@@ -1,8 +1,8 @@
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
-import { response } from '../src/response'
-import { route } from '../src/route'
-import { router, type Router } from '../src/router'
+import { response } from '../src/contract/response'
+import { route } from '../src/contract/route'
+import { router, type Router } from '../src/contract/router'
 
 const routes = {
   list: route.get('/', { responses: { 200: response.text(z.string()) } }),

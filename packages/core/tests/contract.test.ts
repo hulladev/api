@@ -1,11 +1,11 @@
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
 import { compileContract } from '../src/compiler'
-import { contractNodeKey, defineContract, type Contract } from '../src/contract'
+import { contractInput, contractNodeKey, defineContract, type Contract } from '../src/contract'
+import { response } from '../src/contract/response'
+import { route } from '../src/contract/route'
+import { router } from '../src/contract/router'
 import { defineErrors } from '../src/declared-errors'
-import { response } from '../src/response'
-import { route } from '../src/route'
-import { router } from '../src/router'
 
 const textResponses = { 200: response.text(z.string()) }
 
@@ -21,7 +21,7 @@ describe('contract declaration', () => {
     const define = defineContract as (options: unknown) => unknown
 
     expect(() => define({ routes: { health } })).not.toThrow()
-    expectTypeOf(defineContract({ routes: { health } }).routeInput).toBeFunction()
+    expectTypeOf(contractInput).toBeFunction()
   })
 
   test('returns an immutable contract whose routes contain route and router definitions', () => {
@@ -29,17 +29,13 @@ describe('contract declaration', () => {
     const contract = defineContract({ basePath: '/api', routes })
 
     expect(contract).toEqual({
-      kind: 'contract',
       basePath: '/api',
       routes,
       errors: {},
-      routeInput: contract.routeInput,
-      routeOutput: contract.routeOutput,
     })
     expect(contract.routes).not.toBe(routes)
     expect(Object.isFrozen(contract)).toBe(true)
     expect(Object.isFrozen(contract.routes)).toBe(true)
-    expectTypeOf(contract.kind).toEqualTypeOf<'contract'>()
     expectTypeOf(contract.basePath).toEqualTypeOf<'/api'>()
     expectTypeOf(contract.routes).toExtend<Readonly<typeof routes>>()
     expectTypeOf(contract).toExtend<Contract>()

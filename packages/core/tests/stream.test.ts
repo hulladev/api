@@ -1,7 +1,7 @@
 import * as v from 'valibot'
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
-import { response } from '../src/response'
+import { response } from '../src/contract/response'
 import { defineStreamFormat, ndjson, sseJson, type StreamSource } from '../src/stream'
 import { codec, type SchemaInput, type SchemaOutbound, type SchemaOutput } from '../src/validation'
 

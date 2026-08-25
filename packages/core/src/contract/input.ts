@@ -1,9 +1,6 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
-import { isPromiseLike } from './execution'
-import { isRecord, setOwn } from './object'
-import type { AnyRequestBody } from './request'
-import type { Route } from './route'
-import type { RouterParamsForRoute } from './router'
+import { isPromiseLike } from '../execution'
+import { isRecord, setOwn } from '../object'
 import {
   isSchema,
   validateSchemaOutbound,
@@ -11,7 +8,10 @@ import {
   type ObjectSchema,
   type SchemaOutbound,
   type SchemaOutput,
-} from './validation'
+} from '../validation'
+import type { AnyRequestBody } from './request'
+import type { Route } from './route'
+import type { RouterParamsForRoute } from './router'
 
 type SchemaInputValue<Schema> = Schema extends AnySchema ? SchemaOutbound<Schema> : Record<never, never>
 type SchemaOutputValue<Schema> = Schema extends AnySchema ? SchemaOutput<Schema> : Record<never, never>

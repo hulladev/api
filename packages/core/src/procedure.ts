@@ -131,7 +131,7 @@ function compileApplicationSchemaValidation(
     const validation = decode(value)
     if (isSchemaStepAsync(validation) && !asynchronous) {
       void Promise.resolve(validation).catch(() => undefined)
-      throw new TypeError('Asynchronous Standard Schemas must be wrapped with validation.async(schema)')
+      throw new TypeError('Async schemas require validation.async(schema)')
     }
     return validation
   }

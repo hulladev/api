@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { compileContract, defineContract, response, route } from '../src'
-import { compileContractRoutes } from '../src/contract-compiler'
-import { getContractState } from '../src/contract-state'
+import { compileContractRoutes, getContractState } from '../src/contract/state'
 
 describe('contract route compilation', () => {
   test('reuses route metadata emitted while defining the contract', () => {

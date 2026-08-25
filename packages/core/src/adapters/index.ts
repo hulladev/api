@@ -1,15 +1,14 @@
-export {
-  createAdapterHandler,
-  createAdapterRuntime,
-  type AdapterBody,
-  type AdapterDispatchInput,
-  type AdapterErrorInput,
-  type AdapterHandler,
-  type AdapterPhase,
-  type AdapterResponse,
-  type AdapterResponseBody,
-  type AdapterRoute,
-  type AdapterRouteInput,
-  type AdapterRuntime,
-  type AdapterRuntimeOptions,
-} from './runtime'
+export { createAdapterHandler, createAdapterRuntime } from './runtime'
+export type {
+  AdapterBody,
+  AdapterDispatchInput,
+  AdapterErrorInput,
+  AdapterHandler,
+  AdapterPhase,
+  AdapterResponse,
+  AdapterResponseBody,
+  AdapterRoute,
+  AdapterRouteInput,
+  AdapterRuntime,
+  AdapterRuntimeOptions,
+} from './types'

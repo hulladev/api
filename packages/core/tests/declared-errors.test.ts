@@ -3,10 +3,10 @@ import { z } from 'zod'
 import { createAdapterHandler } from '../src/adapters'
 import { defineClient } from '../src/client'
 import { defineContract } from '../src/contract'
+import { response } from '../src/contract/response'
+import { route } from '../src/contract/route'
 import { defineErrors, isDeclaredError } from '../src/declared-errors'
 import { inProcessTransport } from '../src/in-process'
-import { response } from '../src/response'
-import { route } from '../src/route'
 import { defineServer } from '../src/server'
 
 const failures = defineErrors({

@@ -1,8 +1,8 @@
 import * as v from 'valibot'
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
-import { response } from '../src/response'
-import { route, type Route, type RouteParams, type RouteQuery } from '../src/route'
+import { response } from '../src/contract/response'
+import { route, type Route, type RouteParams, type RouteQuery } from '../src/contract/route'
 import { codec, type SchemaInput, type SchemaOutbound, type SchemaOutput } from '../src/validation'
 
 const responses = {

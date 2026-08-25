@@ -1,22 +1,24 @@
-import {
-  createAdapterHandler,
-  type AdapterDispatchInput,
-  type AdapterErrorInput,
-  type AdapterPhase,
-  type AdapterResponse,
-} from '../adapters/runtime'
+import { createAdapterHandler } from '../adapters/runtime'
+import type { AdapterDispatchInput, AdapterErrorInput, AdapterPhase, AdapterResponse } from '../adapters/types'
 import type { Awaitable } from '../context'
 import type { Contract } from '../contract'
-import { assertServerAdapter, createServerAdapter, type ServerAdapter } from '../server/adapter'
+import { assertAdapterContext, bindAdapterContext, type AdapterContextFactory } from '../server/context'
 import type { RouteMetadata, ServerContextInput } from '../server/context'
 import type { ServerExecutableFor } from '../server/types'
 
-export type FetchAdapter = ServerAdapter<'fetch', { readonly request: Request }>
+export type FetchContextFactory<
+  Context extends object,
+  ContractType extends Contract = Contract,
+> = AdapterContextFactory<'fetch', { readonly request: Request }, Context, ServerContextInput<ContractType>>
 
-const fetchAdapterDescriptor = /* @__PURE__ */ createServerAdapter('fetch') as FetchAdapter
-
-export function fetchAdapter(): FetchAdapter {
-  return fetchAdapterDescriptor
+/** Gives a server context factory access to the native Fetch request. */
+export function fetchContext<const Context extends object, ContractType extends Contract = Contract>(
+  factory: (input: FetchContextInput<ContractType>) => Awaitable<Context>
+): FetchContextFactory<Context, ContractType> {
+  return bindAdapterContext<'fetch', { readonly request: Request }, Context, ServerContextInput<ContractType>>(
+    'fetch',
+    factory
+  )
 }
 
 export type FetchServerPhase = AdapterPhase
@@ -30,9 +32,9 @@ export type FetchServerErrorInput<HandlerContext = undefined> = {
   readonly route?: RouteMetadata
 }
 
-export type FetchServerOptions<HandlerContext = undefined, Adapter extends ServerAdapter = FetchAdapter> = {
+export type FetchServerOptions<HandlerContext = undefined, AdapterId extends string = 'fetch'> = {
   /** @internal Adapter identity used to validate native-context factories. */
-  readonly contextAdapter?: Adapter
+  readonly contextAdapter?: AdapterId
   /** Adds host-specific values to the server context input. */
   readonly contextInput?: (
     request: Request,
@@ -156,12 +158,12 @@ export function createFetchHandler<
   const ContractType extends Contract,
   const Context extends object,
   HandlerContext = undefined,
-  Adapter extends ServerAdapter = FetchAdapter,
+  AdapterId extends string = 'fetch',
 >(
-  implementation: ServerExecutableFor<ContractType, Context, Adapter>,
-  options: FetchServerOptions<HandlerContext, Adapter> = {}
+  implementation: ServerExecutableFor<ContractType, Context, AdapterId>,
+  options: FetchServerOptions<HandlerContext, AdapterId> = {}
 ): FetchHandler<HandlerContext> {
-  assertServerAdapter(implementation.adapter, options.contextAdapter ?? fetchAdapterDescriptor)
+  assertAdapterContext(implementation.context, options.contextAdapter ?? 'fetch')
   const onAdapterError =
     options.onError === undefined
       ? undefined

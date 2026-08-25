@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
-import { compileQueryDecoder, compileQueryEncoder } from '../src/query'
+import { compileQueryDecoder, compileQueryEncoder } from '../src/contract/query'
 import { codec } from '../src/validation'
 
 describe('query transport', () => {

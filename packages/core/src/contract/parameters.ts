@@ -1,7 +1,7 @@
-import type { CompiledPathParameters } from './compiler'
-import { type ExecutionStep, isPromiseLike, mapExecutionStep } from './execution'
-import { isRecord, setOwn } from './object'
-import { compileSchemaExecution } from './validation'
+import type { CompiledPathParameters } from '../compiler'
+import { type ExecutionStep, isPromiseLike, mapExecutionStep } from '../execution'
+import { isRecord, setOwn } from '../object'
+import { compileSchemaExecution } from '../validation'
 
 function parameterGroup(
   declaration: CompiledPathParameters,

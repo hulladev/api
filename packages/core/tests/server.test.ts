@@ -1,15 +1,17 @@
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
 import { defineContract, type Contract } from '../src/contract'
+import { response } from '../src/contract/response'
+import { route } from '../src/contract/route'
+import { router } from '../src/contract/router'
 import { defineErrors } from '../src/declared-errors'
-import { response } from '../src/response'
-import { route } from '../src/route'
-import { router } from '../src/router'
 import {
-  createServerAdapter,
+  assertAdapterContext,
+  bindAdapterContext,
   defineServer,
-  type ServerAdapter,
   type ServerContextFactory,
+  type ServerContextInput,
+  type ServerContextRequirement,
   type ServerHandlersOf,
   type ServerImplementation,
   type ServerImplementationFragment,
@@ -181,15 +183,19 @@ describe('defineServer', () => {
     expectTypeOf(invalidFragments).toBeFunction()
   })
 
-  test('binds native context once and preserves the adapter across fragments', () => {
-    type TestAdapter = ServerAdapter<'test', { readonly request: Request }>
-    const adapter = createServerAdapter('test') as TestAdapter
+  test('binds native context once without carrying adapter descriptors through fragments', () => {
+    const testContext = <const Context extends object>(
+      factory: (input: ServerContextInput<typeof contract> & { readonly request: Request }) => Context
+    ) =>
+      bindAdapterContext<'test', { readonly request: Request }, Context, ServerContextInput<typeof contract>>(
+        'test',
+        factory
+      )
     const server = defineServer(contract, {
-      adapter,
-      context: ({ request, route: metadata }) => {
+      context: testContext(({ request, route: metadata }) => {
         expectTypeOf(request).toEqualTypeOf<Request>()
         return { requestMethod: request.method, routeKey: metadata.key }
-      },
+      }),
     })
     const health = server.implement(contract.routes.health, ({ context }) => ({
       status: 200,
@@ -198,14 +204,13 @@ describe('defineServer', () => {
     const organizations = server.implement(contract.routes.organizations, handlers().organizations)
     const implementation = server.implement(health, organizations)
 
-    expectTypeOf(server.adapter).toEqualTypeOf<TestAdapter>()
-    expectTypeOf(health.adapter).toEqualTypeOf<TestAdapter>()
-    expectTypeOf(implementation.adapter).toEqualTypeOf<TestAdapter>()
-    expect(server.adapter).toBe(adapter)
-    expect(health.adapter).toBe(adapter)
-    expect(organizations.adapter).toBe(adapter)
-    expect(implementation.adapter).toBe(adapter)
-    expect(defineServer(contract).adapter).toBeUndefined()
+    expectTypeOf(health.context).toMatchTypeOf<ServerContextRequirement<'test'> | undefined>()
+    expect(server.context).toBe(health.context)
+    expect(health.context).toBe(organizations.context)
+    expect(organizations.context).toBe(implementation.context)
+    expect(() => assertAdapterContext(implementation.context, 'other')).toThrow(
+      'Server requires the test adapter, but was mounted with other'
+    )
   })
 
   test('rejects duplicate and foreign implementation fragments', () => {

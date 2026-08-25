@@ -2,9 +2,9 @@ import type { Contract } from '@hulla/api'
 import { createAdapterRuntime } from '@hulla/api/adapters'
 import { createFetchHandler, type FetchServerErrorInput } from '@hulla/api/fetch'
 import {
-  createServerAdapter,
+  bindAdapterContext,
+  type AdapterContextFactory,
   type Awaitable,
-  type ServerAdapter,
   type ServerContextInput,
   type ServerExecutableFor,
 } from '@hulla/api/server'
@@ -31,19 +31,17 @@ type TanStackStartAdapterContext<StartContext, Params extends TanStackStartRoute
   readonly startParams: Params
 }
 
-export type TanStackStartAdapter<
+export type TanStackStartContextFactory<
+  Context extends object,
+  ContractType extends Contract = Contract,
   StartContext = unknown,
   Params extends TanStackStartRouteParams = TanStackStartRouteParams,
-> = ServerAdapter<'tanstack-start', TanStackStartAdapterContext<StartContext, Params>>
-
-const tanStackStartAdapterDescriptor = /* @__PURE__ */ createServerAdapter('tanstack-start') as TanStackStartAdapter
-
-export function tanStackStartAdapter<
-  StartContext = unknown,
-  Params extends TanStackStartRouteParams = TanStackStartRouteParams,
->(): TanStackStartAdapter<StartContext, Params> {
-  return tanStackStartAdapterDescriptor as TanStackStartAdapter<StartContext, Params>
-}
+> = AdapterContextFactory<
+  'tanstack-start',
+  TanStackStartAdapterContext<StartContext, Params>,
+  Context,
+  ServerContextInput<ContractType>
+>
 
 export type TanStackStartServerErrorInput<
   StartContext = unknown,
@@ -68,6 +66,25 @@ export type TanStackStartContextInput<
   Params extends TanStackStartRouteParams = TanStackStartRouteParams,
 > = ServerContextInput<ContractType> & TanStackStartAdapterContext<StartContext, Params>
 
+export function tanStackStartContext<
+  StartContext = unknown,
+  Params extends TanStackStartRouteParams = TanStackStartRouteParams,
+>(): <const Context extends object, ContractType extends Contract = Contract>(
+  factory: (input: TanStackStartContextInput<ContractType, StartContext, Params>) => Awaitable<Context>
+) => TanStackStartContextFactory<Context, ContractType, StartContext, Params>
+export function tanStackStartContext<
+  const Context extends object,
+  ContractType extends Contract = Contract,
+  StartContext = unknown,
+  Params extends TanStackStartRouteParams = TanStackStartRouteParams,
+>(
+  factory: (input: TanStackStartContextInput<ContractType, StartContext, Params>) => Awaitable<Context>
+): TanStackStartContextFactory<Context, ContractType, StartContext, Params>
+export function tanStackStartContext(factory?: Function): unknown {
+  const bind = (value: Function) => bindAdapterContext('tanstack-start', value as (input: object) => Awaitable<object>)
+  return factory === undefined ? bind : bind(factory)
+}
+
 export type TanStackStartRouteMethod = 'DELETE' | 'GET' | 'PATCH' | 'POST' | 'PUT'
 
 export type TanStackStartRouteHandlers<
@@ -82,7 +99,12 @@ export function createServerRouteHandlers<
   StartContext = unknown,
   Params extends TanStackStartRouteParams = TanStackStartRouteParams,
 >(
-  implementation: ServerExecutableFor<ContractType, Context, TanStackStartAdapter<StartContext, Params>>,
+  implementation: ServerExecutableFor<
+    ContractType,
+    Context,
+    'tanstack-start',
+    TanStackStartAdapterContext<StartContext, Params>
+  >,
   options?: TanStackStartServerOptions<StartContext, Params>
 ): TanStackStartRouteHandlers<StartContext, Params> {
   const configured = options ?? {}
@@ -95,13 +117,8 @@ export function createServerRouteHandlers<
   }
 
   type HandlerContext = TanStackStartHandlerInput<StartContext, Params>
-  const fetchHandler = createFetchHandler<
-    ContractType,
-    Context,
-    HandlerContext,
-    TanStackStartAdapter<StartContext, Params>
-  >(implementation, {
-    contextAdapter: tanStackStartAdapterDescriptor as TanStackStartAdapter<StartContext, Params>,
+  const fetchHandler = createFetchHandler<ContractType, Context, HandlerContext, 'tanstack-start'>(implementation, {
+    contextAdapter: 'tanstack-start',
     contextInput: (_request, input: HandlerContext) => ({
       startContext: input.context,
       startParams: input.params,

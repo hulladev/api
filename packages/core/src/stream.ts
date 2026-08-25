@@ -1,4 +1,4 @@
-import type { JsonValue, ResponseBody, ResponseHeaders, RouteResponse } from './response'
+import type { JsonValue, ResponseBody, ResponseHeaders, RouteResponse } from './contract/response'
 import type { AnySchema, NonSchemaOptions, SchemaInput } from './validation'
 
 export type StreamSource<Value> = AsyncIterable<Value> | Iterable<Value>

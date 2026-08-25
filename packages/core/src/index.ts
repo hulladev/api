@@ -5,7 +5,7 @@ export type {
   CompiledContractRouteFor,
   CompiledPathParameters,
 } from './compiler'
-export { contractNodeKey, defineContract } from './contract'
+export { contractInput, contractNodeKey, defineContract } from './contract'
 export type {
   Contract,
   ContractNodeFor,
@@ -48,14 +48,13 @@ export type {
   ServerImplementationErrorCode,
   ServerRuntimeErrorCode,
 } from './errors'
-export type { HttpMethod } from './http'
-export { QueryTransportError } from './query'
+export { QueryTransportError } from './contract/query'
 export { codec, validation } from './validation'
 export type { AsyncSchema, CodecOptions, CodecSchema, IdentitySchema, ObjectSchema, SchemaOutbound } from './validation'
-export type { RouteInput, RouteInputSchema, RouteInputSource } from './input'
-export { request } from './request'
-export type { AnyRequestBody, RequestBodyDefinition, RequestBodyKind, TextWireObject } from './request'
-export { response } from './response'
+export type { RouteInput, RouteInputSchema, RouteInputSource } from './contract/input'
+export { request } from './contract/request'
+export type { AnyRequestBody, RequestBodyDefinition, RequestBodyKind, TextWireObject } from './contract/request'
+export { response, routeOutput } from './contract/response'
 export type {
   AnyResponseBody,
   AnyRouteResponse,
@@ -70,10 +69,19 @@ export type {
   RouteResponseStatus,
   RouteResponses,
   SchemaBackedResponseStatus,
-} from './response'
-export { route } from './route'
-export type { Route, RouteHeaders, RouteMap, RouteOptions, RouteParams, RouteQuery, RouteShape } from './route'
-export { router } from './router'
+} from './contract/response'
+export { route } from './contract/route'
+export type {
+  HttpMethod,
+  Route,
+  RouteHeaders,
+  RouteMap,
+  RouteOptions,
+  RouteParams,
+  RouteQuery,
+  RouteShape,
+} from './contract/route'
+export { router } from './contract/router'
 export type {
   AnyRouter,
   Router,
@@ -82,4 +90,4 @@ export type {
   RouterParams,
   RouterParamsForRoute,
   RouterRoutes,
-} from './router'
+} from './contract/router'

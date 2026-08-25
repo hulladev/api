@@ -7,7 +7,7 @@ import { describe, expect, expectTypeOf, test, vi } from 'vitest'
 import { z } from 'zod'
 import {
   createServerRouteHandlers,
-  tanStackStartAdapter,
+  tanStackStartContext,
   type TanStackStartContextInput,
   type TanStackStartHandlerInput,
   type TanStackStartServerErrorInput,
@@ -87,16 +87,17 @@ describe('TanStack Start integration', () => {
   test('exposes native Start state without replacing contract route metadata', async () => {
     let contextInput: TanStackStartContextInput<typeof contract, StartContext, StartParams> | undefined
     const implementation = defineServer(contract, {
-      adapter: tanStackStartAdapter<StartContext, StartParams>(),
-      context: ({ request, route: routeMetadata, startContext, startParams }) => {
-        contextInput = {
-          request,
-          route: routeMetadata,
-          startContext,
-          startParams,
-        } as TanStackStartContextInput<typeof contract, StartContext, StartParams>
-        return { session: startContext.session, splat: startParams._splat }
-      },
+      context: tanStackStartContext<StartContext, StartParams>()(
+        ({ request, route: routeMetadata, startContext, startParams }) => {
+          contextInput = {
+            request,
+            route: routeMetadata,
+            startContext,
+            startParams,
+          } as TanStackStartContextInput<typeof contract, StartContext, StartParams>
+          return { session: startContext.session, splat: startParams._splat }
+        }
+      ),
     }).implement({
       health: ({ context }) => ({ status: 200, body: context.session === 'session-1' ? 'ok' : 'ok' }),
       users: {
@@ -121,9 +122,7 @@ describe('TanStack Start integration', () => {
     const onError = vi.fn<(input: TanStackStartServerErrorInput<StartContext, StartParams>) => Response>(
       ({ defaultResponse }) => Response.json({ replaced: true }, { status: defaultResponse.status })
     )
-    const implementation = defineServer(contract, {
-      adapter: tanStackStartAdapter<StartContext, StartParams>(),
-    }).implement({
+    const implementation = defineServer(contract).implement({
       health: (): { readonly body: 'ok'; readonly status: 200 } => {
         throw new Error('failure')
       },

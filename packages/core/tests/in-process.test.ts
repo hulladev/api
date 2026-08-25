@@ -2,11 +2,11 @@ import { describe, expect, test } from 'vitest'
 import { z } from 'zod'
 import { defineClient } from '../src/client'
 import { defineContract } from '../src/contract'
-import { fetchAdapter } from '../src/fetch'
+import { response } from '../src/contract/response'
+import { route } from '../src/contract/route'
+import { router } from '../src/contract/router'
+import { fetchContext } from '../src/fetch'
 import { inProcessTransport } from '../src/in-process'
-import { response } from '../src/response'
-import { route } from '../src/route'
-import { router } from '../src/router'
 import { defineServer } from '../src/server'
 
 describe('inProcessTransport', () => {
@@ -60,8 +60,7 @@ describe('inProcessTransport', () => {
       },
     })
     const implementation = defineServer(contract, {
-      adapter: fetchAdapter(),
-      context: ({ request }) => ({ method: request.method }),
+      context: fetchContext(({ request }) => ({ method: request.method })),
     }).implement({
       health: ({ context }) => ({ status: 200, body: context.method }),
     })

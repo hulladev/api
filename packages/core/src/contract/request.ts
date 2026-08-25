@@ -1,6 +1,6 @@
-import { setOwn } from './object'
+import { setOwn } from '../object'
+import { isSchema, type AnySchema, type NonSchemaOptions, type SchemaInput } from '../validation'
 import { bytesSchema, formDataSchema, jsonValueSchema, stringSchema, type JsonValue } from './representation'
-import { isSchema, type AnySchema, type NonSchemaOptions, type SchemaInput } from './validation'
 
 type QueryWireValue = string | readonly string[] | undefined
 export type QueryWireObject = Readonly<Record<string, QueryWireValue>>

@@ -9,7 +9,7 @@ import {
   createRouteHandler,
   createNextCache,
   nextFetchTransport,
-  nextAdapter,
+  nextContext,
   nextRouteTag,
   nextRouteTags,
   type NextServerErrorInput,
@@ -47,13 +47,12 @@ describe('Next.js integration', () => {
     let contextRequest: NextRequest | undefined
     let contextParams: { readonly hulla: string[] } | undefined
     const implementation = defineServer(contract, {
-      adapter: nextAdapter<AppRouteContext>(),
-      context: async ({ request, routeContext }) => {
+      context: nextContext<AppRouteContext>()(async ({ request, routeContext }) => {
         expectTypeOf(routeContext).toEqualTypeOf<AppRouteContext>()
         contextRequest = request
         contextParams = await routeContext.params
         return { requestMethod: request.method }
-      },
+      }),
     }).implement({
       health: ({ context }) => ({ status: 200, body: context.requestMethod === 'GET' ? 'ok' : 'ok' }),
       users: {
@@ -158,7 +157,7 @@ describe('Next.js integration', () => {
     const onError = vi.fn<(input: NextServerErrorInput<AppRouteContext>) => Response>(({ defaultResponse }) =>
       Response.json({ replaced: true }, { status: defaultResponse.status })
     )
-    const implementation = defineServer(contract, { adapter: nextAdapter<AppRouteContext>() }).implement({
+    const implementation = defineServer(contract).implement({
       health: (): { readonly body: 'ok'; readonly status: 200 } => {
         throw new Error('failure')
       },

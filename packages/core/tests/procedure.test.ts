@@ -1,9 +1,9 @@
 import * as v from 'valibot'
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
+import { response, routeOutput, type RouteResponseBody } from '../src/contract/response'
+import { route } from '../src/contract/route'
 import { defineProcedure } from '../src/procedure'
-import { response, routeOutput, type RouteResponseBody } from '../src/response'
-import { route } from '../src/route'
 import { validation } from '../src/validation'
 
 const procedure = defineProcedure()

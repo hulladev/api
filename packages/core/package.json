@@ -34,8 +34,8 @@
       "import": "./dist/fetch/index.js"
     },
     "./in-process": {
-      "types": "./dist/in-process.d.ts",
-      "import": "./dist/in-process.js"
+      "types": "./dist/in-process/index.d.ts",
+      "import": "./dist/in-process/index.js"
     },
     "./procedure": {
       "types": "./dist/procedure.d.ts",

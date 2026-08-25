@@ -1,12 +1,16 @@
-export { assertServerAdapter, createServerAdapter, isServerAdapter } from './adapter'
-export type { ServerAdapter, ServerAdapterContextInput } from './adapter'
+export { assertAdapterContext, bindAdapterContext } from './context'
+export type {
+  AdapterContextFactory,
+  ServerContextAdapterId,
+  ServerContextAdapterInput,
+  ServerContextRequirement,
+} from './context'
 export type {
   Awaitable,
   ContextFactory,
   RouteMetadata,
   ServerContextFactory,
   ServerContextInput,
-  ServerContextInputFor,
   ServerRouteMetadata,
 } from './context'
 export { ContractError, ServerImplementationError, ServerRuntimeError } from './errors'
@@ -35,14 +39,16 @@ export type {
   ServerResponseResultFor,
 } from './response'
 export type {
-  DefineServerOptions,
-  Server,
-  ServerDefinition,
   ServerHandler,
   ServerHandlerFragment,
   ServerHandlerInput,
   ServerHandlers,
   ServerHandlersForNode,
+} from './handlers'
+export type {
+  DefineServerOptions,
+  Server,
+  ServerDefinition,
   ServerHandlersOf,
   ServerExecutable,
   ServerExecutableFor,

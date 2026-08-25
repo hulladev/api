@@ -13,9 +13,9 @@ export type {
   NextRoutePolicies,
   NextRouteTagOptions,
 } from './client'
-export { createRouteHandler, nextAdapter } from './server'
+export { createRouteHandler, nextContext } from './server'
 export type {
-  NextAdapter,
+  NextContextFactory,
   NextContextInput,
   NextRouteContext,
   NextRouteHandler,

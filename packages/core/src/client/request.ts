@@ -1,8 +1,8 @@
+import type { CanonicalRoutePlan } from '../contract/plan'
+import type { QueryWireObject } from '../contract/query'
+import { textWireObject, type RequestBodyKind } from '../contract/request'
 import { type ExecutionStep, isPromiseLike, mapExecutionStep } from '../execution'
 import { setOwn } from '../object'
-import type { QueryWireObject } from '../query'
-import { textWireObject, type RequestBodyKind } from '../request'
-import type { CanonicalRoutePlan } from '../route-plan'
 
 export type ClientRequestOptions = {
   readonly headers?: Readonly<Record<string, string | undefined>>

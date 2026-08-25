@@ -13,8 +13,8 @@ import {
   text as textResponse,
   type AnyRouteResponse,
   type JsonValue,
-} from '../src/response'
-import { route } from '../src/route'
+} from '../src/contract/response'
+import { route } from '../src/contract/route'
 import { codec, decodeSchema, encodeSchema, type SchemaInput, type SchemaOutput } from '../src/validation'
 
 describe('response declaration', () => {

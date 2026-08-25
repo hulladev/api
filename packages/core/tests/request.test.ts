@@ -1,9 +1,9 @@
 import * as v from 'valibot'
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
-import { mimeEssence, request, textWireObject } from '../src/request'
-import { response } from '../src/response'
-import { route } from '../src/route'
+import { mimeEssence, request, textWireObject } from '../src/contract/request'
+import { response } from '../src/contract/response'
+import { route } from '../src/contract/route'
 
 describe('request declarations', () => {
   test.each([

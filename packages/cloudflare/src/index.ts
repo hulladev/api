@@ -1,9 +1,9 @@
 import type { Contract } from '@hulla/api'
 import { createFetchHandler, type FetchServerErrorInput } from '@hulla/api/fetch'
 import {
-  createServerAdapter,
+  bindAdapterContext,
+  type AdapterContextFactory,
   type Awaitable,
-  type ServerAdapter,
   type ServerContextInput,
   type ServerExecutableFor,
 } from '@hulla/api/server'
@@ -30,19 +30,17 @@ type CloudflareHandlerContext<Env, ExecutionContext extends CloudflareExecutionC
   readonly ctx: ExecutionContext
 }
 
-export type CloudflareAdapter<
+export type CloudflareContextFactory<
+  Context extends object,
+  ContractType extends Contract = Contract,
   Env = unknown,
   ExecutionContext extends CloudflareExecutionContext = CloudflareExecutionContext,
-> = ServerAdapter<'cloudflare-workers', CloudflareAdapterContext<Env, ExecutionContext>>
-
-const cloudflareAdapterDescriptor = /* @__PURE__ */ createServerAdapter('cloudflare-workers') as CloudflareAdapter
-
-export function cloudflareAdapter<
-  Env = unknown,
-  ExecutionContext extends CloudflareExecutionContext = CloudflareExecutionContext,
->(): CloudflareAdapter<Env, ExecutionContext> {
-  return cloudflareAdapterDescriptor as CloudflareAdapter<Env, ExecutionContext>
-}
+> = AdapterContextFactory<
+  'cloudflare-workers',
+  CloudflareAdapterContext<Env, ExecutionContext>,
+  Context,
+  ServerContextInput<ContractType>
+>
 
 export type CloudflareServerErrorInput<
   Env = unknown,
@@ -67,6 +65,26 @@ export type CloudflareContextInput<
   ExecutionContext extends CloudflareExecutionContext = CloudflareExecutionContext,
 > = ServerContextInput<ContractType> & CloudflareAdapterContext<Env, ExecutionContext>
 
+export function cloudflareContext<
+  Env = unknown,
+  ExecutionContext extends CloudflareExecutionContext = CloudflareExecutionContext,
+>(): <const Context extends object, ContractType extends Contract = Contract>(
+  factory: (input: CloudflareContextInput<ContractType, Env, ExecutionContext>) => Awaitable<Context>
+) => CloudflareContextFactory<Context, ContractType, Env, ExecutionContext>
+export function cloudflareContext<
+  const Context extends object,
+  ContractType extends Contract = Contract,
+  Env = unknown,
+  ExecutionContext extends CloudflareExecutionContext = CloudflareExecutionContext,
+>(
+  factory: (input: CloudflareContextInput<ContractType, Env, ExecutionContext>) => Awaitable<Context>
+): CloudflareContextFactory<Context, ContractType, Env, ExecutionContext>
+export function cloudflareContext(factory?: Function): unknown {
+  const bind = (value: Function) =>
+    bindAdapterContext('cloudflare-workers', value as (input: object) => Awaitable<object>)
+  return factory === undefined ? bind : bind(factory)
+}
+
 /** Creates the `fetch` handler for a Cloudflare Module Worker. */
 export function createWorkerHandler<
   const ContractType extends Contract,
@@ -74,27 +92,29 @@ export function createWorkerHandler<
   Env = unknown,
   ExecutionContext extends CloudflareExecutionContext = CloudflareExecutionContext,
 >(
-  implementation: ServerExecutableFor<ContractType, Context, CloudflareAdapter<Env, ExecutionContext>>,
+  implementation: ServerExecutableFor<
+    ContractType,
+    Context,
+    'cloudflare-workers',
+    CloudflareAdapterContext<Env, ExecutionContext>
+  >,
   options: CloudflareServerOptions<Env, ExecutionContext> = {}
 ): CloudflareWorkerHandler<Env, ExecutionContext> {
   type HandlerContext = CloudflareHandlerContext<Env, ExecutionContext>
 
-  const usesNativeContext = implementation.adapter !== undefined && implementation.context !== undefined
-  const handler = createFetchHandler<ContractType, Context, HandlerContext, CloudflareAdapter<Env, ExecutionContext>>(
-    implementation,
-    {
-      contextAdapter: cloudflareAdapterDescriptor as CloudflareAdapter<Env, ExecutionContext>,
-      ...(usesNativeContext ? { contextInput: (_request: Request, input: HandlerContext) => input } : {}),
-      ...(options.onError === undefined
-        ? {}
-        : {
-            onError: ({ handlerContext, ...input }: FetchServerErrorInput<HandlerContext>) =>
-              options.onError?.({ ...input, ...handlerContext }),
-          }),
-    }
-  )
+  const usesContext = implementation.context !== undefined
+  const handler = createFetchHandler<ContractType, Context, HandlerContext, 'cloudflare-workers'>(implementation, {
+    contextAdapter: 'cloudflare-workers',
+    ...(usesContext ? { contextInput: (_request: Request, input: HandlerContext) => input } : {}),
+    ...(options.onError === undefined
+      ? {}
+      : {
+          onError: ({ handlerContext, ...input }: FetchServerErrorInput<HandlerContext>) =>
+            options.onError?.({ ...input, ...handlerContext }),
+        }),
+  })
 
-  if (!usesNativeContext && options.onError === undefined) {
+  if (!usesContext && options.onError === undefined) {
     return (request) => handler(request, undefined as unknown as HandlerContext)
   }
   return (request, env, ctx) => handler(request, { env, ctx })

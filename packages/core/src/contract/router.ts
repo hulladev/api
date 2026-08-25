@@ -1,7 +1,7 @@
-import { isRecord, setOwn } from './object'
+import { isRecord, setOwn } from '../object'
+import type { ObjectSchema, SchemaInput, SchemaOutput } from '../validation'
 import { assertRoutePath, conflictingPathParamNames, type PathParamOptions, type PathParamsFor } from './paths'
 import type { Route } from './route'
-import type { ObjectSchema, SchemaInput, SchemaOutput } from './validation'
 
 declare const routerRoutesType: unique symbol
 declare const routerParamsType: unique symbol

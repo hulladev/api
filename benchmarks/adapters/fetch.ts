@@ -1,3 +1,4 @@
+import { zValidator } from '@hono/zod-validator'
 import { defineContract, response, route } from '@hulla/api'
 import { createFetchHandler as createHullaFetchHandler } from '@hulla/api/fetch'
 import { defineServer } from '@hulla/api/server'
@@ -192,4 +193,3 @@ export const fetchAdapterBenchmarks: readonly Benchmark[] = (
     { runtime: 'Hono Fetch', scenario: 'fetch-adapter-dynamic-dispatch', run: () => honoFetch(true) },
   ] satisfies readonly Benchmark[]
 ).map((benchmark) => ({ ...benchmark, profile: 'native' }))
-import { zValidator } from '@hono/zod-validator'

@@ -1,9 +1,9 @@
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
-import { defineContract } from '../src/contract'
-import { response } from '../src/response'
-import { route } from '../src/route'
-import { router } from '../src/router'
+import { contractInput, defineContract } from '../src/contract'
+import { response, routeOutput } from '../src/contract/response'
+import { route } from '../src/contract/route'
+import { router } from '../src/contract/router'
 import { codec, decodeSchema, type SchemaInput, type SchemaOutput } from '../src/validation'
 
 const integerParams = codec(z.object({ organizationId: z.string() }), z.object({ organizationId: z.int() }), {
@@ -28,7 +28,7 @@ describe('contract route schemas', () => {
       },
     })
     const contract = defineContract({ routes: { organization } })
-    const schema = contract.routeInput(contract.routes.organization.create)
+    const schema = contractInput(contract, contract.routes.organization.create)
     const input = {
       params: { organizationId: 42 },
       query: { notify: true },
@@ -58,8 +58,6 @@ describe('contract route schemas', () => {
       params: z.object({ id: z.string() }),
       responses: { 200: response.json(output) },
     })
-    const contract = defineContract({ routes: { user: declaration } })
-
-    expect(contract.routeOutput(declaration, 200)).toBe(output)
+    expect(routeOutput(declaration, 200)).toBe(output)
   })
 })

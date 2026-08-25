@@ -1,7 +1,5 @@
-import { hasOwn, isRecord } from './object'
-import { bytesSchema, formDataSchema, jsonValueSchema, stringSchema, type JsonValue } from './representation'
-import type { Route } from './route'
-import { defineStreamResponse, type FormattedStreamResponseBody, type StreamResponseBody } from './stream'
+import { hasOwn, isRecord } from '../object'
+import { defineStreamResponse, type FormattedStreamResponseBody, type StreamResponseBody } from '../stream'
 import {
   isSchema,
   type AnySchema,
@@ -9,7 +7,9 @@ import {
   type ObjectSchema,
   type SchemaInput,
   type SchemaOutput,
-} from './validation'
+} from '../validation'
+import { bytesSchema, formDataSchema, jsonValueSchema, stringSchema, type JsonValue } from './representation'
+import type { Route } from './route'
 
 export type { JsonValue } from './representation'
 

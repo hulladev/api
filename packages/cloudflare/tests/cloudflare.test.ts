@@ -4,7 +4,7 @@ import { defineServer } from '@hulla/api/server'
 import { describe, expect, expectTypeOf, test, vi } from 'vitest'
 import { z } from 'zod'
 import {
-  cloudflareAdapter,
+  cloudflareContext,
   createWorkerHandler,
   type CloudflareContextInput,
   type CloudflareExecutionContext,
@@ -40,14 +40,13 @@ describe('Cloudflare Workers integration', () => {
   test('creates a Module Worker fetch handler with native context', async () => {
     let contextInput: CloudflareContextInput<typeof contract, Env, WorkerExecutionContext> | undefined
     const implementation = defineServer(contract, {
-      adapter: cloudflareAdapter<Env, WorkerExecutionContext>(),
-      context: (input) => {
+      context: cloudflareContext<Env, WorkerExecutionContext>()((input) => {
         expectTypeOf(input.env).toEqualTypeOf<Env>()
         expectTypeOf(input.ctx).toEqualTypeOf<WorkerExecutionContext>()
         contextInput = input as CloudflareContextInput<typeof contract, Env, WorkerExecutionContext>
         input.ctx.waitUntil(Promise.resolve())
         return { region: input.ctx.props.region, token: input.env.API_TOKEN }
-      },
+      }),
     }).implement({
       health: ({ context }) => ({
         status: 200,
@@ -77,14 +76,14 @@ describe('Cloudflare Workers integration', () => {
 
   test('forwards bindings and execution context to the error hook', async () => {
     const onError = vi.fn<(input: CloudflareServerErrorInput<Env>) => void>()
-    const implementation = defineServer(contract, { adapter: cloudflareAdapter<Env>() }).implement({
+    const implementation = defineServer(contract).implement({
       health: () => ({ status: 200, body: 'ok' }),
       fail: (): { readonly body: 'ok'; readonly status: 200 } => {
         throw new Error('failure')
       },
     })
     const handler = createWorkerHandler(implementation, {
-      onError: (input) => {
+      onError: (input: CloudflareServerErrorInput<Env>) => {
         expectTypeOf(input).toEqualTypeOf<CloudflareServerErrorInput<Env>>()
         onError(input)
         return Response.json({ token: input.env.API_TOKEN }, { status: input.defaultResponse.status })
@@ -107,14 +106,12 @@ describe('Cloudflare Workers integration', () => {
         route: { key: ['fail'], method: 'GET', path: '/api/fail' },
       })
     )
-    expect(cloudflareAdapter<Env>()).toBe(cloudflareAdapter())
   })
 
   test('keeps native error context isolated for concurrent calls sharing a Request', async () => {
     const releases = new Map<string, () => void>()
     const implementation = defineServer(contract, {
-      adapter: cloudflareAdapter<Env>(),
-      context: ({ env }) => ({ token: env.API_TOKEN }),
+      context: cloudflareContext<Env>()(({ env }) => ({ token: env.API_TOKEN })),
     }).implement({
       health: () => ({ status: 200, body: 'ok' }),
       fail: async ({ context }): Promise<{ readonly body: 'ok'; readonly status: 200 }> => {

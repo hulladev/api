@@ -1,7 +1,7 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { describe, expect, expectTypeOf, test } from 'vitest'
+import { QueryTransportError } from '../src/contract/query'
 import { annotateAPIErrorIssues, isAPIError, toAPIProblem, type APIError, type APIErrorIssue } from '../src/errors'
-import { QueryTransportError } from '../src/query'
 import { ContractError, ServerImplementationError } from '../src/server'
 import { SchemaValidationError } from '../src/validation'
 

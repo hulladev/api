@@ -1,9 +1,9 @@
-import { annotateAPIErrorIssues, type APIError, type APIErrorIssue, type QueryTransportErrorCode } from './errors'
-import { type ExecutionStep, mapExecutionStep } from './execution'
-import { hasOwn, isPlainRecord, setOwn } from './object'
-import { compileSchemaExecution, type ObjectSchema, type SchemaOutbound, type SchemaOutput } from './validation'
+import { annotateAPIErrorIssues, type APIError, type APIErrorIssue, type QueryTransportErrorCode } from '../errors'
+import { type ExecutionStep, mapExecutionStep } from '../execution'
+import { hasOwn, isPlainRecord, setOwn } from '../object'
+import { compileSchemaExecution, type ObjectSchema, type SchemaOutbound, type SchemaOutput } from '../validation'
 
-export type { QueryTransportErrorCode } from './errors'
+export type { QueryTransportErrorCode } from '../errors'
 
 export type QueryTransportIssue = APIErrorIssue & {
   readonly location: 'query'

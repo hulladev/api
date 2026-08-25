@@ -1,10 +1,8 @@
 import type { Contract, ContractRoute } from './contract'
-import { compileContractRoutes } from './contract-compiler'
-import { getContractState } from './contract-state'
-import type { HttpMethod } from './http'
-import type { JoinRoutePaths } from './paths'
-import type { Route } from './route'
-import type { AnyRouter, RouterChildrenFor } from './router'
+import type { JoinRoutePaths } from './contract/paths'
+import type { HttpMethod, Route } from './contract/route'
+import type { AnyRouter, RouterChildrenFor } from './contract/router'
+import { compileContractRoutes, getContractState } from './contract/state'
 import type { ObjectSchema } from './validation'
 
 export type CompiledPathParameters = {
@@ -59,7 +57,6 @@ export type CompiledContractRouteFor<ContractType extends Contract = Contract> =
 >
 
 export type CompiledContract<ContractType extends Contract = Contract> = {
-  readonly kind: 'compiled-contract'
   readonly contract: ContractType
   /** Routes in contract declaration order, with router children in their declaration order. */
   readonly routes: readonly CompiledContractRouteFor<ContractType>[]
@@ -87,7 +84,6 @@ export function compileContract<const ContractType extends Contract>(
   if (state.compiled !== undefined) return state.compiled as CompiledContract<ContractType>
 
   const compiled = Object.freeze({
-    kind: 'compiled-contract' as const,
     contract,
     routes: freezeCompiledRoutes(routes),
   }) as unknown as CompiledContract<ContractType>

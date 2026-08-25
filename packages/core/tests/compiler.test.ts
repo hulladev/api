@@ -2,6 +2,7 @@ import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
 import {
   compileContract,
+  contractInput,
   defineContract,
   defineErrors,
   response,
@@ -9,7 +10,7 @@ import {
   router,
   type CompiledContractRouteFor,
 } from '../src'
-import { compileCanonicalContract } from '../src/route-plan'
+import { compileCanonicalContract } from '../src/contract/plan'
 
 const organizationParams = z.object({ organizationId: z.string() })
 const userParams = z.object({ userId: z.string() })
@@ -30,7 +31,7 @@ describe('contract compiler', () => {
   test('produces a frozen flat manifest in declaration order', () => {
     const compiled = compileContract(contract)
 
-    expect(compiled).toMatchObject({ kind: 'compiled-contract', contract })
+    expect(compiled).toMatchObject({ contract })
     expect(compiled.routes.map(({ key }) => key)).toEqual([
       ['health'],
       ['organizations', 'listUsers'],
@@ -113,7 +114,7 @@ describe('contract compiler', () => {
     expect(compiled?.path).toBe('/api/organizations/:organizationId/members/:memberId/permissions/:permissionId')
     expect(compiled?.pathParameters.map(({ schema }) => schema)).toEqual([organization, member, permission])
 
-    const schema = nested.routeInput(nested.routes.organizations.members.permissions.byId)
+    const schema = contractInput(nested, nested.routes.organizations.members.permissions.byId)
     const result = await schema['~standard'].validate({
       params: { organizationId: 'org-1', memberId: 'member-1', permissionId: 'read' },
     })
@@ -171,8 +172,8 @@ describe('contract compiler', () => {
     expect(nestedRoute?.pathParameters).toEqual(flatRoute?.pathParameters)
 
     const input = { params: { organizationId: 'org-1' } }
-    const flatInput = flat.routeInput(flat.routes.organizations.listUsers)
-    const nestedInput = nested.routeInput(nested.routes.organizations.users.list)
+    const flatInput = contractInput(flat, flat.routes.organizations.listUsers)
+    const nestedInput = contractInput(nested, nested.routes.organizations.users.list)
 
     expect(flatInput['~standard'].validate(input)).toEqual({ value: input })
     expect(nestedInput['~standard'].validate(input)).toEqual({ value: input })

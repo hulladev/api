@@ -1,5 +1,5 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
-import type { ObjectSchema } from './validation'
+import type { ObjectSchema } from '../validation'
 
 type SegmentParam<Segment extends string> = Segment extends `:${infer Param}` ? Param : never
 

@@ -5,9 +5,8 @@ import express from 'express'
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
 import {
-  expressAdapter,
+  expressContext,
   register,
-  type ExpressAdapter,
   type ExpressHandler,
   type ExpressRequest,
   type ExpressResponse,
@@ -26,7 +25,16 @@ function captureEndpoints<
   const Context extends object,
   Locals extends Record<string, unknown> = Record<string, unknown>,
 >(
-  implementation: ServerExecutableFor<ContractType, Context, ExpressAdapter<Locals>>,
+  implementation: ServerExecutableFor<
+    ContractType,
+    Context,
+    'express',
+    {
+      readonly locals: Readonly<Locals>
+      readonly request: ExpressRequest
+      readonly response: ExpressResponse
+    }
+  >,
   options?: ExpressServerOptions<Locals>
 ): readonly RegisteredEndpoint[] {
   const endpoints: RegisteredEndpoint[] = []
@@ -51,7 +59,18 @@ function endpointHandler<
   const ContractType extends Contract,
   const Context extends object,
   Locals extends Record<string, unknown> = Record<string, unknown>,
->(implementation: ServerExecutableFor<ContractType, Context, ExpressAdapter<Locals>>): ExpressHandler {
+>(
+  implementation: ServerExecutableFor<
+    ContractType,
+    Context,
+    'express',
+    {
+      readonly locals: Readonly<Locals>
+      readonly request: ExpressRequest
+      readonly response: ExpressResponse
+    }
+  >
+): ExpressHandler {
   const handler = captureEndpoints(implementation)[0]?.handlers.at(-1)
   if (handler === undefined) throw new Error('Expected a registered Express handler')
   return handler
@@ -215,8 +234,7 @@ describe('Express endpoints', () => {
     })
     const mountedRouter = express.Router()
     const mountedImplementation = defineServer(mountedContract, {
-      adapter: expressAdapter(),
-      context: ({ request }) => ({ url: request.originalUrl }),
+      context: expressContext(({ request }) => ({ url: request.originalUrl })),
     }).implement({
       inspect: ({ context }) => ({ status: 200, body: context.url }),
     })
@@ -329,12 +347,11 @@ describe('Express endpoints', () => {
     })
     let expressRequest: ExpressRequest | undefined
     const implementation = defineServer(bridgeContract, {
-      adapter: expressAdapter<{ readonly actor: string }>(),
-      context: ({ request, locals }) => {
+      context: expressContext<{ readonly actor: string }>()(({ request, locals }) => {
         expressRequest = request
         expectTypeOf(locals.actor).toEqualTypeOf<string>()
         return { originalUrl: request.originalUrl, actor: locals.actor }
-      },
+      }),
     }).implement({
       inspect: ({ context }) => ({ status: 200, body: `${context.actor}:${context.originalUrl}` }),
     })

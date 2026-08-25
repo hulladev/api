@@ -1,9 +1,9 @@
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
 import { defineContract } from '../src/contract'
+import { response } from '../src/contract/response'
+import { route } from '../src/contract/route'
 import { defineErrors } from '../src/declared-errors'
-import { response } from '../src/response'
-import { route } from '../src/route'
 import { defineServer, type ServerResponseResult } from '../src/server'
 
 const sharedErrors = defineErrors({
