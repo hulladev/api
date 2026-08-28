@@ -1,6 +1,6 @@
-export { createServerRouteHandlers, tanStackStartContext } from './server'
+export { tanStackStartAdapter } from './server'
 export type {
-  TanStackStartContextFactory,
+  TanStackStartAdapter,
   TanStackStartContextInput,
   TanStackStartHandlerInput,
   TanStackStartRouteHandler,

@@ -5,8 +5,7 @@ import express from 'express'
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
 import {
-  expressContext,
-  register,
+  expressAdapter,
   type ExpressHandler,
   type ExpressRequest,
   type ExpressResponse,
@@ -35,7 +34,8 @@ function captureEndpoints<
       readonly response: ExpressResponse
     }
   >,
-  options?: ExpressServerOptions<Locals>
+  options?: ExpressServerOptions<Locals>,
+  defaults?: ExpressServerOptions<Locals>
 ): readonly RegisteredEndpoint[] {
   const endpoints: RegisteredEndpoint[] = []
   const registrar =
@@ -51,7 +51,7 @@ function captureEndpoints<
     put: registrar('PUT'),
     query: registrar('QUERY'),
   }
-  register(router, implementation, options)
+  expressAdapter<Locals>(router, defaults).mount(implementation, options)
   return endpoints
 }
 
@@ -223,7 +223,7 @@ describe('Express endpoints', () => {
       middlewareOrder.push('before-endpoints')
       next()
     })
-    expect(register(app, itemImplementation())).toBe(app)
+    expect(expressAdapter(app).mount(itemImplementation())).toBe(app)
     app.use((_request, _response, next) => {
       middlewareOrder.push('after-endpoints')
       next()
@@ -233,8 +233,9 @@ describe('Express endpoints', () => {
       routes: { inspect: route.get('/inspect', { responses: { 200: response.text() } }) },
     })
     const mountedRouter = express.Router()
+    const mountedAdapter = expressAdapter(mountedRouter)
     const mountedImplementation = defineServer(mountedContract, {
-      context: expressContext(({ request }) => ({ url: request.originalUrl })),
+      context: mountedAdapter.context(({ request }) => ({ url: request.originalUrl })),
     }).implement({
       inspect: ({ context }) => ({ status: 200, body: context.url }),
     })
@@ -243,13 +244,12 @@ describe('Express endpoints', () => {
       mountedMiddlewareOrder.push('router-middleware')
       next()
     })
-    register(mountedRouter, mountedImplementation)
+    mountedAdapter.mount(mountedImplementation)
     app.use('/mounted', mountedRouter)
     const queryContract = defineContract({
       routes: { search: route.query('/search', { responses: { 200: response.text() } }) },
     })
-    register(
-      app,
+    expressAdapter(app).mount(
       defineServer(queryContract).implement({
         search: () => ({ status: 200, body: 'query' }),
       })
@@ -346,8 +346,9 @@ describe('Express endpoints', () => {
       routes: { inspect: route.get('/inspect', { responses: { 200: response.text() } }) },
     })
     let expressRequest: ExpressRequest | undefined
+    const adapter = expressAdapter<{ readonly actor: string }>(express.Router())
     const implementation = defineServer(bridgeContract, {
-      context: expressContext<{ readonly actor: string }>()(({ request, locals }) => {
+      context: adapter.context(({ request, locals }) => {
         expressRequest = request
         expectTypeOf(locals.actor).toEqualTypeOf<string>()
         return { originalUrl: request.originalUrl, actor: locals.actor }
@@ -374,7 +375,7 @@ describe('Express endpoints', () => {
     let errorRequest: ExpressRequest | undefined
     let errorResponse: ExpressResponse | undefined
     let errorLocals: Readonly<Record<string, unknown>> | undefined
-    const handler = captureEndpoints(itemImplementation(), {
+    const handler = captureEndpoints(itemImplementation(), undefined, {
       onError({ defaultResponse, error, locals, request, response }) {
         runtimeError = error
         errorRequest = request
@@ -408,7 +409,7 @@ describe('Express endpoints', () => {
     expect(runtimeError).toMatchObject({
       code: 'invalid-request-body',
       cause: expect.objectContaining({
-        message: expect.stringContaining('install matching Express parser middleware before register()'),
+        message: expect.stringContaining('install matching Express parser middleware before mount()'),
       }),
     })
   })

@@ -122,7 +122,7 @@ function decodePointerPart(value: string): string {
 
 function resolvePointer(document: OpenAPIDocument, reference: string): unknown {
   if (!reference.startsWith('#/')) {
-    throw new Error(`External reference "${reference}" must be bundled before Hulla generation`)
+    throw new Error(`External reference "${reference}" must be bundled before @hulla/api generation`)
   }
   let current: unknown = document
   for (const encoded of reference.slice(2).split('/')) {
@@ -445,7 +445,7 @@ function parameterSchema(
       continue
     }
     if (location === 'cookie') {
-      diagnostic(context, 'error', parameterOwner, 'cookie parameters are not supported by Hulla routes')
+      diagnostic(context, 'error', parameterOwner, 'cookie parameters are not supported by @hulla/api routes')
       continue
     }
     if (location === 'path' && parameter.required !== true) {
@@ -507,7 +507,7 @@ function selectedMedia(
       context,
       'warning',
       owner,
-      `multiple media types cannot be represented by one Hulla route; selected ${selected[0]}`
+      `multiple media types cannot be represented by one @hulla/api route; selected ${selected[0]}`
     )
   }
   return selected
@@ -523,11 +523,11 @@ function requestBodyCode(context: ImportContext, model: CollectedOperation, owne
   }
   if (body === undefined) return undefined
   if (model.method === 'get') {
-    diagnostic(context, 'error', owner, 'Hulla GET routes do not accept request bodies')
+    diagnostic(context, 'error', owner, '@hulla/api GET routes do not accept request bodies')
     return undefined
   }
   if (body.required !== true) {
-    diagnostic(context, 'warning', owner, 'Hulla route bodies are structurally required when declared')
+    diagnostic(context, 'warning', owner, '@hulla/api route bodies are structurally required when declared')
   }
   const media = selectedMedia(context, body.content, `${owner} request body`)
   if (media === undefined) return undefined
@@ -631,7 +631,7 @@ function routeCode(context: ImportContext, model: CollectedOperation): string {
   const owner = `${model.method.toUpperCase()} ${model.path}`
   const rawOperation = model.operation as OperationObject & Readonly<Record<string, unknown>>
   if (rawOperation['callbacks'] !== undefined) {
-    diagnostic(context, 'error', owner, 'callbacks cannot be represented by a Hulla route contract')
+    diagnostic(context, 'error', owner, 'callbacks cannot be represented by an @hulla/api route contract')
   }
   if (rawOperation['servers'] !== undefined) {
     diagnostic(context, 'warning', owner, 'operation-specific servers are not retained in the generated contract')
@@ -739,7 +739,7 @@ function routeDocumentationCode(context: ImportContext, model: CollectedOperatio
   return JSON.stringify(value, null, 2)
 }
 
-/** Generates a Hulla runtime contract and a separate typed `.openapi.ts` sidecar. */
+/** Generates an @hulla/api runtime contract and a separate typed `.openapi.ts` sidecar. */
 export function generateContractFromOpenAPI(
   document: OpenAPIDocument,
   options: GenerateContractOptions = {}
@@ -757,7 +757,7 @@ export function generateContractFromOpenAPI(
   }
   const rawDocument = document as OpenAPIDocument & Readonly<Record<string, unknown>>
   if (rawDocument['webhooks'] !== undefined) {
-    diagnostic(context, 'warning', 'webhooks', 'webhooks are not part of the generated Hulla runtime contract')
+    diagnostic(context, 'warning', 'webhooks', 'webhooks are not part of the generated @hulla/api runtime contract')
   }
   for (const [path, pathItem] of Object.entries(document.paths)) {
     const rawPathItem = pathItem as PathItemObject & Readonly<Record<string, unknown>>
@@ -767,7 +767,7 @@ export function generateContractFromOpenAPI(
           context,
           'error',
           `${method.toUpperCase()} ${path}`,
-          `HTTP ${method.toUpperCase()} is not supported by Hulla route declarations`
+          `HTTP ${method.toUpperCase()} is not supported by @hulla/api route declarations`
         )
       }
     }

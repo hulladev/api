@@ -8,6 +8,7 @@ import { isRecord } from '../object'
 import type {
   ServerContextAdapterId,
   ServerContextAdapterInput,
+  ServerContextFactory,
   ServerContextInput,
   ServerContextRequirement,
 } from './context'
@@ -26,7 +27,7 @@ function createDefinition<
   AdapterInput extends object,
 >(
   contract: ContractType,
-  options: DefineServerOptions<Context, ContractType, AdapterId, AdapterInput>,
+  context: ServerContextFactory<Context, ContractType, AdapterId, AdapterInput> | undefined,
   middlewarePlan: MiddlewarePlan<ServerMiddleware<Context, ContractType>, CompiledContractRoute>,
   owner: object,
   parent?: ServerScope
@@ -43,7 +44,7 @@ function createDefinition<
   const use = ((...applied: readonly unknown[]) => {
     return createDefinition(
       contract,
-      options,
+      context,
       appendMiddlewarePlan('Server', middlewarePlan, applied, (node) => mountedServerNode(contract, node).routes),
       owner,
       scope
@@ -60,7 +61,7 @@ function createDefinition<
       const implementation = {
         contract,
         handlers,
-        context: options.context,
+        context,
         middlewares: middlewarePlan[0],
       }
       registerComposition(implementation, scope, bindings)
@@ -92,14 +93,14 @@ function createDefinition<
       ? {
           contract,
           handlers,
-          context: options.context,
+          context,
           middlewares: middlewarePlan[0],
         }
       : {
           contract,
           handlers,
           node,
-          context: options.context,
+          context,
           middlewares: middlewarePlan[0],
         }
     registerComposition(implementation, scope, bindings)
@@ -108,7 +109,7 @@ function createDefinition<
 
   return {
     contract,
-    context: options.context,
+    context,
     middlewares: middlewarePlan[0],
     middleware,
     use,
@@ -147,10 +148,5 @@ export function defineServer(contract: Contract, options: { readonly context?: u
   if (options.context !== undefined && typeof options.context !== 'function') {
     throw new TypeError('Server context must be a function')
   }
-  return createDefinition(
-    contract,
-    options as DefineServerOptions<object, Contract, string | undefined, object>,
-    createMiddlewarePlan(),
-    {}
-  )
+  return createDefinition(contract, options.context as NativeContextFactory | undefined, createMiddlewarePlan(), {})
 }

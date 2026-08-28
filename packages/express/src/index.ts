@@ -10,9 +10,10 @@ import {
 } from '@hulla/api/adapters'
 import {
   assertAdapterContext,
-  bindAdapterContext,
-  type AdapterContextFactory,
+  createServerAdapter,
+  serverContextAdapterId,
   type Awaitable,
+  type ServerAdapter,
   type ServerContextInput,
   type ServerExecutableFor,
 } from '@hulla/api/server'
@@ -34,30 +35,6 @@ type ExpressAdapterContext<Locals extends Record<string, unknown>> = {
   readonly locals: Readonly<Locals>
 }
 
-export type ExpressContextFactory<
-  Context extends object,
-  ContractType extends Contract = Contract,
-  Locals extends Record<string, unknown> = Record<string, unknown>,
-> = AdapterContextFactory<'express', ExpressAdapterContext<Locals>, Context, ServerContextInput<ContractType>>
-
-export function expressContext<Locals extends Record<string, unknown> = Record<string, unknown>>(): <
-  const Context extends object,
-  ContractType extends Contract = Contract,
->(
-  factory: (input: ExpressContextInput<ContractType, Locals>) => Awaitable<Context>
-) => ExpressContextFactory<Context, ContractType, Locals>
-export function expressContext<
-  const Context extends object,
-  ContractType extends Contract = Contract,
-  Locals extends Record<string, unknown> = Record<string, unknown>,
->(
-  factory: (input: ExpressContextInput<ContractType, Locals>) => Awaitable<Context>
-): ExpressContextFactory<Context, ContractType, Locals>
-export function expressContext(factory?: Function): unknown {
-  const bind = (value: Function) => bindAdapterContext('express', value as (input: object) => Awaitable<object>)
-  return factory === undefined ? bind : bind(factory)
-}
-
 export type ExpressServerErrorInput<Locals extends Record<string, unknown> = Record<string, unknown>> = Omit<
   AdapterErrorInput,
   'hostContext' | 'request'
@@ -68,7 +45,9 @@ export type ExpressServerOptions<Locals extends Record<string, unknown> = Record
   AdapterRuntimeOptions,
   'onError'
 > & {
-  readonly onError?: (input: ExpressServerErrorInput<Locals>) => Awaitable<AdapterResponse | undefined | void>
+  readonly onError?:
+    | ((input: ExpressServerErrorInput<Locals>) => Awaitable<AdapterResponse | undefined | void>)
+    | undefined
 }
 
 type ExpressRouteRegistrar = (path: string, ...handlers: ExpressHandler[]) => unknown
@@ -80,6 +59,16 @@ export type ExpressRouter = {
   readonly post: ExpressRouteRegistrar
   readonly put: ExpressRouteRegistrar
   readonly query?: ExpressRouteRegistrar
+}
+
+export type ExpressAdapter<Locals extends Record<string, unknown> = Record<string, unknown>> = ServerAdapter<
+  'express',
+  ExpressAdapterContext<Locals>
+> & {
+  readonly mount: <const ContractType extends Contract, const Context extends object>(
+    implementation: ServerExecutableFor<ContractType, Context, 'express', ExpressAdapterContext<Locals>>,
+    options?: ExpressServerOptions<Locals>
+  ) => ExpressRouter
 }
 
 type ExpressRouteHandler = Pick<AdapterRoute, 'key' | 'method' | 'path'> & {
@@ -113,7 +102,7 @@ function requestQuery(request: ExpressRequest): URLSearchParams | Readonly<Recor
 function missingBodyParser(representation: string): Promise<never> {
   return Promise.reject(
     new TypeError(
-      `Express request body is unavailable; install matching Express parser middleware before register() for ${representation} bodies`
+      `Express request body is unavailable; install matching Express parser middleware before mount() for ${representation} bodies`
     )
   )
 }
@@ -232,19 +221,26 @@ async function writeAdapterResponse(source: AdapterResponse, target: ExpressResp
   }
 }
 
-function createEndpointHandler(route: AdapterRoute, includeHostContext: boolean): ExpressHandler {
+function createEndpointHandler(
+  route: AdapterRoute,
+  includeNativeContext: boolean,
+  includeHostContext: boolean
+): ExpressHandler {
   return async (request, response, next) => {
     try {
       let headers: Readonly<Record<string, string>> | undefined
       const parsedBody: AdapterBody | undefined = request.body === undefined ? undefined : { value: request.body }
-      const nativeContext = {
-        request,
-        response,
-        locals: response.locals as Readonly<Record<string, unknown>>,
-      }
+      const nativeContext =
+        includeNativeContext || includeHostContext
+          ? {
+              request,
+              response,
+              locals: response.locals as Readonly<Record<string, unknown>>,
+            }
+          : undefined
       const input: AdapterRouteInput = {
         request,
-        contextInput: nativeContext,
+        ...(includeNativeContext ? { contextInput: nativeContext! } : {}),
         ...(includeHostContext ? { hostContext: nativeContext } : {}),
         params: request.params as Readonly<Record<string, string>>,
         query: requestQuery(request),
@@ -281,18 +277,18 @@ function createHandlers<
             options.onError?.({ ...input, ...(hostContext as ExpressAdapterContext<Locals>) }),
         }
   )
+  const includeNativeContext = serverContextAdapterId(implementation.context) !== undefined
   const handlers = runtime.routes.map((route) => ({
     key: route.key,
     method: route.method,
     path: route.path,
-    handler: createEndpointHandler(route, options.onError !== undefined),
+    handler: createEndpointHandler(route, includeNativeContext, options.onError !== undefined),
   }))
   if (options.onError === undefined) handlerCache.set(implementation, handlers)
   return handlers
 }
 
-/** Registers selected contract routes on a caller-owned Express app or Router. */
-export function register<
+function mountExpress<
   const Router extends ExpressRouter,
   const ContractType extends Contract,
   const Context extends object,
@@ -313,4 +309,23 @@ export function register<
     register.call(router, endpoint.path, endpoint.handler)
   }
   return router
+}
+
+/** Creates an Express adapter bound to one caller-owned app or Router. */
+export function expressAdapter<Locals extends Record<string, unknown> = Record<string, unknown>>(
+  router: ExpressRouter,
+  defaults: ExpressServerOptions<Locals> = {}
+): ExpressAdapter<Locals> {
+  const configuredDefaults = { ...defaults }
+  return createServerAdapter('express', {
+    mount: <const ContractType extends Contract, const Context extends object>(
+      implementation: ServerExecutableFor<ContractType, Context, 'express', ExpressAdapterContext<Locals>>,
+      options?: ExpressServerOptions<Locals>
+    ) =>
+      mountExpress(
+        router,
+        implementation,
+        options === undefined ? configuredDefaults : { ...configuredDefaults, ...options }
+      ),
+  }) as unknown as ExpressAdapter<Locals>
 }

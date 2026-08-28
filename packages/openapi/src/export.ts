@@ -229,7 +229,7 @@ function requestBody(
   owner: string
 ): RequestBodyObject {
   if (documentation?.required === false) {
-    throw new Error(`${owner} request body is required by the Hulla contract and cannot be optional in OpenAPI`)
+    throw new Error(`${owner} request body is required by the @hulla/api contract and cannot be optional in OpenAPI`)
   }
   const fallback =
     body.representation === 'bytes'

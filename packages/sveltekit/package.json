@@ -1,0 +1,44 @@
+{
+  "name": "@hulla/api-sveltekit",
+  "version": "2.0.0",
+  "description": "SvelteKit endpoint and remote-function integration for @hulla/api",
+  "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "import": "./dist/server.js"
+    },
+    "./remote": {
+      "types": "./dist/remote.d.ts",
+      "import": "./dist/remote.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "clean": "rm -rf dist coverage .svelte-kit",
+    "test": "bun run build && vitest run",
+    "test:coverage": "bun run build && vitest run --coverage",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@hulla/api": "workspace:*",
+    "@sveltejs/kit": "^2.70.3",
+    "@sveltejs/vite-plugin-svelte": "^7.3.0",
+    "svelte": "^5.46.4",
+    "vite": "^8.2.2",
+    "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "@hulla/api": "^2.0.0",
+    "@sveltejs/kit": "^2.0.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

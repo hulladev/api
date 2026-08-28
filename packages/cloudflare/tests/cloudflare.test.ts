@@ -4,8 +4,7 @@ import { defineServer } from '@hulla/api/server'
 import { describe, expect, expectTypeOf, test, vi } from 'vitest'
 import { z } from 'zod'
 import {
-  cloudflareContext,
-  createWorkerHandler,
+  cloudflareAdapter,
   type CloudflareContextInput,
   type CloudflareExecutionContext,
   type CloudflareServerErrorInput,
@@ -39,8 +38,9 @@ function executionContext(region = 'eu'): WorkerExecutionContext {
 describe('Cloudflare Workers integration', () => {
   test('creates a Module Worker fetch handler with native context', async () => {
     let contextInput: CloudflareContextInput<typeof contract, Env, WorkerExecutionContext> | undefined
+    const adapter = cloudflareAdapter<Env, WorkerExecutionContext>()
     const implementation = defineServer(contract, {
-      context: cloudflareContext<Env, WorkerExecutionContext>()((input) => {
+      context: adapter.context((input) => {
         expectTypeOf(input.env).toEqualTypeOf<Env>()
         expectTypeOf(input.ctx).toEqualTypeOf<WorkerExecutionContext>()
         contextInput = input as CloudflareContextInput<typeof contract, Env, WorkerExecutionContext>
@@ -54,7 +54,7 @@ describe('Cloudflare Workers integration', () => {
       }),
       fail: () => ({ status: 200, body: 'ok' }),
     })
-    const handler = createWorkerHandler(implementation)
+    const handler = adapter.mount(implementation)
     const request = new Request('https://worker.example/api/health')
     const env = { API_TOKEN: 'secret' }
     const ctx = executionContext()
@@ -82,13 +82,13 @@ describe('Cloudflare Workers integration', () => {
         throw new Error('failure')
       },
     })
-    const handler = createWorkerHandler(implementation, {
+    const handler = cloudflareAdapter<Env>({
       onError: (input: CloudflareServerErrorInput<Env>) => {
         expectTypeOf(input).toEqualTypeOf<CloudflareServerErrorInput<Env>>()
         onError(input)
         return Response.json({ token: input.env.API_TOKEN }, { status: input.defaultResponse.status })
       },
-    })
+    }).mount(implementation)
     const request = new Request('https://worker.example/api/fail')
     const env = { API_TOKEN: 'secret' }
     const ctx = executionContext()
@@ -110,8 +110,9 @@ describe('Cloudflare Workers integration', () => {
 
   test('keeps native error context isolated for concurrent calls sharing a Request', async () => {
     const releases = new Map<string, () => void>()
+    const adapter = cloudflareAdapter<Env>()
     const implementation = defineServer(contract, {
-      context: cloudflareContext<Env>()(({ env }) => ({ token: env.API_TOKEN })),
+      context: adapter.context(({ env }) => ({ token: env.API_TOKEN })),
     }).implement({
       health: () => ({ status: 200, body: 'ok' }),
       fail: async ({ context }): Promise<{ readonly body: 'ok'; readonly status: 200 }> => {
@@ -119,7 +120,7 @@ describe('Cloudflare Workers integration', () => {
         throw new Error(context.token)
       },
     })
-    const handler = createWorkerHandler(implementation, {
+    const handler = adapter.mount(implementation, {
       onError: ({ env, defaultResponse }) =>
         Response.json({ token: env.API_TOKEN }, { status: defaultResponse.status }),
     })
@@ -140,7 +141,7 @@ describe('Cloudflare Workers integration', () => {
     const implementation = defineServer(queryContract).implement({
       search: () => ({ status: 200, body: 'result' }),
     })
-    const handler = createWorkerHandler(implementation)
+    const handler = cloudflareAdapter().mount(implementation)
     const result = await handler(
       new Request('https://worker.example/search', { method: 'QUERY' }),
       {},

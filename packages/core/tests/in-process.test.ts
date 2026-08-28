@@ -5,8 +5,8 @@ import { defineContract } from '../src/contract'
 import { response } from '../src/contract/response'
 import { route } from '../src/contract/route'
 import { router } from '../src/contract/router'
-import { fetchContext } from '../src/fetch'
-import { inProcessTransport } from '../src/in-process'
+import { fetchAdapter } from '../src/fetch'
+import { inProcessAdapter, inProcessTransport } from '../src/in-process'
 import { defineServer } from '../src/server'
 
 describe('inProcessTransport', () => {
@@ -59,19 +59,20 @@ describe('inProcessTransport', () => {
         health: route.get('/health', { responses: { 200: response.text() } }),
       },
     })
+    const fetch = fetchAdapter()
     const implementation = defineServer(contract, {
-      context: fetchContext(({ request }) => ({ method: request.method })),
+      context: fetch.context(({ request }) => ({ method: request.method })),
     }).implement({
       health: ({ context }) => ({ status: 200, body: context.method }),
     })
 
     const invalidMount = () => {
       // @ts-expect-error A Fetch-bound implementation cannot be mounted in process.
-      inProcessTransport(implementation)
+      inProcessAdapter().mount(implementation)
     }
     expect(invalidMount).toBeTypeOf('function')
 
-    expect(() => inProcessTransport(implementation as never)).toThrow(
+    expect(() => inProcessAdapter().mount(implementation as never)).toThrow(
       'Server requires the fetch adapter, but was mounted with in-process'
     )
   })

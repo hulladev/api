@@ -6,8 +6,7 @@ import type {} from '@tanstack/react-start'
 import { describe, expect, expectTypeOf, test, vi } from 'vitest'
 import { z } from 'zod'
 import {
-  createServerRouteHandlers,
-  tanStackStartContext,
+  tanStackStartAdapter,
   type TanStackStartContextInput,
   type TanStackStartHandlerInput,
   type TanStackStartServerErrorInput,
@@ -39,7 +38,7 @@ describe('TanStack Start integration', () => {
         create: ({ body }) => ({ status: 201, body: { id: 'user-1', name: body.name } }),
       },
     })
-    const handlers = createServerRouteHandlers(implementation)
+    const handlers = tanStackStartAdapter().mount(implementation)
 
     expectTypeOf(handlers.GET).toEqualTypeOf<((input: TanStackStartHandlerInput) => Promise<Response>) | undefined>()
     expect(Object.keys(handlers).sort()).toEqual(['GET', 'POST'])
@@ -70,7 +69,7 @@ describe('TanStack Start integration', () => {
 
   test('mounts an implementation fragment without retaining unrelated methods', async () => {
     const fragment = defineServer(contract).implement(contract.routes.health, () => ({ status: 200, body: 'ok' }))
-    const handlers = createServerRouteHandlers(fragment)
+    const handlers = tanStackStartAdapter().mount(fragment)
 
     expect(Object.keys(handlers)).toEqual(['GET'])
     expect(handlers.POST).toBeUndefined()
@@ -86,25 +85,24 @@ describe('TanStack Start integration', () => {
 
   test('exposes native Start state without replacing contract route metadata', async () => {
     let contextInput: TanStackStartContextInput<typeof contract, StartContext, StartParams> | undefined
+    const adapter = tanStackStartAdapter<StartContext, StartParams>()
     const implementation = defineServer(contract, {
-      context: tanStackStartContext<StartContext, StartParams>()(
-        ({ request, route: routeMetadata, startContext, startParams }) => {
-          contextInput = {
-            request,
-            route: routeMetadata,
-            startContext,
-            startParams,
-          } as TanStackStartContextInput<typeof contract, StartContext, StartParams>
-          return { session: startContext.session, splat: startParams._splat }
-        }
-      ),
+      context: adapter.context(({ request, route: routeMetadata, startContext, startParams }) => {
+        contextInput = {
+          request,
+          route: routeMetadata,
+          startContext,
+          startParams,
+        } as TanStackStartContextInput<typeof contract, StartContext, StartParams>
+        return { session: startContext.session, splat: startParams._splat }
+      }),
     }).implement({
       health: ({ context }) => ({ status: 200, body: context.session === 'session-1' ? 'ok' : 'ok' }),
       users: {
         create: ({ body }) => ({ status: 201, body: { id: 'user-1', name: body.name } }),
       },
     })
-    const handlers = createServerRouteHandlers(implementation)
+    const handlers = adapter.mount(implementation)
     const request = new Request('https://example.com/api/health')
 
     await handlers.GET!({ context: { session: 'session-1' }, params: { _splat: 'health' }, request })
@@ -130,7 +128,7 @@ describe('TanStack Start integration', () => {
         create: ({ body }) => ({ status: 201, body: { id: 'user-1', name: body.name } }),
       },
     })
-    const handlers = createServerRouteHandlers(implementation, { onError })
+    const handlers = tanStackStartAdapter<StartContext, StartParams>({ onError }).mount(implementation)
     const request = new Request('https://example.com/api/health')
     const startContext = { session: 'session-1' }
     const startParams = { _splat: 'health' }
@@ -156,7 +154,7 @@ describe('TanStack Start integration', () => {
     const implementation = defineServer(queryContract).implement({
       search: () => ({ status: 200, body: 'result' }),
     })
-    const invalidUsage = () => createServerRouteHandlers(implementation)
+    const invalidUsage = () => tanStackStartAdapter().mount(implementation)
 
     expect(invalidUsage).toThrow('TanStack Start server routes do not support QUERY routes: search')
   })

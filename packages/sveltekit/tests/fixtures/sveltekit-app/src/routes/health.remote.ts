@@ -1,0 +1,27 @@
+import { command, form, query } from '$app/server'
+import { svelteKitRemoteTransport } from '@hulla/api-sveltekit/remote'
+import { defineClient } from '@hulla/api/client'
+import { contract, renameInput } from '../api/contract'
+import { implementation } from '../api/server'
+
+const api = defineClient(contract, {
+  transport: svelteKitRemoteTransport(implementation),
+}).create()
+
+export const health = query(async () => {
+  const result = await api.health()
+  if (result.status !== 200) throw new Error(`Unexpected health status: ${result.status}`)
+  return result.body
+})
+
+export const rename = command(renameInput, async (body) => {
+  const result = await api.rename({ body })
+  if (result.status !== 200) throw new Error(`Unexpected rename status: ${result.status}`)
+  return result.body
+})
+
+export const renameForm = form(renameInput, async (body) => {
+  const result = await api.rename({ body })
+  if (result.status !== 200) throw new Error(`Unexpected rename status: ${result.status}`)
+  return result.body
+})

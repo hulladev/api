@@ -1,7 +1,7 @@
 {
   "name": "@hulla/api-cloudflare",
   "version": "2.0.0",
-  "description": "Cloudflare Workers server adapter for @hulla/api",
+  "description": "Cloudflare Workers and Pages Functions server adapters for @hulla/api",
   "license": "MIT",
   "files": [
     "dist"
@@ -12,6 +12,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./pages": {
+      "types": "./dist/pages.d.ts",
+      "import": "./dist/pages.js"
     }
   },
   "scripts": {

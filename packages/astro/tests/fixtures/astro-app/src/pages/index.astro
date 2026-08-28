@@ -1,0 +1,18 @@
+---
+import Status from '../components/Status.astro'
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Astro adapter fixture</title>
+  </head>
+  <body>
+    <main>
+      <h1>@hulla/api Astro fixture</h1>
+      <Status server:defer>
+        <span id="server-island-fallback" slot="fallback">Loading</span>
+      </Status>
+    </main>
+  </body>
+</html>

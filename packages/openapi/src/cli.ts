@@ -95,7 +95,7 @@ async function main(): Promise<void> {
       return
     }
     const valid = (await sameFile(contract, generated.contractCode)) && (await sameFile(openapi, generated.openapiCode))
-    if (!valid) throw new Error('Generated Hulla contract files are out of date; run hulla-openapi import')
+    if (!valid) throw new Error('Generated @hulla/api contract files are out of date; run hulla-openapi import')
     return
   }
 

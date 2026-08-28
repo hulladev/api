@@ -1,9 +1,11 @@
-import { nextContext } from '@hulla/api-next/server'
+import { nextAdapter } from '@hulla/api-next/server'
 import { defineServer } from '@hulla/api/server'
 import { contract } from './contract'
 
+export const adapter = nextAdapter()
+
 export const implementation = defineServer(contract, {
-  context: nextContext(async ({ request, routeContext }) => ({
+  context: adapter.context(async ({ request, routeContext }) => ({
     params: await routeContext.params,
     pathname: request.nextUrl.pathname,
   })),

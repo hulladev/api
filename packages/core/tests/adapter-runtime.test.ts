@@ -5,6 +5,7 @@ import { defineContract } from '../src/contract'
 import { request } from '../src/contract/request'
 import { response } from '../src/contract/response'
 import { route } from '../src/contract/route'
+import { fetchAdapter } from '../src/fetch'
 import { defineServer } from '../src/server'
 import { asyncSchema, type ObjectSchema } from '../src/validation'
 
@@ -141,7 +142,7 @@ describe('adapter server runtime', () => {
     expect(result.body).toEqual({ kind: 'bytes', value: new Uint8Array([1, 2, 3]) })
   })
 
-  test('preserves native request bodies only when server context is configured', async () => {
+  test('preserves native request bodies only for adapter context', async () => {
     const contract = defineContract({
       routes: { echo: route.post('/echo', { body: request.text(), responses: { 200: response.text() } }) },
     })
@@ -158,7 +159,25 @@ describe('adapter server runtime', () => {
       readBody,
     })
 
-    expect(readBody).toHaveBeenCalledWith('text', true)
+    expect(readBody).toHaveBeenCalledWith('text', false)
+
+    const adapter = fetchAdapter()
+    const nativeImplementation = defineServer(contract, {
+      context: adapter.context(() => ({ requestId: 'request-1' })),
+    }).implement({
+      echo: ({ body }) => ({ status: 200, body }),
+    })
+    const readNativeBody = vi.fn<() => Promise<string>>(async () => 'hello')
+
+    await createAdapterHandler(nativeImplementation)({
+      request: {},
+      method: 'POST',
+      pathname: '/echo',
+      headers: { 'content-type': 'text/plain' },
+      readBody: readNativeBody,
+    })
+
+    expect(readNativeBody).toHaveBeenCalledWith('text', true)
   })
 
   test('handles route precedence and protocol failures', async () => {

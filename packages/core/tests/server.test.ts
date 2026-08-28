@@ -7,11 +7,10 @@ import { router } from '../src/contract/router'
 import { defineErrors } from '../src/declared-errors'
 import {
   assertAdapterContext,
-  bindAdapterContext,
+  createServerAdapter,
   defineServer,
+  type ServerAdapter,
   type ServerContextFactory,
-  type ServerContextInput,
-  type ServerContextRequirement,
   type ServerHandlersOf,
   type ServerImplementation,
   type ServerImplementationFragment,
@@ -183,17 +182,12 @@ describe('defineServer', () => {
     expectTypeOf(invalidFragments).toBeFunction()
   })
 
-  test('binds native context once without carrying adapter descriptors through fragments', () => {
-    const testContext = <const Context extends object>(
-      factory: (input: ServerContextInput<typeof contract> & { readonly request: Request }) => Context
-    ) =>
-      bindAdapterContext<'test', { readonly request: Request }, Context, ServerContextInput<typeof contract>>(
-        'test',
-        factory
-      )
+  test('brands native context once without carrying the adapter through fragments', () => {
+    const adapter = createServerAdapter('test') as ServerAdapter<'test', { readonly request: Request }>
     const server = defineServer(contract, {
-      context: testContext(({ request, route: metadata }) => {
+      context: adapter.context(({ request, route: metadata }) => {
         expectTypeOf(request).toEqualTypeOf<Request>()
+        expectTypeOf(metadata).toMatchTypeOf<ServerRouteMetadata>()
         return { requestMethod: request.method, routeKey: metadata.key }
       }),
     })
@@ -204,7 +198,6 @@ describe('defineServer', () => {
     const organizations = server.implement(contract.routes.organizations, handlers().organizations)
     const implementation = server.implement(health, organizations)
 
-    expectTypeOf(health.context).toMatchTypeOf<ServerContextRequirement<'test'> | undefined>()
     expect(server.context).toBe(health.context)
     expect(health.context).toBe(organizations.context)
     expect(organizations.context).toBe(implementation.context)

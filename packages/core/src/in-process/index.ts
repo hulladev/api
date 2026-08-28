@@ -3,9 +3,9 @@ import type { ClientTransport, ClientTransportRequest, ClientTransportResponse }
 import type { Contract } from '../contract'
 import {
   assertAdapterContext,
-  bindAdapterContext,
-  type AdapterContextFactory,
-  type Awaitable,
+  createServerAdapter,
+  serverContextAdapterId,
+  type ServerAdapter,
   type ServerContextInput,
 } from '../server/context'
 import type { ServerExecutableFor } from '../server/types'
@@ -14,25 +14,8 @@ export type InProcessContextInput<ContractType extends Contract = Contract> = Se
   readonly request: ClientTransportRequest
 }
 
-export type InProcessContextFactory<
-  Context extends object,
-  ContractType extends Contract = Contract,
-> = AdapterContextFactory<
-  'in-process',
-  { readonly request: ClientTransportRequest },
-  Context,
-  ServerContextInput<ContractType>
->
-
-export function inProcessContext<const Context extends object, ContractType extends Contract = Contract>(
-  factory: (input: InProcessContextInput<ContractType>) => Awaitable<Context>
-): InProcessContextFactory<Context, ContractType> {
-  return bindAdapterContext<
-    'in-process',
-    { readonly request: ClientTransportRequest },
-    Context,
-    ServerContextInput<ContractType>
-  >('in-process', factory)
+export type InProcessAdapter = ServerAdapter<'in-process', { readonly request: ClientTransportRequest }> & {
+  readonly mount: typeof inProcessTransport
 }
 
 /**
@@ -43,13 +26,14 @@ export function inProcessTransport<const ContractType extends Contract, const Co
   implementation: ServerExecutableFor<ContractType, Context, 'in-process'>
 ): ClientTransport {
   assertAdapterContext(implementation.context, 'in-process')
+  const usesNativeContext = serverContextAdapterId(implementation.context) !== undefined
   const dispatch = createAdapterHandler(implementation)
 
   return async (request): Promise<ClientTransportResponse> => {
     request.signal?.throwIfAborted()
     const response = await dispatch({
       request,
-      contextInput: { request },
+      ...(usesNativeContext ? { contextInput: { request } } : {}),
       method: request.method,
       pathname: request.path,
       headers: request.headers,
@@ -71,4 +55,13 @@ export function inProcessTransport<const ContractType extends Contract, const Co
       },
     }
   }
+}
+
+let inProcessAdapterValue: InProcessAdapter | undefined
+
+/** Creates an in-process server adapter with native context and mounting operations. */
+export function inProcessAdapter(): InProcessAdapter {
+  return (inProcessAdapterValue ??= createServerAdapter('in-process', {
+    mount: inProcessTransport,
+  }) as unknown as InProcessAdapter)
 }

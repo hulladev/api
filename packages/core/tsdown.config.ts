@@ -11,6 +11,7 @@ export default defineConfig({
     'src/errors.ts',
     'src/fetch/index.ts',
     'src/in-process/index.ts',
+    'src/message-port/index.ts',
     'src/procedure.ts',
     'src/server/index.ts',
     'src/stream.ts',

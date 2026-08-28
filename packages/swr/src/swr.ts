@@ -45,7 +45,7 @@ function keyWithInput(key: readonly string[], args: readonly unknown[]): readonl
 
 function routeIntegration(call: (...args: readonly unknown[]) => Promise<unknown>, key: readonly string[]) {
   const integration = clientRouteIntegration(call)
-  if (integration === undefined) throw new TypeError(`SWR route "${key.join('.')}" is not a Hulla client call`)
+  if (integration === undefined) throw new TypeError(`SWR route "${key.join('.')}" is not an @hulla/api client call`)
 
   const queryKey = (...args: readonly unknown[]) => keyWithInput(key, args)
   const queryOptions = (...args: readonly unknown[]) => {

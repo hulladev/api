@@ -119,7 +119,7 @@ describe('contract to OpenAPI', () => {
     })
   })
 
-  test('preserves Standard JSON Schema conversion through Hulla codecs', async () => {
+  test('preserves Standard JSON Schema conversion through @hulla/api codecs', async () => {
     const date = codec(z.string().datetime(), z.date(), {
       decode: (value) => new Date(value),
       encode: (value) => value.toISOString(),
@@ -302,7 +302,7 @@ describe('OpenAPI to contract', () => {
         diagnostics: expect.arrayContaining([
           expect.objectContaining({
             severity: 'error',
-            message: 'cookie parameters are not supported by Hulla routes',
+            message: 'cookie parameters are not supported by @hulla/api routes',
           }),
         ]),
       })

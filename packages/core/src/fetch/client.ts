@@ -10,7 +10,7 @@ export type FetchTransportOptions<FetchOptions extends object = RequestInit> = {
   /** URL prefix placed before the contract base path. Omit it to issue a relative request. */
   readonly baseUrl?: string | URL
   readonly fetch?: ClientFetch<FetchOptions>
-  /** Additional options passed as fetch's second argument after Hulla constructs the native Request. */
+  /** Additional options passed as fetch's second argument after @hulla/api constructs the native Request. */
   readonly fetchOptions?: FetchOptions | ((request: ClientTransportRequest) => FetchOptions | undefined)
 }
 

@@ -1,6 +1,7 @@
-export { assertAdapterContext, bindAdapterContext } from './context'
+export { assertAdapterContext, createServerAdapter, serverContextAdapterId } from './context'
 export type {
   AdapterContextFactory,
+  ServerAdapter,
   ServerContextAdapterId,
   ServerContextAdapterInput,
   ServerContextRequirement,

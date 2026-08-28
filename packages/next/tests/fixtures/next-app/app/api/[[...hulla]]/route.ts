@@ -1,6 +1,5 @@
-import { createRouteHandler } from '@hulla/api-next/server'
-import { implementation } from '../../../server'
+import { adapter, implementation } from '../../../server'
 
-const handler = createRouteHandler(implementation)
+const handler = adapter.mount(implementation)
 
 export { handler as GET }

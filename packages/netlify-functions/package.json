@@ -1,0 +1,37 @@
+{
+  "name": "@hulla/api-netlify-functions",
+  "version": "2.0.0",
+  "description": "Netlify Functions server adapter for @hulla/api",
+  "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "clean": "rm -rf dist coverage",
+    "test": "bun run build && vitest run",
+    "test:coverage": "bun run build && vitest run --coverage",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@hulla/api": "workspace:*",
+    "@netlify/functions": "^5.3.0",
+    "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "@hulla/api": "^2.0.0",
+    "@netlify/functions": "^4.0.0 || ^5.0.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

@@ -2,9 +2,9 @@ import type { Contract } from '@hulla/api'
 import { createAdapterRuntime } from '@hulla/api/adapters'
 import { createFetchHandler, type FetchServerErrorInput } from '@hulla/api/fetch'
 import {
-  bindAdapterContext,
-  type AdapterContextFactory,
+  createServerAdapter,
   type Awaitable,
+  type ServerAdapter,
   type ServerContextInput,
   type ServerExecutableFor,
 } from '@hulla/api/server'
@@ -26,12 +26,6 @@ type NextAdapterContext<RouteContext extends NextRouteContext> = {
   readonly routeContext: RouteContext
 }
 
-export type NextContextFactory<
-  Context extends object,
-  ContractType extends Contract = Contract,
-  RouteContext extends NextRouteContext = NextRouteContext,
-> = AdapterContextFactory<'next', NextAdapterContext<RouteContext>, Context, ServerContextInput<ContractType>>
-
 export type NextServerErrorInput<RouteContext extends NextRouteContext = NextRouteContext> = Omit<
   FetchServerErrorInput<RouteContext>,
   'handlerContext' | 'request'
@@ -41,7 +35,7 @@ export type NextServerErrorInput<RouteContext extends NextRouteContext = NextRou
 }
 
 export type NextServerOptions<RouteContext extends NextRouteContext = NextRouteContext> = {
-  readonly onError?: (input: NextServerErrorInput<RouteContext>) => Awaitable<Response | undefined | void>
+  readonly onError?: ((input: NextServerErrorInput<RouteContext>) => Awaitable<Response | undefined | void>) | undefined
 }
 
 export type NextContextInput<
@@ -49,26 +43,18 @@ export type NextContextInput<
   RouteContext extends NextRouteContext = NextRouteContext,
 > = ServerContextInput<ContractType> & NextAdapterContext<RouteContext>
 
-export function nextContext<RouteContext extends NextRouteContext = NextRouteContext>(): <
-  const Context extends object,
-  ContractType extends Contract = Contract,
->(
-  factory: (input: NextContextInput<ContractType, RouteContext>) => Awaitable<Context>
-) => NextContextFactory<Context, ContractType, RouteContext>
-export function nextContext<
-  const Context extends object,
-  ContractType extends Contract = Contract,
-  RouteContext extends NextRouteContext = NextRouteContext,
->(
-  factory: (input: NextContextInput<ContractType, RouteContext>) => Awaitable<Context>
-): NextContextFactory<Context, ContractType, RouteContext>
-export function nextContext(factory?: Function): unknown {
-  const bind = (value: Function) => bindAdapterContext('next', value as (input: object) => Awaitable<object>)
-  return factory === undefined ? bind : bind(factory)
+export type NextAdapter<RouteContext extends NextRouteContext = NextRouteContext> = ServerAdapter<
+  'next',
+  NextAdapterContext<RouteContext>
+> & {
+  readonly mount: <const ContractType extends Contract, const Context extends object>(
+    implementation: ServerExecutableFor<ContractType, Context, 'next', NextAdapterContext<RouteContext>>,
+    options?: NextServerOptions<RouteContext>
+  ) => NextRouteHandler<RouteContext>
 }
 
-/** Creates an App Router Route Handler backed by a Hulla server implementation. */
-export function createRouteHandler<
+/** Creates an App Router Route Handler backed by an @hulla/api server implementation. */
+function createRouteHandler<
   const ContractType extends Contract,
   const Context extends object,
   RouteContext extends NextRouteContext = NextRouteContext,
@@ -93,4 +79,26 @@ export function createRouteHandler<
         }),
   })
   return handler as NextRouteHandler<RouteContext>
+}
+
+let nextAdapterValue: unknown
+
+function createNextAdapter<RouteContext extends NextRouteContext>(
+  defaults: NextServerOptions<RouteContext>
+): NextAdapter<RouteContext> {
+  return createServerAdapter('next', {
+    mount: <const ContractType extends Contract, const Context extends object>(
+      implementation: ServerExecutableFor<ContractType, Context, 'next', NextAdapterContext<RouteContext>>,
+      options?: NextServerOptions<RouteContext>
+    ) => createRouteHandler(implementation, options === undefined ? defaults : { ...defaults, ...options }),
+  }) as unknown as NextAdapter<RouteContext>
+}
+
+/** Creates a Next.js adapter with native context and mounting operations. */
+export function nextAdapter<RouteContext extends NextRouteContext = NextRouteContext>(
+  options?: NextServerOptions<RouteContext>
+): NextAdapter<RouteContext> {
+  if (options !== undefined) return createNextAdapter({ ...options })
+  nextAdapterValue ??= createNextAdapter<NextRouteContext>({})
+  return nextAdapterValue as NextAdapter<RouteContext>
 }

@@ -5,17 +5,8 @@ import { defineServer } from '@hulla/api/server'
 import { NextRequest } from 'next/server'
 import { describe, expect, expectTypeOf, test, vi } from 'vitest'
 import { z } from 'zod'
-import {
-  createRouteHandler,
-  createNextCache,
-  nextFetchTransport,
-  nextContext,
-  nextRouteTag,
-  nextRouteTags,
-  type NextServerErrorInput,
-  type NextRouteContext,
-  type NextRouteHandler,
-} from '../src'
+import { createNextCache, nextFetchTransport, nextRouteTag, nextRouteTags } from '../src/client'
+import { nextAdapter, type NextServerErrorInput, type NextRouteContext, type NextRouteHandler } from '../src/server'
 
 const contract = defineContract({
   basePath: '/api',
@@ -43,11 +34,12 @@ function json(value: unknown): Response {
 
 describe('Next.js integration', () => {
   test('adapts an implementation to an App Router Route Handler', async () => {
-    type AppRouteContext = NextRouteContext<{ readonly hulla: string[] }>
+    type AppRouteContext = NextRouteContext<{ readonly api: string[] }>
     let contextRequest: NextRequest | undefined
-    let contextParams: { readonly hulla: string[] } | undefined
+    let contextParams: { readonly api: string[] } | undefined
+    const adapter = nextAdapter<AppRouteContext>()
     const implementation = defineServer(contract, {
-      context: nextContext<AppRouteContext>()(async ({ request, routeContext }) => {
+      context: adapter.context(async ({ request, routeContext }) => {
         expectTypeOf(routeContext).toEqualTypeOf<AppRouteContext>()
         contextRequest = request
         contextParams = await routeContext.params
@@ -60,15 +52,15 @@ describe('Next.js integration', () => {
         rename: ({ body, params }) => ({ status: 200, body: { id: params.id, name: body.name } }),
       },
     })
-    const handler = createRouteHandler(implementation)
+    const handler = adapter.mount(implementation)
 
     expectTypeOf(handler).toEqualTypeOf<NextRouteHandler<AppRouteContext>>()
     const request = new NextRequest('https://example.com/api/users/user-1')
-    const routeContext: AppRouteContext = { params: Promise.resolve({ hulla: ['users', 'user-1'] }) }
+    const routeContext: AppRouteContext = { params: Promise.resolve({ api: ['users', 'user-1'] }) }
     const result = await handler(request, routeContext)
 
     expect(contextRequest).toBe(request)
-    expect(contextParams).toEqual({ hulla: ['users', 'user-1'] })
+    expect(contextParams).toEqual({ api: ['users', 'user-1'] })
     expect(result.status).toBe(200)
     await expect(result.json()).resolves.toEqual({ id: 'user-1' })
     expect(() => inProcessTransport(implementation as never)).toThrow(
@@ -142,18 +134,18 @@ describe('Next.js integration', () => {
   })
 
   test('creates collision-safe structural cache tags for prefix invalidation', () => {
-    expect(nextRouteTag([])).toBe('hulla')
-    expect(nextRouteTag(['users', 'by:id'])).toBe('hulla:users:by%3Aid')
+    expect(nextRouteTag([])).toBe('hulla-api')
+    expect(nextRouteTag(['users', 'by:id'])).toBe('hulla-api:users:by%3Aid')
     expect(nextRouteTag(['users'], { namespace: 'admin' })).toBe('admin:users')
     expect(nextRouteTag([], { namespace: 'admin:api' })).toBe('admin%3Aapi')
-    expect(nextRouteTags(['users', 'byId'])).toEqual(['hulla', 'hulla:users', 'hulla:users:byId'])
+    expect(nextRouteTags(['users', 'byId'])).toEqual(['hulla-api', 'hulla-api:users', 'hulla-api:users:byId'])
 
     expect(() => nextRouteTag(['x'.repeat(257)])).toThrow('exceeds 256 characters')
     expect(() => nextRouteTag([], { namespace: '' })).toThrow('namespace must not be empty')
   })
 
   test('forwards route context to the adapter error hook', async () => {
-    type AppRouteContext = NextRouteContext<{ readonly hulla: string[] }>
+    type AppRouteContext = NextRouteContext<{ readonly api: string[] }>
     const onError = vi.fn<(input: NextServerErrorInput<AppRouteContext>) => Response>(({ defaultResponse }) =>
       Response.json({ replaced: true }, { status: defaultResponse.status })
     )
@@ -166,9 +158,9 @@ describe('Next.js integration', () => {
         rename: ({ body, params }) => ({ status: 200, body: { id: params.id, name: body.name } }),
       },
     })
-    const handler = createRouteHandler(implementation, { onError })
+    const handler = nextAdapter<AppRouteContext>({ onError }).mount(implementation)
     const request = new NextRequest('https://example.com/api/health')
-    const routeContext: AppRouteContext = { params: Promise.resolve({ hulla: ['health'] }) }
+    const routeContext: AppRouteContext = { params: Promise.resolve({ api: ['health'] }) }
 
     const result = await handler(request, routeContext)
 
@@ -194,7 +186,7 @@ describe('Next.js integration', () => {
       search: () => ({ status: 200 }),
     })
 
-    expect(() => createRouteHandler(implementation)).toThrow(
+    expect(() => nextAdapter().mount(implementation)).toThrow(
       'Next.js Route Handlers do not support QUERY routes: search'
     )
   })

@@ -6,6 +6,7 @@ import { compileCanonicalContract, type CanonicalContractPlan } from '../contrac
 import { isDeclaredError } from '../declared-errors'
 import { dispatchMiddlewareSteps } from '../middleware'
 import { isRecord } from '../object'
+import { serverContextAdapterId } from '../server/context'
 import { ServerRuntimeError } from '../server/errors'
 import type { ServerHandlerBinding } from '../server/implementation'
 import type { ServerMiddleware } from '../server/middleware'
@@ -104,7 +105,11 @@ function compileAdapterImplementation(implementation: object): CompiledAdapterIm
   const selectedRoutes = registeredBindings.map((binding) => binding.compiled)
   const contractPlan = compileCanonicalContract(server.contract, selectedRoutes)
   const compiled = {
-    routes: compileRuntimeRoutes(contractPlan, registeredBindings, server.context !== undefined),
+    routes: compileRuntimeRoutes(
+      contractPlan,
+      registeredBindings,
+      serverContextAdapterId(server.context) !== undefined
+    ),
     server,
   }
   compiledAdapterImplementations.set(implementation, compiled)

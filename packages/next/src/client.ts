@@ -60,7 +60,7 @@ export type NextCache<ContractType extends Contract> = {
   readonly fetchTransport: (options?: NextCacheTransportOptions) => ClientTransport
 }
 
-const defaultTagNamespace = 'hulla'
+const defaultTagNamespace = 'hulla-api'
 const maximumTagLength = 256
 const maximumTags = 128
 
