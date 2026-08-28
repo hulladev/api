@@ -68,7 +68,7 @@ await writeOpenAPIDocument('./openapi.json', await createOpenAPIDocument(definit
 ```
 
 The exporter defaults to OpenAPI 3.1.2 and uses Standard JSON Schema's input conversion because OpenAPI describes the
-HTTP representation. Hulla codecs retain their wire schema's conversion capability. JSON and YAML output are both
+HTTP representation. `@hulla/api` codecs retain their wire schema's conversion capability. JSON and YAML output are both
 supported. A schema without Standard JSON Schema support produces an exact generation error unless the sidecar supplies
 an explicit request or response `schema` override.
 
@@ -96,7 +96,7 @@ await writeGeneratedOpenAPIContract(generated, {
 })
 ```
 
-The reverse generator writes a normal Hulla runtime contract and a separate typed sidecar. Zod is the default schema
+The reverse generator writes a normal `@hulla/api` runtime contract and a separate typed sidecar. Zod is the default schema
 code generator; `schemaGenerator` is pluggable so the import pipeline is not architecturally tied to it. Local component
 references, request parameters and bodies, all concrete response statuses, descriptions, examples, and common JSON
 Schema forms are supported.
@@ -113,4 +113,22 @@ hulla-openapi check ./openapi.yaml \
 
 `check` regenerates in memory and fails when committed generated files differ. Unsupported or lossy semantics produce
 structured diagnostics; generation stops on errors instead of emitting permissive placeholder schemas. OpenAPI cannot
-reconstruct application-side Hulla codecs, so imported schemas describe the wire contract.
+reconstruct application-side `@hulla/api` codecs, so imported schemas describe the wire contract.
+
+## Consume an imported contract
+
+The generated contract is a normal runtime contract, so it uses the same client as a code-first contract:
+
+```ts
+import { defineClient } from '@hulla/api/client'
+import { fetchTransport } from '@hulla/api/fetch'
+import { contract } from './api.generated'
+
+export const api = defineClient(contract, {
+  transport: fetchTransport({ baseUrl: 'https://api.example.com' }),
+}).create()
+```
+
+Route names and request inputs come from the generated contract. Calls return the generated status-discriminated
+response unions, which can be consumed directly or passed through the application's loader or query layer. OpenAPI
+generation does not introduce a separate generated client runtime.

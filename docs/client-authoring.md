@@ -1,23 +1,25 @@
 # Client authoring
 
-`defineClient()` creates a transport-neutral client authoring scope. `create()` materializes the complete contract-shaped client. `create(node)` selects one route or recursive router fragment—there is no extra `routes`, `api`, or procedure namespace. An executable client receives one transport in its options:
+`defineClient()` creates a transport-neutral client authoring scope. Start with the shared contract from
+[contract authoring](./contract-authoring.md); the same module can be imported by server and client code. `create()`
+materializes the complete contract-shaped client, while `create(node)` selects one route or recursive router fragment.
+There is no extra `routes`, `api`, or procedure namespace. An executable client receives one transport in its options:
 
 ```ts
 import { defineClient } from '@hulla/api/client'
 import { fetchTransport } from '@hulla/api/fetch'
+import { contract } from './contract'
 
 const client = defineClient(contract, {
   transport: fetchTransport({ baseUrl: 'https://api.example.com' }),
 }).create()
 
-const result = await client.organizations.createUser({
-  params: { organizationId, userId },
-  query: { notify: true },
-  headers: { 'x-actor-id': actorId },
-  body: { createdAt: new Date() },
+const result = await client.users.rename({
+  params: { id: 'user-1' },
+  body: { name: 'Ada' },
 })
 
-if (result.status === 201) {
+if (result.status === 200) {
   result.body
   result.headers
 }
@@ -37,8 +39,32 @@ await client.health({ signal })
 Routes with declared request data take those options as a second argument:
 
 ```ts
-await client.organizations.createUser(input, { signal })
+await client.users.rename(input, { signal })
 ```
+
+## Consuming responses in an application
+
+Every route call returns a promise for the declared status-discriminated response union. Put that promise inside the
+consumer's native loader, resource, or query API and narrow `status` before reading the corresponding body and headers:
+
+```ts
+export async function getUser(id: string) {
+  const result = await client.users.byId({ params: { id } })
+
+  if (result.status === 200) return result.body
+  if (result.status === 404) return undefined
+  throw new Error(`Could not load user: ${result.status}`)
+}
+```
+
+The client deliberately returns declared 4xx and 5xx responses instead of turning them into transport exceptions. This
+lets a UI distinguish an expected `404` from a rejected network request or invalid response. Abort a stale UI request
+by passing its `AbortSignal` through the request-scoped options.
+
+Use the framework's own data layer around this function: a route loader in TanStack Router, `query()` and
+`createAsync()` in Solid Router, a Server or Client Component data library in Next.js, or the application's existing
+state layer. The optional [TanStack Query and SWR integrations](./plugins.md) provide keys and executable options without
+changing the underlying client.
 
 ## Context and middleware
 
@@ -121,13 +147,21 @@ export async function createUser(input: Parameters<typeof client.organizations.c
 When the client and server share one JavaScript process, use the same client API with the in-process transport:
 
 ```ts
-import { inProcessTransport } from '@hulla/api/in-process'
+import { inProcessAdapter } from '@hulla/api/in-process'
 
 const client = defineClient(contract, {
-  transport: inProcessTransport(implementation),
+  transport: inProcessAdapter().mount(implementation),
 }).create()
 ```
 
 This still runs contract encoding, server validation, middleware, and response decoding, but skips native Fetch object construction. It is suitable for colocated SSR, tests, and same-process application boundaries—not for communication between separate processes.
+
+Use `inProcessAdapter().context()` for the server definition only when its context factory needs the encoded
+`ClientTransportRequest`. Otherwise keep the server portable so the same implementation can be mounted through another
+adapter.
+
+For Web Workers, Node worker threads, Electron ports, or a custom ordered desktop IPC bridge, use the multiplexed
+[`@hulla/api/message-port` transport](./message-port.md). It preserves the same client call surface across a process or
+worker boundary and adds request cancellation and pull-driven response streaming.
 
 Use an `@hulla/api/procedure` procedure only when its validation, context, or middleware provides concrete value. Otherwise use an ordinary function. Client creation does not add custom route implementations or change the generated call surface.

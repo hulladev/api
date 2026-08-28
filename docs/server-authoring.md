@@ -2,6 +2,31 @@
 
 `defineServer()` binds a contract to context, middleware, and handler implementations. `implement(handlers)` implements the root contract, while `implement(node, handlers)` exhaustively implements one route or recursive router fragment. Implementations and fragments remain portable unless their server definition declares a native adapter requirement. `implement(...fragments)` composes enough smaller fragments to cover the root contract.
 
+Start with a shared contract. The examples below use the `health`, `users.byId`, and `users.rename` routes from
+[contract authoring](./contract-authoring.md):
+
+```ts
+// src/api/server.ts
+import { defineServer } from '@hulla/api/server'
+import { contract } from './contract'
+
+const server = defineServer(contract)
+
+export const implementation = server.implement({
+  health: ({ response }) => response(200, 'ok'),
+  users: {
+    byId: ({ params, response }) => response(200, { id: params.id, name: 'Ada' }),
+    rename: ({ params, body, response }) => response(200, { id: params.id, name: body.name }),
+  },
+})
+```
+
+`defineServer(contract)` creates the authoring scope. `implement()` attaches one handler to every contract route and
+returns the complete `implementation` value accepted by `adapter.mount()`. The handler tree must mirror the contract's
+route keys; each handler receives decoded input and a typed `response()` helper.
+
+Pass a second options argument when every request needs application context:
+
 ```ts
 import { defineServer } from '@hulla/api/server'
 
@@ -15,14 +40,15 @@ const server = defineServer(contract, {
 
 The context factory's resolved object is inferred once and exposed as `input.context` in every middleware and route handler.
 
-Wrap the factory with the host context helper when it needs native values. The helper contributes those values to the
+Declare the host adapter when the context factory needs native values. The adapter contributes those values to the
 input type and binds every implementation and fragment created from that definition:
 
 ```ts
-import { fetchContext } from '@hulla/api/fetch'
+import { fetchAdapter } from '@hulla/api/fetch'
 
+const adapter = fetchAdapter()
 const server = defineServer(contract, {
-  context: fetchContext(({ request, route }) => ({
+  context: adapter.context(({ request, route }) => ({
     signal: request.signal,
     route,
   })),
@@ -30,7 +56,7 @@ const server = defineServer(contract, {
 ```
 
 Use a plain context factory when it needs only route metadata or request-independent services. That implementation can
-be mounted through any compatible adapter or `inProcessTransport()`. Compatibility is checked once when an implementation
+be mounted through any compatible adapter, including `inProcessAdapter().mount()`. Compatibility is checked once when an implementation
 with a native context factory is mounted; adapter selection adds no per-request dispatch or route metadata.
 
 Keep the factory for request-scoped identity and shared state. If a dependency is expensive and only some routes need it, return a lazy memoized function such as `user: once(() => loadUser())`; an object mapping of eager functions would otherwise push caching, errors, and lifecycle rules into the framework.
@@ -128,7 +154,7 @@ Each handler receives only one input object:
 - `response(status, body, headers?)` creates the status-discriminated result for that route.
 - `route` contains the literal key, method, and fully joined path.
 
-Portable handlers and middleware intentionally do not receive a transport request. Use an adapter-specific context helper when application context needs native framework state.
+Portable handlers and middleware intentionally do not receive a transport request. Declare an adapter and expose the required native framework state through application context.
 
 The status discriminates the complete response envelope. An empty response forbids `body`; a raw response carries an adapter-native value and forbids separate headers; schema-backed response headers are required and typed when declared.
 
@@ -179,9 +205,9 @@ Mounted nodes retain their exact key, full path, and every inherited router para
 A fragment can execute independently as a one-route handler or small router:
 
 ```ts
-import { createFetchHandler } from '@hulla/api/fetch'
+import { fetchAdapter } from '@hulla/api/fetch'
 
-export const GET = createFetchHandler(health)
+export const GET = fetchAdapter().mount(health)
 ```
 
 Fragments can compose a complete implementation. TypeScript and runtime validation require complete root coverage, and runtime validation rejects duplicate implementations:
@@ -224,32 +250,50 @@ The error code discriminates the wire union. Returning `errors.USER_NOT_FOUND({ 
 ## Fetch and adapter execution
 
 ```ts
-import { createFetchHandler } from '@hulla/api/fetch'
+import { fetchAdapter } from '@hulla/api/fetch'
 
-export const fetch = createFetchHandler(implementation)
+export const fetch = fetchAdapter().mount(implementation)
 ```
 
-`createFetchHandler()` accepts either a complete implementation or a fragment and handles Fetch request extraction and response construction. Use `fetchContext()` when the context factory needs the native Fetch `Request`:
+`mount()` accepts either a complete implementation or a fragment and handles Fetch request extraction and response construction. Use the adapter's `context()` method when the context factory needs the native Fetch `Request`:
 
 ```ts
-import { createFetchHandler, fetchContext } from '@hulla/api/fetch'
+import { fetchAdapter } from '@hulla/api/fetch'
 
+const adapter = fetchAdapter()
 const server = defineServer(contract, {
-  context: fetchContext(({ request, route }) => ({
+  context: adapter.context(({ request, route }) => ({
     requestId: request.headers.get('x-request-id') ?? crypto.randomUUID(),
     routeKey: route.key,
   })),
 })
 ```
 
+Adapter creation accepts shared mount defaults, currently `onError` for adapters with an HTTP boundary:
+
+```ts
+const adapter = fetchAdapter({
+  onError({ error, phase, request, defaultResponse }) {
+    console.error(phase, request.url, error)
+    return defaultResponse
+  },
+})
+
+adapter.mount(publicFragment)
+adapter.mount(adminFragment, { onError: reportAdminError })
+```
+
+Mount options shallowly override adapter defaults and are resolved once while mounting. Explicit `onError: undefined`
+disables an inherited hook for one mount. Adapters without defaults preserve the same request fast path as `adapter()`.
+
 An adapter declaration binds the implementation and every fragment created by that server definition. The implementation
 above can be mounted only through the Fetch adapter. An incompatible mount, including
-`inProcessTransport(implementation)`, fails when the adapter is created. Keep the ordinary `defineServer()` context
-factory and omit `adapter` when it needs only `route` metadata or request-independent services and the implementation
+`inProcessAdapter().mount(implementation)`, fails when the mount is created. Keep an ordinary `defineServer()` context
+factory instead of wrapping it with `adapter.context()` when it needs only `route` metadata or request-independent services and the implementation
 should remain portable across adapters.
 
 `createAdapterRuntime()` from `@hulla/api/adapters` compiles individually executable routes for native framework routers, while `createAdapterHandler()` adds the shared matcher for catch-all and function adapters. The runtime accepts already-extracted native values and never constructs a Fetch `Request` or `Response`; each adapter owns request extraction, lifecycle integration, and response writing.
 
-The adapter runtime's immutable `routes` property lists the method, full path, structural key, and preselected route executor for that implementation or fragment. Framework integrations register those routes natively and invoke `route.execute()` without repeating Hulla route matching.
+The adapter runtime's immutable `routes` property lists the method, full path, structural key, and preselected route executor for that implementation or fragment. Framework integrations register those routes natively and invoke `route.execute()` without repeating `@hulla/api` route matching.
 
 Standalone fragments compile execution data only for their selected routes. The shared canonical route plan caches compilation only; requests, responses, handler results, and application data are never cached.
