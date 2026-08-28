@@ -1,6 +1,6 @@
 # Server-only example
 
-Use Hulla as a small server toolkit without generating or shipping a client.
+Use `@hulla/api` as a small server toolkit without generating or shipping a client.
 
 This example demonstrates:
 

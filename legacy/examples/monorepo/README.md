@@ -1,16 +1,16 @@
 # Monorepo example
 
-A full-stack monorepo example that uses a fitness tracker to exercise the local Hulla API experience end to end.
+A full-stack monorepo example that uses a fitness tracker to exercise the local `@hulla/api` experience end to end.
 
 ## Stack
 
 - `apps/backend`: Hono on Bun, Drizzle ORM, and SQLite
 - `apps/mobile`: Expo SDK 57 and React Native, sharing the generated client and TanStack DB collection
 - `apps/web`: TanStack Start with TanStack DB backed by TanStack Query
-- `packages/api-client`: generated Hulla client, server router factory, and TanStack DB collection factories
+- `packages/api-client`: generated `@hulla/api` client, server router factory, and TanStack DB collection factories
 - Turborepo for app tasks
 
-The unpublished Hulla packages are installed from this repository with `file:` dependencies. Before generation, a local linking script points each workspace directly at the current package builds, so the example exercises this checkout and works in CI without a globally installed CLI or Bun link registrations.
+The unpublished `@hulla/api` packages are installed from this repository with `file:` dependencies. Before generation, a local linking script points each workspace directly at the current package builds, so the example exercises this checkout and works in CI without a globally installed CLI or Bun link registrations.
 
 ## Run it
 

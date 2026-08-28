@@ -1,6 +1,6 @@
 # Client-only example
 
-Use Hulla without owning the server. Procedures wrap any existing transport and give the rest of the client one validated, typed interface.
+Use `@hulla/api` without owning the server. Procedures wrap any existing transport and give the rest of the client one validated, typed interface.
 
 This example demonstrates:
 

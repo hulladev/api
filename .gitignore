@@ -114,6 +114,8 @@ web_modules/
 # Next.js build output
 
 .next
+.solid-start
+.svelte-kit
 out
 
 # Nuxt.js build / generate output

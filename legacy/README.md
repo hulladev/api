@@ -368,7 +368,7 @@ Path parameters use ordinary readable URL segments. Remaining `GET` and `HEAD` f
 
 If a copied resource identifier appears in more than one HTTP location, equivalent values are deduplicated and the path remains authoritative. Conflicting values return `409 INPUT_CONFLICT` instead of silently targeting a different resource.
 
-Generation writes a versioned HTTP wire contract used by both the browser transport and server handler. It deterministically describes strings, numbers, booleans, dates, bigints, bytes, arrays, and objects before the validation schema runs once. This keeps generated calls typed without putting Hulla serialization tags in URLs. Plain HTTP clients can call the same endpoints without protocol-specific envelopes or headers.
+Generation writes a versioned HTTP wire contract used by both the browser transport and server handler. It deterministically describes strings, numbers, booleans, dates, bigints, bytes, arrays, and objects before the validation schema runs once. This keeps generated calls typed without putting package-specific serialization tags in URLs. Plain HTTP clients can call the same endpoints without protocol-specific envelopes or headers.
 
 Handwritten Zod routers opt into schema derivation in the generation config:
 
@@ -683,7 +683,7 @@ OpenAPI sources can use the same direct plugin instances as generated Drizzle cl
 
 ## CLI
 
-Generation stays under the main Hulla CLI:
+Generation stays under the package CLI:
 
 ```bash
 hulla api init
@@ -693,7 +693,7 @@ hulla api dev
 
 `hulla api` is the short form of `hulla api generate`. Use `--config` for a nonstandard config name and `--cwd` when invoking the CLI outside the project directory.
 
-- `init` previews a minimal config and never writes unless `--write` is present. It detects an installed Hulla Drizzle integration and existing Drizzle config.
+- `init` previews a minimal config and never writes unless `--write` is present. It detects an installed `@hulla/api-drizzle` integration and existing Drizzle config.
 - `generate` loads the source graph from `api.config.ts` and publishes output atomically.
 - `dev` reloads the config when declared source inputs change, ignores generated output, and keeps the last successful output available after an error.
 
