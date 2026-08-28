@@ -1,7 +1,9 @@
 import { zValidator } from '@hono/zod-validator'
 import { defineContract, response, route } from '@hulla/api'
-import { createRouteHandler } from '@hulla/api-next/server'
-import { createServerRouteHandlers } from '@hulla/api-tanstack-start/server'
+import { nextAdapter } from '@hulla/api-next/server'
+import { solidStartAdapter, type SolidStartAPIEvent } from '@hulla/api-solid-start'
+import { svelteKitAdapter, type SvelteKitRequestEvent } from '@hulla/api-sveltekit/server'
+import { tanStackStartAdapter } from '@hulla/api-tanstack-start'
 import { defineServer } from '@hulla/api/server'
 import { os } from '@orpc/server'
 import { RPCHandler } from '@orpc/server/fetch'
@@ -56,7 +58,7 @@ function restRequest(dynamic: boolean, next: boolean): Request {
   return next ? new NextRequest(incoming) : incoming
 }
 
-const nextHandler = createRouteHandler(implementation)
+const nextHandler = nextAdapter().mount(implementation)
 const nextRouteContext = { params: Promise.resolve({ hulla: ['adapter'] }) }
 
 async function directNext(dynamic: boolean): Promise<void> {
@@ -182,7 +184,7 @@ async function orpcNext(dynamic: boolean): Promise<void> {
   await runOrpcHandler(orpcRequest(dynamic, true), dynamic)
 }
 
-const startHandlers = createServerRouteHandlers(implementation)
+const startHandlers = tanStackStartAdapter().mount(implementation)
 
 type StartInput = {
   readonly context: Record<string, never>
@@ -214,6 +216,62 @@ async function trpcStart(dynamic: boolean): Promise<void> {
 
 async function orpcStart(dynamic: boolean): Promise<void> {
   await runOrpcHandler(startInput(orpcRequest(dynamic, false)).request, dynamic)
+}
+
+const solidStartHandler = solidStartAdapter().mount(implementation)
+
+function solidStartEvent(request: Request): SolidStartAPIEvent {
+  return {
+    locals: {},
+    nativeEvent: {} as SolidStartAPIEvent['nativeEvent'],
+    params: { hulla: new URL(request.url).pathname.slice(1) },
+    request,
+    response: { headers: new Headers() },
+  }
+}
+
+async function directSolidStart(dynamic: boolean): Promise<void> {
+  await assertAdapterResponse(await directAdapterHandler(restRequest(dynamic, false)), dynamic)
+}
+
+async function hullaSolidStart(dynamic: boolean): Promise<void> {
+  await assertAdapterResponse(await solidStartHandler(solidStartEvent(restRequest(dynamic, false))), dynamic)
+}
+
+async function trpcSolidStart(dynamic: boolean): Promise<void> {
+  await trpcHandler(solidStartEvent(trpcRequest(dynamic, false)).request, dynamic)
+}
+
+async function orpcSolidStart(dynamic: boolean): Promise<void> {
+  await runOrpcHandler(solidStartEvent(orpcRequest(dynamic, false)).request, dynamic)
+}
+
+const svelteKitHandler = svelteKitAdapter().mount(implementation)
+
+function svelteKitEvent(request: Request): SvelteKitRequestEvent {
+  return {
+    locals: {},
+    params: { hulla: new URL(request.url).pathname.slice(1) },
+    request,
+    route: { id: '/[...hulla]' },
+    url: new URL(request.url),
+  } as unknown as SvelteKitRequestEvent
+}
+
+async function directSvelteKit(dynamic: boolean): Promise<void> {
+  await assertAdapterResponse(await directAdapterHandler(restRequest(dynamic, false)), dynamic)
+}
+
+async function hullaSvelteKit(dynamic: boolean): Promise<void> {
+  await assertAdapterResponse(await svelteKitHandler(svelteKitEvent(restRequest(dynamic, false))), dynamic)
+}
+
+async function trpcSvelteKit(dynamic: boolean): Promise<void> {
+  await trpcHandler(svelteKitEvent(trpcRequest(dynamic, false)).request, dynamic)
+}
+
+async function orpcSvelteKit(dynamic: boolean): Promise<void> {
+  await runOrpcHandler(svelteKitEvent(orpcRequest(dynamic, false)).request, dynamic)
 }
 
 export const frameworkAdapterBenchmarks: readonly Benchmark[] = (
@@ -269,6 +327,86 @@ export const frameworkAdapterBenchmarks: readonly Benchmark[] = (
       runtime: 'oRPC TanStack Start',
       scenario: 'tanstack-start-adapter-dynamic-dispatch',
       run: () => orpcStart(true),
+    },
+    {
+      runtime: 'Direct SolidStart',
+      scenario: 'solid-start-adapter-static-dispatch',
+      run: () => directSolidStart(false),
+    },
+    {
+      runtime: '@hulla/api SolidStart',
+      scenario: 'solid-start-adapter-static-dispatch',
+      run: () => hullaSolidStart(false),
+    },
+    {
+      runtime: 'tRPC SolidStart',
+      scenario: 'solid-start-adapter-static-dispatch',
+      run: () => trpcSolidStart(false),
+    },
+    {
+      runtime: 'oRPC SolidStart',
+      scenario: 'solid-start-adapter-static-dispatch',
+      run: () => orpcSolidStart(false),
+    },
+    {
+      runtime: 'Direct SolidStart',
+      scenario: 'solid-start-adapter-dynamic-dispatch',
+      run: () => directSolidStart(true),
+    },
+    {
+      runtime: '@hulla/api SolidStart',
+      scenario: 'solid-start-adapter-dynamic-dispatch',
+      run: () => hullaSolidStart(true),
+    },
+    {
+      runtime: 'tRPC SolidStart',
+      scenario: 'solid-start-adapter-dynamic-dispatch',
+      run: () => trpcSolidStart(true),
+    },
+    {
+      runtime: 'oRPC SolidStart',
+      scenario: 'solid-start-adapter-dynamic-dispatch',
+      run: () => orpcSolidStart(true),
+    },
+    {
+      runtime: 'Direct SvelteKit',
+      scenario: 'sveltekit-adapter-static-dispatch',
+      run: () => directSvelteKit(false),
+    },
+    {
+      runtime: '@hulla/api SvelteKit',
+      scenario: 'sveltekit-adapter-static-dispatch',
+      run: () => hullaSvelteKit(false),
+    },
+    {
+      runtime: 'tRPC SvelteKit',
+      scenario: 'sveltekit-adapter-static-dispatch',
+      run: () => trpcSvelteKit(false),
+    },
+    {
+      runtime: 'oRPC SvelteKit',
+      scenario: 'sveltekit-adapter-static-dispatch',
+      run: () => orpcSvelteKit(false),
+    },
+    {
+      runtime: 'Direct SvelteKit',
+      scenario: 'sveltekit-adapter-dynamic-dispatch',
+      run: () => directSvelteKit(true),
+    },
+    {
+      runtime: '@hulla/api SvelteKit',
+      scenario: 'sveltekit-adapter-dynamic-dispatch',
+      run: () => hullaSvelteKit(true),
+    },
+    {
+      runtime: 'tRPC SvelteKit',
+      scenario: 'sveltekit-adapter-dynamic-dispatch',
+      run: () => trpcSvelteKit(true),
+    },
+    {
+      runtime: 'oRPC SvelteKit',
+      scenario: 'sveltekit-adapter-dynamic-dispatch',
+      run: () => orpcSvelteKit(true),
     },
   ] satisfies readonly Benchmark[]
 ).map((benchmark) => ({ ...benchmark, profile: 'native' }))

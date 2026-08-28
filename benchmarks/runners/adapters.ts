@@ -52,10 +52,22 @@ for (const { cohort, results } of completed) {
     const selected = results.filter((result) => result.scenario === scenario)
     const direct = selected.find(({ implementation }) => implementation === 'direct')
     const hulla = selected.find(({ implementation }) => implementation === '@hulla/api')
-    report.push('', `### ${scenario}`, '', '| Runtime | Median | vs direct | vs @hulla/api |', '|---|---:|---:|---:|')
+    report.push(
+      '',
+      `### ${scenario}`,
+      '',
+      'The difference is each runtime’s median latency minus the @hulla/api median, expressed relative to @hulla/api; negative is faster.',
+      '',
+      '| Runtime | Median latency | Median latency difference vs @hulla/api | Median latency ratio vs direct | Median latency ratio vs @hulla/api |',
+      '|---|---:|---:|---:|---:|'
+    )
     for (const result of selected) {
+      const difference =
+        hulla === undefined
+          ? '—'
+          : `${result.median >= hulla.median ? '+' : ''}${((result.median / hulla.median - 1) * 100).toFixed(1)}%`
       report.push(
-        `| ${result.runtime} | ${(result.median / 1_000).toFixed(2)} µs | ${direct === undefined ? '—' : `${(result.median / direct.median).toFixed(2)}×`} | ${hulla === undefined ? '—' : `${(result.median / hulla.median).toFixed(2)}×`} |`
+        `| ${result.runtime} | ${(result.median / 1_000).toFixed(2)} µs | ${difference} | ${direct === undefined ? '—' : `${(result.median / direct.median).toFixed(2)}×`} | ${hulla === undefined ? '—' : `${(result.median / hulla.median).toFixed(2)}×`} |`
       )
     }
   }

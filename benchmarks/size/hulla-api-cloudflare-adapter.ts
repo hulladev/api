@@ -1,1 +1,1 @@
-export { createWorkerHandler } from '@hulla/api-cloudflare'
+export { cloudflareAdapter } from '@hulla/api-cloudflare'

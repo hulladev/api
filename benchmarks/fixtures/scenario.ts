@@ -22,10 +22,22 @@ export const benchmarkScenarios = {
   'express-http-dynamic-roundtrip': 'Real in-process HTTP update through the Express router and adapter',
   'fetch-adapter-static-dispatch': 'Fetch adapter static dispatch using each package’s native protocol',
   'fetch-adapter-dynamic-dispatch': 'Fetch adapter validated dynamic dispatch using each package’s native protocol',
+  'cloudflare-adapter-static-dispatch': 'Cloudflare Workers static dispatch',
+  'cloudflare-adapter-dynamic-dispatch': 'Cloudflare Workers validated dynamic dispatch',
+  'fastify-adapter-static-dispatch': 'Fastify static dispatch',
+  'fastify-adapter-dynamic-dispatch': 'Fastify validated dynamic dispatch',
+  'h3-adapter-static-dispatch': 'H3 static dispatch',
+  'h3-adapter-dynamic-dispatch': 'H3 validated dynamic dispatch',
+  'hono-adapter-static-dispatch': 'Hono static dispatch',
+  'hono-adapter-dynamic-dispatch': 'Hono validated dynamic dispatch',
   'next-adapter-static-dispatch': 'Next.js Route Handler static dispatch',
   'next-adapter-dynamic-dispatch': 'Next.js Route Handler validated dynamic dispatch',
   'tanstack-start-adapter-static-dispatch': 'TanStack Start server-route static dispatch',
   'tanstack-start-adapter-dynamic-dispatch': 'TanStack Start server-route validated dynamic dispatch',
+  'solid-start-adapter-static-dispatch': 'SolidStart API-route static dispatch',
+  'solid-start-adapter-dynamic-dispatch': 'SolidStart API-route validated dynamic dispatch',
+  'sveltekit-adapter-static-dispatch': 'SvelteKit endpoint static dispatch',
+  'sveltekit-adapter-dynamic-dispatch': 'SvelteKit endpoint validated dynamic dispatch',
   'dynamic-http': 'Dynamic path, query, and header transport with directional validation',
   'middleware-context': 'Client and server context plus one middleware layer',
   'validation-failure': 'Invalid server request validation and protocol error serialization',
@@ -51,7 +63,7 @@ export const benchmarkScenarioExamples: Readonly<Record<BenchmarkScenario, strin
   'large-static-dispatch': 'adapter.dispatch({ method: "GET", path: "/static/255" }) // 256 registered routes',
   'large-dynamic-dispatch':
     'adapter.dispatch({ method: "GET", path: "/dynamic/255/item%2F42" }) // 256 registered routes',
-  'server-implementation-setup': 'const handler = createFetchHandler(server.implement(...fragments))',
+  'server-implementation-setup': 'const handler = adapter.mount(server.implement(...fragments))',
   'server-implementation-dispatch':
     'await handler(new Request("https://bench.local/implementation/3")) // reuse a prebuilt implementation',
   'adapter-registration': 'register 257 REST routes on an Express router',
@@ -67,6 +79,19 @@ export const benchmarkScenarioExamples: Readonly<Record<BenchmarkScenario, strin
     'await fetchHandler(new Request("https://bench.local/<native-static-endpoint>"))\n// REST example: /adapter/static',
   'fetch-adapter-dynamic-dispatch':
     'await fetchHandler(new Request("https://bench.local/<native-dynamic-endpoint>", requestInit))\n// id: item-42, name: Ada, tag: bench',
+  'cloudflare-adapter-static-dispatch':
+    'await worker.fetch(new Request("https://bench.local/<native-static-endpoint>"), env, executionContext)',
+  'cloudflare-adapter-dynamic-dispatch':
+    'await worker.fetch(new Request("https://bench.local/<native-dynamic-endpoint>", requestInit), env, executionContext)',
+  'fastify-adapter-static-dispatch': 'await fastify.inject({ method: "GET", url: "/<native-static-endpoint>" })',
+  'fastify-adapter-dynamic-dispatch':
+    'await fastify.inject({ method: "POST", url: "/<native-dynamic-endpoint>", payload })',
+  'h3-adapter-static-dispatch': 'await h3.fetch(new Request("https://bench.local/<native-static-endpoint>"))',
+  'h3-adapter-dynamic-dispatch':
+    'await h3.fetch(new Request("https://bench.local/<native-dynamic-endpoint>", requestInit))',
+  'hono-adapter-static-dispatch': 'await hono.fetch(new Request("https://bench.local/<native-static-endpoint>"))',
+  'hono-adapter-dynamic-dispatch':
+    'await hono.fetch(new Request("https://bench.local/<native-dynamic-endpoint>", requestInit))',
   'next-adapter-static-dispatch':
     'await nextRouteHandler(new NextRequest("https://bench.local/adapter/static"), routeContext)',
   'next-adapter-dynamic-dispatch':
@@ -75,6 +100,14 @@ export const benchmarkScenarioExamples: Readonly<Record<BenchmarkScenario, strin
     'await startHandlers.GET({ request, params: { _splat: "adapter/static" }, context })',
   'tanstack-start-adapter-dynamic-dispatch':
     'await startHandlers.POST({ request, params: { _splat: "adapter/items/item-42" }, context })',
+  'solid-start-adapter-static-dispatch':
+    'await solidStartHandler({ request, params: { hulla: "adapter/static" }, locals, response, nativeEvent })',
+  'solid-start-adapter-dynamic-dispatch':
+    'await solidStartHandler({ request, params: { hulla: "adapter/items/item-42" }, locals, response, nativeEvent })',
+  'sveltekit-adapter-static-dispatch':
+    'await svelteKitHandler({ request, params: { hulla: "adapter/static" }, locals, route, url })',
+  'sveltekit-adapter-dynamic-dispatch':
+    'await svelteKitHandler({ request, params: { hulla: "adapter/items/item-42" }, locals, route, url })',
   'dynamic-http':
     'GET /items/item%2F42?limit=10\nx-token: secret\n\nvalidate path, query, and header in both directions',
   'middleware-context': 'GET /protected\n\nclient middleware → transport → server context + middleware → handler',
@@ -83,7 +116,18 @@ export const benchmarkScenarioExamples: Readonly<Record<BenchmarkScenario, strin
   streaming: 'GET /events\n\nserver yields 10 values → NDJSON stream → client validates 10 values',
 }
 
-export type BenchmarkAdapter = 'express' | 'fetch' | 'next' | 'none' | 'tanstack-start'
+export type BenchmarkAdapter =
+  | 'cloudflare'
+  | 'express'
+  | 'fastify'
+  | 'fetch'
+  | 'h3'
+  | 'hono'
+  | 'next'
+  | 'none'
+  | 'solid-start'
+  | 'sveltekit'
+  | 'tanstack-start'
 export type BenchmarkFunctionality =
   | 'codec'
   | 'construction-first-call'
@@ -225,6 +269,54 @@ export const benchmarkScenarioDimensions: Readonly<Record<BenchmarkScenario, Ben
     phase: 'dispatch',
     suite: 'adapter',
   },
+  'cloudflare-adapter-static-dispatch': {
+    adapter: 'cloudflare',
+    functionality: 'static-read',
+    phase: 'dispatch',
+    suite: 'adapter',
+  },
+  'cloudflare-adapter-dynamic-dispatch': {
+    adapter: 'cloudflare',
+    functionality: 'mixed-request',
+    phase: 'dispatch',
+    suite: 'adapter',
+  },
+  'fastify-adapter-static-dispatch': {
+    adapter: 'fastify',
+    functionality: 'static-read',
+    phase: 'dispatch',
+    suite: 'adapter',
+  },
+  'fastify-adapter-dynamic-dispatch': {
+    adapter: 'fastify',
+    functionality: 'mixed-request',
+    phase: 'dispatch',
+    suite: 'adapter',
+  },
+  'h3-adapter-static-dispatch': {
+    adapter: 'h3',
+    functionality: 'static-read',
+    phase: 'dispatch',
+    suite: 'adapter',
+  },
+  'h3-adapter-dynamic-dispatch': {
+    adapter: 'h3',
+    functionality: 'mixed-request',
+    phase: 'dispatch',
+    suite: 'adapter',
+  },
+  'hono-adapter-static-dispatch': {
+    adapter: 'hono',
+    functionality: 'static-read',
+    phase: 'dispatch',
+    suite: 'adapter',
+  },
+  'hono-adapter-dynamic-dispatch': {
+    adapter: 'hono',
+    functionality: 'mixed-request',
+    phase: 'dispatch',
+    suite: 'adapter',
+  },
   'next-adapter-static-dispatch': {
     adapter: 'next',
     functionality: 'static-read',
@@ -245,6 +337,30 @@ export const benchmarkScenarioDimensions: Readonly<Record<BenchmarkScenario, Ben
   },
   'tanstack-start-adapter-dynamic-dispatch': {
     adapter: 'tanstack-start',
+    functionality: 'mixed-request',
+    phase: 'dispatch',
+    suite: 'adapter',
+  },
+  'solid-start-adapter-static-dispatch': {
+    adapter: 'solid-start',
+    functionality: 'static-read',
+    phase: 'dispatch',
+    suite: 'adapter',
+  },
+  'solid-start-adapter-dynamic-dispatch': {
+    adapter: 'solid-start',
+    functionality: 'mixed-request',
+    phase: 'dispatch',
+    suite: 'adapter',
+  },
+  'sveltekit-adapter-static-dispatch': {
+    adapter: 'sveltekit',
+    functionality: 'static-read',
+    phase: 'dispatch',
+    suite: 'adapter',
+  },
+  'sveltekit-adapter-dynamic-dispatch': {
+    adapter: 'sveltekit',
     functionality: 'mixed-request',
     phase: 'dispatch',
     suite: 'adapter',

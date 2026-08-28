@@ -1,6 +1,8 @@
+import { zValidator } from '@hono/zod-validator'
 import { defineContract, response, route } from '@hulla/api'
-import { cloudflareContext, createWorkerHandler, type CloudflareExecutionContext } from '@hulla/api-cloudflare'
+import { cloudflareAdapter, type CloudflareExecutionContext } from '@hulla/api-cloudflare'
 import { defineServer } from '@hulla/api/server'
+import { Hono } from 'hono'
 import {
   adapterDynamicOutput,
   adapterRequest,
@@ -9,10 +11,19 @@ import {
   adapterRestDynamicParams,
   adapterRestDynamicQuery,
   adapterStaticOutput,
+  adapterStaticValue,
   assertAdapterResponse,
   directAdapterHandler,
 } from '../fixtures/adapter-workload'
 import type { Benchmark } from '../harness'
+import {
+  assertOrpcAdapterResponse,
+  assertTrpcAdapterResponse,
+  handleOrpcAdapterRequest,
+  handleTrpcAdapterRequest,
+  orpcAdapterRequest,
+  trpcAdapterRequest,
+} from './rpc'
 
 type Env = {
   readonly enabled: boolean
@@ -36,9 +47,10 @@ const contract = defineContract({
   },
 })
 
-const workerHandler = createWorkerHandler(
+const cloudflare = cloudflareAdapter<Env>()
+const workerHandler = cloudflare.mount(
   defineServer(contract, {
-    context: cloudflareContext<Env>()(({ env }) => ({ enabled: env.enabled })),
+    context: cloudflare.context(({ env }) => ({ enabled: env.enabled })),
   }).implement({
     static: ({ context }) => ({ status: 200, body: { ok: context.enabled } }),
     dynamic: ({ context, params, query, body }) => ({
@@ -47,6 +59,21 @@ const workerHandler = createWorkerHandler(
     }),
   })
 )
+
+const honoApp = new Hono()
+  .get('/adapter/static', (context) => context.json(adapterStaticValue))
+  .post(
+    '/adapter/items/:id',
+    zValidator('param', adapterRestDynamicParams),
+    zValidator('query', adapterRestDynamicQuery),
+    zValidator('json', adapterRestDynamicBody),
+    (context) => {
+      const params = context.req.valid('param')
+      const query = context.req.valid('query')
+      const body = context.req.valid('json')
+      return context.json(adapterDynamicOutput.parse({ id: params.id, name: body.name, tag: query.tag }), 201)
+    }
+  )
 
 function request(dynamic: boolean): Request {
   return adapterRequest(
@@ -64,6 +91,18 @@ async function hullaWorker(dynamic: boolean): Promise<void> {
   await assertAdapterResponse(await workerHandler(request(dynamic), env, executionContext), dynamic)
 }
 
+async function trpcWorker(dynamic: boolean): Promise<void> {
+  await assertTrpcAdapterResponse(await handleTrpcAdapterRequest(trpcAdapterRequest(dynamic)), dynamic)
+}
+
+async function orpcWorker(dynamic: boolean): Promise<void> {
+  await assertOrpcAdapterResponse(await handleOrpcAdapterRequest(orpcAdapterRequest(dynamic)), dynamic)
+}
+
+async function honoWorker(dynamic: boolean): Promise<void> {
+  await assertAdapterResponse(await honoApp.fetch(request(dynamic), env, executionContext), dynamic)
+}
+
 export const cloudflareAdapterBenchmarks: readonly Benchmark[] = (
   [
     {
@@ -77,6 +116,21 @@ export const cloudflareAdapterBenchmarks: readonly Benchmark[] = (
       run: () => hullaWorker(false),
     },
     {
+      runtime: 'tRPC Cloudflare Workers',
+      scenario: 'cloudflare-adapter-static-dispatch',
+      run: () => trpcWorker(false),
+    },
+    {
+      runtime: 'oRPC Cloudflare Workers',
+      scenario: 'cloudflare-adapter-static-dispatch',
+      run: () => orpcWorker(false),
+    },
+    {
+      runtime: 'Hono Cloudflare Workers',
+      scenario: 'cloudflare-adapter-static-dispatch',
+      run: () => honoWorker(false),
+    },
+    {
       runtime: 'Direct Cloudflare Workers',
       scenario: 'cloudflare-adapter-dynamic-dispatch',
       run: () => directWorker(true),
@@ -85,6 +139,21 @@ export const cloudflareAdapterBenchmarks: readonly Benchmark[] = (
       runtime: '@hulla/api Cloudflare Workers',
       scenario: 'cloudflare-adapter-dynamic-dispatch',
       run: () => hullaWorker(true),
+    },
+    {
+      runtime: 'tRPC Cloudflare Workers',
+      scenario: 'cloudflare-adapter-dynamic-dispatch',
+      run: () => trpcWorker(true),
+    },
+    {
+      runtime: 'oRPC Cloudflare Workers',
+      scenario: 'cloudflare-adapter-dynamic-dispatch',
+      run: () => orpcWorker(true),
+    },
+    {
+      runtime: 'Hono Cloudflare Workers',
+      scenario: 'cloudflare-adapter-dynamic-dispatch',
+      run: () => honoWorker(true),
     },
   ] satisfies readonly Benchmark[]
 ).map((benchmark) => ({ ...benchmark, profile: 'native' }))

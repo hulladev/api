@@ -513,18 +513,46 @@ const aggregateCohorts: readonly AggregateCohort[] = [
       { profile: 'native', scenario: 'tanstack-start-adapter-dynamic-dispatch' },
     ],
   },
+  {
+    title: 'SolidStart API-route dispatch',
+    adapter: 'solid-start',
+    selectors: [
+      { profile: 'native', scenario: 'solid-start-adapter-static-dispatch' },
+      { profile: 'native', scenario: 'solid-start-adapter-dynamic-dispatch' },
+    ],
+  },
+  {
+    title: 'SvelteKit endpoint dispatch',
+    adapter: 'sveltekit',
+    selectors: [
+      { profile: 'native', scenario: 'sveltekit-adapter-static-dispatch' },
+      { profile: 'native', scenario: 'sveltekit-adapter-dynamic-dispatch' },
+    ],
+  },
 ]
 
 function adapterTitle(adapter: BenchmarkAdapter): string {
   switch (adapter) {
+    case 'cloudflare':
+      return 'Cloudflare Workers'
     case 'express':
       return 'Express'
+    case 'fastify':
+      return 'Fastify'
     case 'fetch':
       return 'Fetch'
+    case 'h3':
+      return 'H3'
+    case 'hono':
+      return 'Hono'
     case 'next':
       return 'Next.js'
     case 'tanstack-start':
       return 'TanStack Start'
+    case 'solid-start':
+      return 'SolidStart'
+    case 'sveltekit':
+      return 'SvelteKit'
     case 'none':
       return 'No host adapter'
   }
@@ -610,11 +638,11 @@ function implementationTitle(implementation: BenchmarkImplementation): string {
   }
 }
 
-function independentCohortRatio(
+function independentCohortRatioValue(
   results: readonly BenchmarkResult[],
   implementation: BenchmarkImplementation,
   baselineImplementation: BenchmarkImplementation = '@hulla/api'
-): string {
+): number | undefined {
   const scenarios = [...new Set(results.map(({ scenario }) => scenario))]
   const ratios = scenarios.flatMap((scenario) => {
     const selected = results.filter((result) => result.scenario === scenario)
@@ -622,9 +650,28 @@ function independentCohortRatio(
     const result = selected.find((candidate) => candidate.implementation === implementation)
     return baseline === undefined || result === undefined ? [] : [result.median / baseline.median]
   })
-  if (ratios.length !== scenarios.length) return '—'
-  const geometricMean = Math.exp(ratios.reduce((total, ratio) => total + Math.log(ratio), 0) / ratios.length)
-  return `${geometricMean.toFixed(2)}×`
+  if (ratios.length !== scenarios.length) return undefined
+  return Math.exp(ratios.reduce((total, ratio) => total + Math.log(ratio), 0) / ratios.length)
+}
+
+function independentCohortRatio(
+  results: readonly BenchmarkResult[],
+  implementation: BenchmarkImplementation,
+  baselineImplementation: BenchmarkImplementation = '@hulla/api'
+): string {
+  const ratio = independentCohortRatioValue(results, implementation, baselineImplementation)
+  return ratio === undefined ? '—' : `${ratio.toFixed(2)}×`
+}
+
+function independentCohortDifference(
+  results: readonly BenchmarkResult[],
+  implementation: BenchmarkImplementation,
+  baselineImplementation: BenchmarkImplementation = '@hulla/api'
+): string {
+  const ratio = independentCohortRatioValue(results, implementation, baselineImplementation)
+  if (ratio === undefined) return '—'
+  const change = ratio - 1
+  return `${change >= 0 ? '+' : ''}${(change * 100).toFixed(1)}%`
 }
 
 function independentCohortLatency(
@@ -653,14 +700,14 @@ function independentAdapterSummaryLines(cohorts: readonly IndependentAdapterCoho
     '',
     '## Framework adapter overview',
     '',
-    'Latencies are geometric means of the per-operation medians within each row. Ratios use the same operations and show both comparison performance and @hulla/api adapter overhead; lower is faster. Each cohort ran in a fresh process with its own baselines, so values must not be compared across rows.',
+    'Every aggregate is a geometric mean across the row’s per-operation medians. The difference column is the comparison latency minus the @hulla/api latency, expressed relative to @hulla/api; negative is faster. Ratio columns divide the first named implementation by the second, and lower is faster. Each cohort ran in a fresh process with its own baselines, so values must not be compared across rows.',
     '',
-    '| Adapter | Comparison | Operations | @hulla/api latency | Comparison latency | Comparison vs @hulla/api | @hulla/api vs direct |',
-    '|---|---|---:|---:|---:|---:|---:|',
+    '| Adapter | Comparison | Comparison latency difference vs @hulla/api (geometric mean) | Operations | @hulla/api latency (geometric mean) | Comparison latency (geometric mean) | Comparison / @hulla/api latency ratio (geometric mean) | @hulla/api / direct latency ratio (geometric mean) |',
+    '|---|---|---:|---:|---:|---:|---:|---:|',
     ...cohorts.map(({ cohort, results }) => {
       const operations = new Set(results.map(({ scenario }) => scenario)).size
       const comparison = `[${implementationTitle(cohort.competitor)}](adapters-latest.md#${adapterCohortAnchor(cohort)})`
-      return `| ${adapterTitle(cohort.adapter)} | ${comparison} | ${operations} | ${independentCohortLatency(results, '@hulla/api')} | ${independentCohortLatency(results, cohort.competitor)} | ${independentCohortRatio(results, cohort.competitor)} | ${independentCohortRatio(results, '@hulla/api', 'direct')} |`
+      return `| ${adapterTitle(cohort.adapter)} | ${comparison} | ${independentCohortDifference(results, cohort.competitor)} | ${operations} | ${independentCohortLatency(results, '@hulla/api')} | ${independentCohortLatency(results, cohort.competitor)} | ${independentCohortRatio(results, cohort.competitor)} | ${independentCohortRatio(results, '@hulla/api', 'direct')} |`
     }),
   ]
 }
@@ -720,7 +767,19 @@ function detailedResultLines(results: readonly BenchmarkResult[]): readonly stri
     'Every measured operation is listed below in its host environment. Latencies are medians with deterministic 95% bootstrap intervals; lower is faster. Ratios compare medians within the same operation and adapter. The previous-change column reports the exact change and interval, not a qualitative summary.',
   ]
 
-  for (const adapter of ['fetch', 'express', 'next', 'tanstack-start', 'none'] as const) {
+  for (const adapter of [
+    'fetch',
+    'express',
+    'fastify',
+    'h3',
+    'hono',
+    'cloudflare',
+    'next',
+    'tanstack-start',
+    'solid-start',
+    'sveltekit',
+    'none',
+  ] as const) {
     const adapterResults = results.filter((result) => result.adapter === adapter)
     if (adapterResults.length === 0) continue
     lines.push('', `### ${adapter === 'none' ? adapterTitle(adapter) : `${adapterTitle(adapter)} adapter`}`)
@@ -945,9 +1004,20 @@ export async function writeBenchmarkReport(
   adapterCohorts: readonly IndependentAdapterCohortResult[] = []
 ): Promise<void> {
   const generatedAt = new Date().toISOString()
-  const measuredAdapters = (['fetch', 'express', 'next', 'tanstack-start'] as const).filter((adapter) =>
-    results.some((result) => result.adapter === adapter)
-  )
+  const measuredAdapters = (
+    [
+      'fetch',
+      'express',
+      'fastify',
+      'h3',
+      'hono',
+      'cloudflare',
+      'next',
+      'tanstack-start',
+      'solid-start',
+      'sveltekit',
+    ] as const
+  ).filter((adapter) => results.some((result) => result.adapter === adapter))
   const lines = [
     '# Runtime benchmark report',
     '',

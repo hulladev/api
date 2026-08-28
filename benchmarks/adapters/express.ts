@@ -2,7 +2,7 @@ import { EventEmitter, once } from 'node:events'
 import type { AddressInfo } from 'node:net'
 import { defineContract, response, route } from '@hulla/api'
 import {
-  register,
+  expressAdapter,
   type ExpressHandler,
   type ExpressRequest,
   type ExpressResponse,
@@ -98,7 +98,7 @@ function recordingRouter(): { readonly endpoints: readonly RegisteredEndpoint[];
 
 function captureHullaEndpoints(value: ServerExecutable): readonly RegisteredEndpoint[] {
   const recorded = recordingRouter()
-  register(recorded.router, value)
+  expressAdapter(recorded.router).mount(value)
   return recorded.endpoints
 }
 
@@ -491,7 +491,7 @@ function directExpressApplication(): Express {
 function hullaExpressApplication(): Express {
   const application = express()
   application.use(express.json())
-  register(application as unknown as ExpressRouter, implementation as ServerExecutable)
+  expressAdapter(application as unknown as ExpressRouter).mount(implementation as ServerExecutable)
   return application
 }
 

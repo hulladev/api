@@ -1,6 +1,6 @@
 import { zValidator } from '@hono/zod-validator'
 import { defineContract, response, route } from '@hulla/api'
-import { createFetchHandler as createHullaFetchHandler } from '@hulla/api/fetch'
+import { fetchAdapter } from '@hulla/api/fetch'
 import { defineServer } from '@hulla/api/server'
 import { os } from '@orpc/server'
 import { RPCHandler } from '@orpc/server/fetch'
@@ -53,7 +53,7 @@ const hullaContract = defineContract({
     }),
   },
 })
-const hullaHandler = createHullaFetchHandler(
+const hullaHandler = fetchAdapter().mount(
   defineServer(hullaContract).implement({
     static: () => ({ status: 200, body: staticValue }),
     dynamic: ({ params, query, body }) => ({

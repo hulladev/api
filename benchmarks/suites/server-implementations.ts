@@ -1,5 +1,5 @@
 import { defineContract, response, route } from '@hulla/api'
-import { createFetchHandler } from '@hulla/api/fetch'
+import { fetchAdapter } from '@hulla/api/fetch'
 import { defineServer } from '@hulla/api/server'
 import { z } from 'zod'
 import type { Benchmark } from '../harness'
@@ -14,6 +14,7 @@ const contract = defineContract({
   },
 })
 const server = defineServer(contract)
+const adapter = fetchAdapter()
 const middleware = server.middleware(({ next }) => next())
 const scopedServer = server.use(contract.routes.route3, middleware)
 const handlers = {
@@ -36,23 +37,23 @@ async function rawHandlerSetup(): Promise<void> {
 }
 
 async function rootImplementationSetup(): Promise<void> {
-  retainSetup(createFetchHandler(server.implement(handlers)))
+  retainSetup(adapter.mount(server.implement(handlers)))
 }
 
 async function scopedRootImplementationSetup(): Promise<void> {
-  retainSetup(createFetchHandler(scopedServer.implement(handlers)))
+  retainSetup(adapter.mount(scopedServer.implement(handlers)))
 }
 
 async function standaloneFragmentSetup(): Promise<void> {
-  retainSetup(createFetchHandler(server.implement(contract.routes.route3, handlers.route3)))
+  retainSetup(adapter.mount(server.implement(contract.routes.route3, handlers.route3)))
 }
 
 async function standaloneFragmentsSetup(): Promise<void> {
   retainSetup([
-    createFetchHandler(server.implement(contract.routes.route0, handlers.route0)),
-    createFetchHandler(server.implement(contract.routes.route1, handlers.route1)),
-    createFetchHandler(server.implement(contract.routes.route2, handlers.route2)),
-    createFetchHandler(server.implement(contract.routes.route3, handlers.route3)),
+    adapter.mount(server.implement(contract.routes.route0, handlers.route0)),
+    adapter.mount(server.implement(contract.routes.route1, handlers.route1)),
+    adapter.mount(server.implement(contract.routes.route2, handlers.route2)),
+    adapter.mount(server.implement(contract.routes.route3, handlers.route3)),
   ])
 }
 
@@ -61,16 +62,16 @@ async function composedFragmentsSetup(): Promise<void> {
   const route1 = server.implement(contract.routes.route1, handlers.route1)
   const route2 = server.implement(contract.routes.route2, handlers.route2)
   const route3 = server.implement(contract.routes.route3, handlers.route3)
-  retainSetup(createFetchHandler(server.implement(route0, route1, route2, route3)))
+  retainSetup(adapter.mount(server.implement(route0, route1, route2, route3)))
 }
 
-const rootImplementationFetch = createFetchHandler(server.implement(handlers))
+const rootImplementationFetch = adapter.mount(server.implement(handlers))
 const route0 = server.implement(contract.routes.route0, handlers.route0)
 const route1 = server.implement(contract.routes.route1, handlers.route1)
 const route2 = server.implement(contract.routes.route2, handlers.route2)
 const route3 = server.implement(contract.routes.route3, handlers.route3)
-const standaloneFragmentFetch = createFetchHandler(route3)
-const composedFragmentsFetch = createFetchHandler(server.implement(route0, route1, route2, route3))
+const standaloneFragmentFetch = adapter.mount(route3)
+const composedFragmentsFetch = adapter.mount(server.implement(route0, route1, route2, route3))
 const targetRequest = new Request('https://bench.local/implementation/3')
 
 async function rawHandlerDispatch(): Promise<void> {

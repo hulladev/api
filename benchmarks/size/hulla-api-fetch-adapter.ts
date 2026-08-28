@@ -1,1 +1,1 @@
-export { createFetchHandler } from '@hulla/api/fetch'
+export { fetchAdapter } from '@hulla/api/fetch'

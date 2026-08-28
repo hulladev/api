@@ -1,1 +1,1 @@
-export { createRouteHandler } from '@hulla/api-next/server'
+export { nextAdapter } from '@hulla/api-next/server'

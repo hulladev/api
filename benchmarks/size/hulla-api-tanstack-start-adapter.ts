@@ -1,1 +1,1 @@
-export { createServerRouteHandlers } from '@hulla/api-tanstack-start/server'
+export { tanStackStartAdapter } from '@hulla/api-tanstack-start'

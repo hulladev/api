@@ -1,7 +1,7 @@
 import { defineContract, response, route } from '@hulla/api'
 import { defineClient } from '@hulla/api/client'
-import { createFetchHandler, fetchTransport } from '@hulla/api/fetch'
-import { inProcessTransport } from '@hulla/api/in-process'
+import { fetchAdapter, fetchTransport } from '@hulla/api/fetch'
+import { inProcessAdapter } from '@hulla/api/in-process'
 import { defineServer } from '@hulla/api/server'
 import {
   createUserInput,
@@ -80,11 +80,11 @@ const implementation = server.implement({
   }),
   update: ({ params, body }) => ({ status: 200, body: { ...params, ...body } }),
 })
-const handler = createFetchHandler(implementation)
+const handler = fetchAdapter().mount(implementation)
 const client = defineClient(contract, {
   transport: fetchTransport({ baseUrl: 'https://bench.local', fetch: handler }),
 }).create()
-const inProcessClient = defineClient(contract, { transport: inProcessTransport(implementation) }).create()
+const inProcessClient = defineClient(contract, { transport: inProcessAdapter().mount(implementation) }).create()
 
 export const hullaApiBenchmarks: readonly Benchmark[] = [
   {

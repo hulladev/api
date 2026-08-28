@@ -177,15 +177,15 @@ describe('benchmark artifacts', () => {
     expect(report).toContain('## Cross-package overview')
     expect(report).toContain('## Framework adapter overview')
     expect(report).toContain(
-      '| Adapter | Comparison | Operations | @hulla/api latency | Comparison latency | Comparison vs @hulla/api | @hulla/api vs direct |'
+      '| Adapter | Comparison | Comparison latency difference vs @hulla/api (geometric mean) | Operations | @hulla/api latency (geometric mean) | Comparison latency (geometric mean) | Comparison / @hulla/api latency ratio (geometric mean) | @hulla/api / direct latency ratio (geometric mean) |'
     )
     expect(report).not.toContain('| Adapter | Independent cohort |')
     expect(report).not.toContain('| Detailed results |')
     expect(report).toContain(
-      '| Fetch | [ts-rest](adapters-latest.md#fetch-hullaapi-vs-ts-rest) | 1 | 0.20 µs | 0.25 µs | 1.25× | 1.99× |'
+      '| Fetch | [ts-rest](adapters-latest.md#fetch-hullaapi-vs-ts-rest) | +24.9% | 1 | 0.20 µs | 0.25 µs | 1.25× | 1.99× |'
     )
     expect(report).toContain(
-      '| Next.js | [direct](adapters-latest.md#next-hullaapi-vs-direct) | 1 | 0.40 µs | 0.30 µs | 0.75× | 1.33× |'
+      '| Next.js | [direct](adapters-latest.md#next-hullaapi-vs-direct) | -24.9% | 1 | 0.40 µs | 0.30 µs | 0.75× | 1.33× |'
     )
     expect(report).toContain('| Cohort | Adapter | Operations | Direct | @hulla/api | ts-rest | tRPC | oRPC | Hono |')
     expect(report).toContain('## Measured operation comparisons')
@@ -296,10 +296,10 @@ describe('benchmark artifacts', () => {
     const report = await readFile(reportPath, 'utf8')
     expect(report).toContain('- [Framework adapter overview](#framework-adapter-overview)')
     expect(report).toContain(
-      '| Next.js | [direct](adapters-latest.md#next-hullaapi-vs-direct) | 1 | 0.20 µs | 0.15 µs | 0.75× | 1.33× |'
+      '| Next.js | [direct](adapters-latest.md#next-hullaapi-vs-direct) | -24.9% | 1 | 0.20 µs | 0.15 µs | 0.75× | 1.33× |'
     )
     expect(report).not.toContain(
-      '| Next.js | [direct](adapters-latest.md#next-hullaapi-vs-direct) | 1 | 0.20 µs | 0.10 µs | 0.50× |'
+      '| Next.js | [direct](adapters-latest.md#next-hullaapi-vs-direct) | -49.8% | 1 | 0.20 µs | 0.10 µs | 0.50× |'
     )
     expect(report.match(/## Framework adapter overview/g)).toHaveLength(1)
   })

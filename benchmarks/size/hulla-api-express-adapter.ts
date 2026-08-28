@@ -1,1 +1,1 @@
-export { register } from '@hulla/api-express'
+export { expressAdapter } from '@hulla/api-express'

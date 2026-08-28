@@ -1,7 +1,7 @@
 import { codec, defineContract, response, route } from '@hulla/api'
 import { createAdapterHandler } from '@hulla/api/adapters'
 import { defineClient } from '@hulla/api/client'
-import { createFetchHandler, fetchContext, fetchTransport } from '@hulla/api/fetch'
+import { fetchAdapter, fetchTransport } from '@hulla/api/fetch'
 import { defineServer } from '@hulla/api/server'
 import { ndjson } from '@hulla/api/stream'
 import { z } from 'zod'
@@ -13,6 +13,7 @@ const querySchema = z.object({ limit: z.string().regex(/^\d+$/) })
 const headerSchema = z.object({ 'x-token': z.string().min(1) })
 const transportOutput = z.object({ id: z.string(), limit: z.string(), token: z.string() })
 const transportValue = { id: 'item/42', limit: '10', token: 'secret' }
+const fetchHost = fetchAdapter()
 
 const transportContract = defineContract({
   routes: {
@@ -25,7 +26,7 @@ const transportContract = defineContract({
   },
 })
 const transportServer = defineServer(transportContract)
-const transportHandler = createFetchHandler(
+const transportHandler = fetchHost.mount(
   transportServer.implement({
     item: (input) => ({
       status: 200,
@@ -62,15 +63,16 @@ const middlewareOutput = z.literal('ok')
 const middlewareContract = defineContract({
   routes: { protected: route.get('/protected', { responses: { 200: response.text(middlewareOutput) } }) },
 })
+const middlewareAdapter = fetchAdapter()
 const middlewareServerBase = defineServer(middlewareContract, {
-  context: fetchContext(({ request }) => ({ token: request.headers.get('authorization') ?? '' })),
+  context: middlewareAdapter.context(({ request }) => ({ token: request.headers.get('authorization') ?? '' })),
 })
 const serverMiddleware = middlewareServerBase.middleware(({ context, next }) => {
   if (context.token !== 'Bearer benchmark') throw new Error('Missing benchmark token')
   return next()
 })
 const middlewareServer = middlewareServerBase.use(serverMiddleware)
-const middlewareHandler = createFetchHandler(
+const middlewareHandler = middlewareAdapter.mount(
   middlewareServer.implement({ protected: ({ response }) => response(200, 'ok') })
 )
 const middlewareClientBase = defineClient(middlewareContract, {
@@ -106,7 +108,7 @@ const failureContract = defineContract({
   },
 })
 const failureServer = defineServer(failureContract)
-const failureHandler = createFetchHandler(failureServer.implement({ failure: () => ({ status: 204 }) }))
+const failureHandler = fetchHost.mount(failureServer.implement({ failure: () => ({ status: 204 }) }))
 const invalidBody = JSON.stringify({ count: -1 })
 
 async function directFailure(): Promise<void> {
@@ -151,7 +153,7 @@ const adapterServer = defineServer(adapterContract)
 const adapterImplementation = adapterServer.implement({
   execute: (input) => ({ status: 200, body: { doubled: input.body.value * 2 } }),
 })
-const adapterFetch = createFetchHandler(adapterImplementation)
+const adapterFetch = fetchHost.mount(adapterImplementation)
 const adapterWire = createAdapterHandler(adapterImplementation)
 const adapterRequest = new Request('https://bench.local/execute', { method: 'POST' })
 
@@ -211,7 +213,7 @@ const codecContract = defineContract({
   },
 })
 const codecServer = defineServer(codecContract)
-const codecHandler = createFetchHandler(codecServer.implement({ echo: (input) => ({ status: 200, body: input.body }) }))
+const codecHandler = fetchHost.mount(codecServer.implement({ echo: (input) => ({ status: 200, body: input.body }) }))
 const codecClient = defineClient(codecContract, {
   transport: fetchTransport({ baseUrl: 'https://bench.local', fetch: codecHandler }),
 }).create()
@@ -243,7 +245,7 @@ const streamContract = defineContract({
   routes: { events: route.get('/events', { responses: { 200: response.stream(ndjson(chunkSchema)) } }) },
 })
 const streamServer = defineServer(streamContract)
-const streamHandler = createFetchHandler(streamServer.implement({ events: () => ({ status: 200, body: chunks }) }))
+const streamHandler = fetchHost.mount(streamServer.implement({ events: () => ({ status: 200, body: chunks }) }))
 const streamClient = defineClient(streamContract, {
   transport: fetchTransport({ baseUrl: 'https://bench.local', fetch: streamHandler }),
 }).create()
