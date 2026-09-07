@@ -23,3 +23,26 @@ export function mapExecutionStep<Value, Result>(
 ): ExecutionStep<Result> {
   return isPromiseLike(value) ? Promise.resolve(value).then(transform) : transform(value)
 }
+
+/** Starts independent steps together, observing earlier promises if later startup throws. */
+export function mapExecutionSteps<Input, Output>(
+  inputs: readonly Input[],
+  transform: (input: Input, index: number) => ExecutionStep<Output>
+): ExecutionStep<Output[]> {
+  const started: ExecutionStep<Output>[] = []
+  let asynchronous = false
+  try {
+    for (let index = 0; index < inputs.length; index++) {
+      const step = transform(inputs[index]!, index)
+      started.push(step)
+      asynchronous ||= isPromiseLike(step)
+    }
+  } catch (error) {
+    // The startup failure is primary. Already-started work must not escape its owner.
+    for (const step of started) {
+      if (isPromiseLike(step)) void Promise.resolve(step).catch(() => {})
+    }
+    throw error
+  }
+  return asynchronous ? Promise.all(started) : (started as Output[])
+}

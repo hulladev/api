@@ -1,11 +1,11 @@
 import type { CanonicalContractPlan, CanonicalErrorDeclarationPlan } from '../contract/plan'
 import { type AnyErrorDeclaration, type DeclaredError } from '../declared-errors'
 import { isAPIError, toAPIProblem, type APIProblem } from '../errors'
+import { mapExecutionStep, type ExecutionStep } from '../execution'
 import { ServerRuntimeError } from '../server/errors'
-import { mapSchemaStep, type SchemaStep } from '../validation'
 import type { AdapterPhase, AdapterResponse } from './types'
 
-type DeclaredErrorSerializer = (error: DeclaredError<string, unknown>) => SchemaStep<AdapterResponse>
+type DeclaredErrorSerializer = (error: DeclaredError<string, unknown>) => ExecutionStep<AdapterResponse>
 
 export type RuntimeErrors = {
   readonly factories: Readonly<Record<string, AnyErrorDeclaration>>
@@ -29,8 +29,8 @@ function compileDeclaredErrorSerializer(status: number, plan: CanonicalErrorDecl
   if (data === undefined) return (error) => finalize(error)
   return (error) => {
     const encoded =
-      data.encode === undefined ? mapSchemaStep(data.decode(error.data), () => error.data) : data.encode(error.data)
-    return mapSchemaStep(encoded, (value) => finalize(error, value))
+      data.encode === undefined ? mapExecutionStep(data.decode(error.data), () => error.data) : data.encode(error.data)
+    return mapExecutionStep(encoded, (value) => finalize(error, value))
   }
 }
 
@@ -48,7 +48,7 @@ export function compileRuntimeErrors(plan: CanonicalContractPlan): RuntimeErrors
 export function serializeDeclaredError(
   errors: RuntimeErrors,
   error: DeclaredError<string, unknown>
-): SchemaStep<AdapterResponse> {
+): ExecutionStep<AdapterResponse> {
   const serialize = errors.serializers.get(error.declaration)
   if (serialize === undefined) {
     throw new ServerRuntimeError('invalid-server-response', 500, `Undeclared error ${error.code}`)

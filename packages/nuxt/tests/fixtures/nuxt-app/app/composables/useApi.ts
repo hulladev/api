@@ -6,5 +6,5 @@ export function useApi() {
   const requestFetch = useRequestFetch()
   return defineClient(contract, {
     transport: nuxtFetchTransport(requestFetch),
-  }).create()
+  })
 }

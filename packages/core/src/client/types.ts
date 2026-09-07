@@ -168,11 +168,12 @@ export type ClientDefinition<
       middleware: Middleware
     ): ClientDefinition<ContractType, Context, ErrorMode>
   }
-  readonly create: {
-    (): ClientRoutes<ContractType, ContractType['routes'], ErrorMode>
+  readonly select: {
     <const Node extends Exclude<ContractNodeFor<ContractType>, ContractType>>(
       node: Node
     ): ClientFragment<ContractType, Context, ClientNodeRouteKey<ContractType, Node>, Node, ErrorMode>
+  }
+  readonly compose: {
     <
       const Fragments extends readonly [
         ClientFragment<ContractType, Context, readonly string[], ContractNodeFor<ContractType>, ErrorMode>,
@@ -182,7 +183,7 @@ export type ClientDefinition<
       ...fragments: CompleteClientFragments<ContractType, Context, ErrorMode, Fragments>
     ): ClientRoutes<ContractType, ContractType['routes'], ErrorMode>
   }
-}
+} & ClientRoutes<ContractType, ContractType['routes'], ErrorMode>
 
 export type Client<
   ContractType extends Contract = Contract,

@@ -2,7 +2,6 @@ import type { CompiledContractRoute } from '../compiler'
 import type { Contract } from './types'
 
 export type ContractState = {
-  canonical?: object
   canonicalErrors?: object
   compiled?: object
   mounts?: ReadonlyMap<object, ContractMount>

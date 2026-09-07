@@ -1,5 +1,5 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
-import { isPromiseLike } from '../execution'
+import { isPromiseLike, mapExecutionSteps, mapExecutionStep } from '../execution'
 import { isRecord, setOwn } from '../object'
 import {
   isSchema,
@@ -90,7 +90,7 @@ function combinedRouteInput(
   | Promise<StandardSchemaV1.Result<Readonly<Record<string, unknown>>>> {
   if (!isRecord(value)) return { issues: [{ message: 'Route input must be an object' }] }
 
-  const steps = fields.map((field) => {
+  const steps = mapExecutionSteps(fields, (field) => {
     const result = validateSchemaOutbound(field.schema, value[field.field])
     return isPromiseLike(result)
       ? Promise.resolve(result).then((resolved) => schemaResult(field, resolved))
@@ -117,9 +117,8 @@ function combinedRouteInput(
     return { value: output }
   }
 
-  return steps.some(isPromiseLike)
-    ? Promise.all(steps).then((results) => finish(results))
-    : finish(steps as readonly StandardSchemaV1.Result<readonly [FieldSchema, unknown]>[])
+  const result = mapExecutionStep(steps, finish)
+  return isPromiseLike(result) ? Promise.resolve(result) : result
 }
 
 /** Creates a schema for a route's complete client-input to server-input transformation. */

@@ -6,7 +6,7 @@ import { implementation } from '../api/server'
 
 const api = defineClient(contract, {
   transport: astroInProcessTransport(implementation, Astro),
-}).create()
+})
 const result = await api.health()
 
 if (result.status !== 200) throw new Error(`Unexpected health status: ${result.status}`)

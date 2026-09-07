@@ -142,7 +142,7 @@ describe('adapter server runtime', () => {
     expect(result.body).toEqual({ kind: 'bytes', value: new Uint8Array([1, 2, 3]) })
   })
 
-  test('preserves native request bodies only for adapter context', async () => {
+  test('preserves native request bodies only when explicitly requested', async () => {
     const contract = defineContract({
       routes: { echo: route.post('/echo', { body: request.text(), responses: { 200: response.text() } }) },
     })
@@ -175,6 +175,7 @@ describe('adapter server runtime', () => {
       pathname: '/echo',
       headers: { 'content-type': 'text/plain' },
       readBody: readNativeBody,
+      preserveRequestBody: true,
     })
 
     expect(readNativeBody).toHaveBeenCalledWith('text', true)

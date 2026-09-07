@@ -94,7 +94,7 @@ describe('Next.js integration', () => {
         baseUrl: 'https://api.example.com',
         fetch: fetcher,
       }),
-    }).create()
+    })
 
     await expect(client.users.byId({ params: { id: 'user-1' } })).resolves.toMatchObject({
       status: 200,

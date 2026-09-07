@@ -2,8 +2,9 @@ import type { CompiledContractRoute } from '../compiler'
 import type { Awaitable, RouteMetadata } from '../context'
 import type { QuerySource } from '../contract/query'
 import type { AnyRequestBody } from '../contract/request'
+import type { ResponseHeaderValues } from '../headers'
 
-export type AdapterPhase = 'context' | 'handler' | 'request' | 'response' | 'routing'
+export type AdapterPhase = 'context' | 'handler' | 'request' | 'response' | 'routing' | 'transport'
 
 export type AdapterResponseBody = {
   readonly kind: 'bytes' | 'empty' | 'form-data' | 'json' | 'raw' | 'stream' | 'text'
@@ -12,7 +13,7 @@ export type AdapterResponseBody = {
 
 export type AdapterResponse = {
   readonly status: number
-  readonly headers: Readonly<Record<string, string>>
+  readonly headers: ResponseHeaderValues
   readonly body: AdapterResponseBody
 }
 
@@ -36,6 +37,8 @@ export type AdapterBody = {
 
 export type AdapterRouteInput = {
   readonly request: unknown
+  readonly signal?: AbortSignal
+  readonly preserveRequestBody?: boolean
   readonly hostContext?: unknown
   readonly contextInput?: Readonly<Record<string, unknown>>
   readonly params?: Readonly<Record<string, string>>

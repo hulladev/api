@@ -27,12 +27,14 @@ test('client and server bindings share metadata while keeping transport state cl
 
   expectTypeOf<ClientContractRouteMetadata<typeof contract>>().toEqualTypeOf<ServerRouteMetadata<typeof contract>>()
   expectTypeOf<ClientContextInput<typeof contract>['request']>().toEqualTypeOf<ClientTransportRequest>()
-  expectTypeOf<keyof ServerContextInput<typeof contract>>().toEqualTypeOf<'route'>()
+  expectTypeOf<keyof ServerContextInput<typeof contract>>().toEqualTypeOf<'route' | 'signal'>()
   expectTypeOf<
     Parameters<ClientContextFactory<Context, typeof contract>>[0]['request']
   >().toEqualTypeOf<ClientTransportRequest>()
-  expectTypeOf<keyof Parameters<ServerContextFactory<Context, typeof contract>>[0]>().toEqualTypeOf<'route'>()
+  expectTypeOf<keyof Parameters<ServerContextFactory<Context, typeof contract>>[0]>().toEqualTypeOf<
+    'route' | 'signal'
+  >()
   expectTypeOf<ClientMiddlewareInput<Context, typeof contract>['request']>().toEqualTypeOf<ClientTransportRequest>()
-  expectTypeOf<keyof ServerMiddlewareInput<Context, typeof contract>>().toEqualTypeOf<'context' | 'route'>()
+  expectTypeOf<keyof ServerMiddlewareInput<Context, typeof contract>>().toEqualTypeOf<'context' | 'route' | 'signal'>()
   expectTypeOf<ClientMiddlewareNext<string>>().toEqualTypeOf<ServerMiddlewareNext<string>>()
 })

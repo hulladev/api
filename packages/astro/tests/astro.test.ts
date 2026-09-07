@@ -180,7 +180,7 @@ describe('Astro integration', () => {
     const nativeContext = astroContext(islandRequest, { locals: { actor: 'Ada' } })
     const api = defineClient(contract, {
       transport: astroInProcessTransport(implementation, nativeContext),
-    }).create()
+    })
 
     await expect(api.health()).resolves.toEqual(expect.objectContaining({ status: 200, body: 'ok' }))
     await expect(api.search({ query: { term: 'island' } })).resolves.toEqual(
@@ -204,7 +204,7 @@ describe('Astro integration', () => {
         implementation,
         astroContext(new Request('https://example.com/_server-islands/Health'))
       ),
-    }).create(contract.routes.health)
+    }).select(contract.routes.health)
     const controller = new AbortController()
     controller.abort(new Error('cancelled'))
 

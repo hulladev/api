@@ -3,6 +3,9 @@ import { mimeEssence } from '../contract/request'
 import type { AnyRouteResponse, ResponseBodyValue, ResponseHeaders, RouteResponses } from '../contract/response'
 import { DeclaredError, type ClientErrorMode } from '../declared-errors'
 import { annotateAPIErrorIssues, type APIError, type APIErrorIssue, type ClientResponseErrorCode } from '../errors'
+import { isPromiseLike, mapExecutionStep, mapExecutionSteps, type ExecutionStep } from '../execution'
+import { responseHeader } from '../headers'
+import type { ResponseHeaderValues } from '../headers'
 import { isRecord } from '../object'
 import type { StreamFormat } from '../stream'
 import type { SchemaOutput } from '../validation'
@@ -19,7 +22,7 @@ type ClientResponseBodyFields<ResponseDefinition extends AnyRouteResponse> = Res
 type ClientResponseHeaderFields<ResponseDefinition extends AnyRouteResponse> =
   ResponseDefinition['headers'] extends ResponseHeaders
     ? { readonly headers: SchemaOutput<ResponseDefinition['headers']> }
-    : { readonly headers: Readonly<Record<string, string>> }
+    : { readonly headers: ResponseHeaderValues }
 
 type ClientResponseBodyArguments<ResponseDefinition extends AnyRouteResponse> = ResponseDefinition['body'] extends {
   readonly kind: 'empty'
@@ -30,7 +33,7 @@ type ClientResponseBodyArguments<ResponseDefinition extends AnyRouteResponse> = 
 type ClientResponseHeaderArguments<ResponseDefinition extends AnyRouteResponse> =
   ResponseDefinition['headers'] extends ResponseHeaders
     ? readonly [headers: SchemaOutput<ResponseDefinition['headers']>]
-    : readonly [headers?: Readonly<Record<string, string>>]
+    : readonly [headers?: ResponseHeaderValues]
 
 export type ClientResponseResultFor<Status extends number, ResponseDefinition extends AnyRouteResponse> = {
   readonly status: Status
@@ -49,7 +52,7 @@ export type ClientResponseFactory<Responses extends RouteResponses> = <Status ex
   ]
 ) => ClientResponseResultFor<Status, Responses[Status]>
 
-export const createClientResponse = ((status: number, body?: unknown, headers?: Readonly<Record<string, string>>) => ({
+export const createClientResponse = ((status: number, body?: unknown, headers?: ResponseHeaderValues) => ({
   status,
   headers: headers ?? {},
   ...(body === undefined ? {} : { body }),
@@ -87,7 +90,7 @@ type DecodableStreamPlan = {
   readonly format: StreamFormat<unknown>
 }
 
-export type ClientResponseDecoder = (response: ClientTransportResponse) => Promise<unknown>
+export type ClientResponseDecoder = (response: ClientTransportResponse) => ExecutionStep<unknown>
 
 function decodedStream(source: AsyncIterable<Uint8Array>, plan: DecodableStreamPlan): AsyncIterable<unknown> {
   async function* decode(): AsyncIterable<unknown> {
@@ -101,7 +104,7 @@ function decodedStream(source: AsyncIterable<Uint8Array>, plan: DecodableStreamP
 
 function assertContentType(response: ClientTransportResponse, expected: string | undefined): void {
   if (expected === undefined) return
-  const header = response.headers['content-type'] ?? ''
+  const header = responseHeader(response.headers, 'content-type') ?? ''
   if (header === expected || header.startsWith(`${expected};`)) return
 
   const received = mimeEssence(header)
@@ -140,38 +143,49 @@ export function compileClientErrorResponse(
   }
 }
 
-function compileBodyDecoder(plan: CanonicalResponsePlan): (response: ClientTransportResponse) => Promise<unknown> {
+const cancellableRead = Object.freeze({ cancellable: true as const })
+
+function compileBodyDecoder(
+  plan: CanonicalResponsePlan
+): (response: ClientTransportResponse, cancellable?: boolean) => ExecutionStep<unknown> {
   const definition = plan.definition
+  const read = (
+    response: ClientTransportResponse,
+    kind: Parameters<ClientTransportResponse['readBody']>[0],
+    cancellable: boolean | undefined
+  ) => (cancellable === true ? response.readBody(kind, cancellableRead) : response.readBody(kind))
   const body = definition.body
   switch (body.kind) {
     case 'empty':
-      return async () => undefined
+      return () => undefined
     case 'raw':
-      return async (response) => response.native ?? response.readBody('raw')
+      return (response, cancellable) => response.native ?? read(response, 'raw', cancellable)
     case 'json': {
       const decode = plan.body!.decode
-      return async (response) => decode(await response.readBody('json'))
+      return (response, cancellable) => mapExecutionStep(read(response, 'json', cancellable), decode)
     }
     case 'text': {
       const decode = plan.body!.decode
-      return async (response) => decode(await response.readBody('text'))
+      return (response, cancellable) => mapExecutionStep(read(response, 'text', cancellable), decode)
     }
     case 'bytes': {
       const decode = plan.body!.decode
-      return async (response) => decode(await response.readBody('bytes'))
+      return (response, cancellable) => mapExecutionStep(read(response, 'bytes', cancellable), decode)
     }
     case 'form-data': {
       const decode = plan.body!.decode
-      return async (response) => decode(await response.readBody('form-data'))
+      return (response, cancellable) => mapExecutionStep(read(response, 'form-data', cancellable), decode)
     }
     case 'stream': {
       if (!('schema' in body)) {
-        return async (response) => response.readBody('stream') as Promise<AsyncIterable<Uint8Array>>
+        return (response, cancellable) => read(response, 'stream', cancellable)
       }
       const decode = plan.body!.decode
       const streamPlan = { decode, format: body.format as unknown as StreamFormat<unknown> }
-      return async (response) =>
-        decodedStream((await response.readBody('stream')) as AsyncIterable<Uint8Array>, streamPlan)
+      return (response, cancellable) =>
+        mapExecutionStep(read(response, 'stream', cancellable), (source) =>
+          decodedStream(source as AsyncIterable<Uint8Array>, streamPlan)
+        )
     }
   }
 }
@@ -187,14 +201,19 @@ export function compileClientResponse(plan: CanonicalResponsePlan): ClientRespon
   const decodeHeaders = plan.headers?.decode
   const empty = definition.body.kind === 'empty'
 
-  const decode: ClientResponseDecoder = async (response) => {
+  const decode: ClientResponseDecoder = (response) => {
     assertContentType(response, plan.expectedContentType)
-    const [headers, body] =
-      decodeHeaders === undefined
-        ? [response.headers, await decodeBody(response)]
-        : await Promise.all([decodeHeaders(response.headers), decodeBody(response)])
-
-    return empty ? { status: response.status, headers } : { status: response.status, headers, body }
+    const finish = (headers: unknown, body: unknown) =>
+      empty ? { status: response.status, headers } : { status: response.status, headers, body }
+    if (decodeHeaders === undefined)
+      return mapExecutionStep(decodeBody(response), (body) => finish(response.headers, body))
+    let headerStep: ExecutionStep<unknown>
+    return mapExecutionStep(
+      mapExecutionSteps([0, 1], (field) =>
+        field === 0 ? (headerStep = decodeHeaders(response.headers)) : decodeBody(response, isPromiseLike(headerStep))
+      ),
+      ([headers, body]) => finish(headers, body)
+    )
   }
 
   responseDecoders.set(plan, decode)

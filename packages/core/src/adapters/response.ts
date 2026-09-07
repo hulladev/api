@@ -1,19 +1,20 @@
 import type { CanonicalResponseEntry, CanonicalResponsePlan } from '../contract/plan'
-import { textWireObject } from '../contract/request'
-import { isRecord, setOwn } from '../object'
+import { mapExecutionStep, type ExecutionStep, mapExecutionSteps } from '../execution'
+import { normalizeResponseHeaders } from '../headers'
+import type { ResponseHeaderValues } from '../headers'
+import { isRecord } from '../object'
 import { ServerRuntimeError } from '../server/errors'
 import type { StreamFormat, StreamSource } from '../stream'
-import { isSchemaStepAsync, mapSchemaStep, type SchemaStep } from '../validation'
 import type { AdapterResponse, AdapterResponseBody } from './types'
 
-type ResponseSerializer = (value: Readonly<Record<string, unknown>>) => SchemaStep<AdapterResponse>
-export type RuntimeResponseSerializer = (value: unknown) => SchemaStep<AdapterResponse>
+type ResponseSerializer = (value: Readonly<Record<string, unknown>>) => ExecutionStep<AdapterResponse>
+export type RuntimeResponseSerializer = (value: unknown) => ExecutionStep<AdapterResponse>
 
 async function* encodedStream(
   source: StreamSource<unknown>,
   schema: {
-    readonly decode: (value: unknown) => SchemaStep<unknown>
-    readonly encode?: (value: unknown) => SchemaStep<unknown>
+    readonly decode: (value: unknown) => ExecutionStep<unknown>
+    readonly encode?: (value: unknown) => ExecutionStep<unknown>
   }
 ): AsyncIterable<unknown> {
   for await (const value of source) {
@@ -26,22 +27,16 @@ async function* encodedStream(
 
 function compileResponseHeaders(
   plan: CanonicalResponsePlan
-): (value: unknown) => SchemaStep<Readonly<Record<string, string>> | undefined> {
+): (value: unknown) => ExecutionStep<ResponseHeaderValues | undefined> {
   const definition = plan.definition
   if (definition.headers === undefined) {
-    return (value) => value as Readonly<Record<string, string>> | undefined
+    return (value) => (value === undefined ? undefined : normalizeResponseHeaders(value))
   }
   const schema = plan.headers!
   return (value) => {
-    const wire = schema.encode === undefined ? mapSchemaStep(schema.decode(value), () => value) : schema.encode(value)
-    return mapSchemaStep(wire, (wireValue) => {
-      const encoded = textWireObject(wireValue, 'headers')
-      const headers: Record<string, string> = {}
-      for (const [key, field] of Object.entries(encoded)) {
-        if (field !== undefined) setOwn(headers, key, field)
-      }
-      return headers
-    })
+    const wire =
+      schema.encode === undefined ? mapExecutionStep(schema.decode(value), () => value) : schema.encode(value)
+    return mapExecutionStep(wire, normalizeResponseHeaders)
   }
 }
 
@@ -50,7 +45,7 @@ type SerializedResponseBody = {
   readonly value: unknown
 }
 
-function compileResponseBody(plan: CanonicalResponsePlan): (value: unknown) => SchemaStep<SerializedResponseBody> {
+function compileResponseBody(plan: CanonicalResponsePlan): (value: unknown) => ExecutionStep<SerializedResponseBody> {
   const definition = plan.definition
   const body = definition.body
 
@@ -61,8 +56,8 @@ function compileResponseBody(plan: CanonicalResponsePlan): (value: unknown) => S
       const schema = plan.body!
       return (value) => {
         const wire =
-          schema.encode === undefined ? mapSchemaStep(schema.decode(value), () => value) : schema.encode(value)
-        return mapSchemaStep(wire, (wireValue) => {
+          schema.encode === undefined ? mapExecutionStep(schema.decode(value), () => value) : schema.encode(value)
+        return mapExecutionStep(wire, (wireValue) => {
           if (wireValue === undefined) throw new TypeError('JSON response body cannot encode to undefined')
           return { kind: 'json', value: wireValue }
         })
@@ -72,8 +67,8 @@ function compileResponseBody(plan: CanonicalResponsePlan): (value: unknown) => S
       const schema = plan.body!
       return (value) => {
         const wire =
-          schema.encode === undefined ? mapSchemaStep(schema.decode(value), () => value) : schema.encode(value)
-        return mapSchemaStep(wire, (wireValue) => {
+          schema.encode === undefined ? mapExecutionStep(schema.decode(value), () => value) : schema.encode(value)
+        return mapExecutionStep(wire, (wireValue) => {
           if (typeof wireValue !== 'string') throw new TypeError('Text response body must encode to a string')
           return { kind: 'text', value: wireValue }
         })
@@ -83,8 +78,8 @@ function compileResponseBody(plan: CanonicalResponsePlan): (value: unknown) => S
       const schema = plan.body!
       return (value) => {
         const wire =
-          schema.encode === undefined ? mapSchemaStep(schema.decode(value), () => value) : schema.encode(value)
-        return mapSchemaStep(wire, (wireValue) => {
+          schema.encode === undefined ? mapExecutionStep(schema.decode(value), () => value) : schema.encode(value)
+        return mapExecutionStep(wire, (wireValue) => {
           if (!(wireValue instanceof Uint8Array)) throw new TypeError('Byte response body must encode to Uint8Array')
           return { kind: 'bytes', value: wireValue }
         })
@@ -94,8 +89,8 @@ function compileResponseBody(plan: CanonicalResponsePlan): (value: unknown) => S
       const schema = plan.body!
       return (value) => {
         const wire =
-          schema.encode === undefined ? mapSchemaStep(schema.decode(value), () => value) : schema.encode(value)
-        return mapSchemaStep(wire, (wireValue) => {
+          schema.encode === undefined ? mapExecutionStep(schema.decode(value), () => value) : schema.encode(value)
+        return mapExecutionStep(wire, (wireValue) => {
           if (!(wireValue instanceof FormData)) throw new TypeError('Form data response body must encode to FormData')
           return { kind: 'form-data', value: wireValue }
         })
@@ -146,7 +141,7 @@ function compileResponseSerializer(plan: CanonicalResponsePlan, status: number):
   const serializeBody = compileResponseBody(plan)
   const contentType = definition.contentType
   const finalize = (
-    initialHeaders: Readonly<Record<string, string>> | undefined,
+    initialHeaders: ResponseHeaderValues | undefined,
     serializedBody: SerializedResponseBody
   ): AdapterResponse => {
     let headers = initialHeaders
@@ -166,14 +161,22 @@ function compileResponseSerializer(plan: CanonicalResponsePlan, status: number):
     }
   }
 
+  // Without a header schema, header normalization is synchronous. Only the body
+  // can remain pending, so there is no concurrent validation work to coordinate.
+  if (plan.headers === undefined) {
+    return (value) => {
+      const headers = serializeHeaders(value['headers']) as ResponseHeaderValues | undefined
+      return mapExecutionStep(serializeBody(value['body']), (body) => finalize(headers, body))
+    }
+  }
+
   return (value) => {
-    const headers = serializeHeaders(value['headers'])
-    const serializedBody = serializeBody(value['body'])
-    return isSchemaStepAsync(headers) || isSchemaStepAsync(serializedBody)
-      ? Promise.all([headers, serializedBody]).then(([resolvedHeaders, resolvedBody]) =>
-          finalize(resolvedHeaders, resolvedBody)
-        )
-      : finalize(headers, serializedBody)
+    const steps = mapExecutionSteps([0, 1], (field): ExecutionStep<unknown> =>
+      field === 0 ? serializeHeaders(value['headers']) : serializeBody(value['body'])
+    )
+    return mapExecutionStep(steps, ([headers, body]) =>
+      finalize(headers as ResponseHeaderValues | undefined, body as SerializedResponseBody)
+    )
   }
 }
 

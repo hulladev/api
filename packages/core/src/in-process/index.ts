@@ -33,6 +33,7 @@ export function inProcessTransport<const ContractType extends Contract, const Co
     request.signal?.throwIfAborted()
     const response = await dispatch({
       request,
+      ...(request.signal === undefined ? {} : { signal: request.signal }),
       ...(usesNativeContext ? { contextInput: { request } } : {}),
       method: request.method,
       pathname: request.path,
@@ -45,8 +46,18 @@ export function inProcessTransport<const ContractType extends Contract, const Co
 
     return {
       status: response.status,
-      headers: response.headers,
+      headers:
+        response.body.kind === 'form-data'
+          ? { ...response.headers, 'content-type': 'multipart/form-data' }
+          : response.headers,
       native: response,
+      dispose: async () => {
+        if (response.body.kind === 'stream') {
+          const stream = response.body.value as AsyncIterable<unknown> & Iterable<unknown>
+          const iterator = stream[Symbol.asyncIterator]?.() ?? stream[Symbol.iterator]()
+          await iterator.return?.()
+        }
+      },
       readBody: (kind) => {
         if (response.body.kind !== kind) {
           throw new TypeError(`In-process response body is ${response.body.kind}, but the client selected ${kind}`)

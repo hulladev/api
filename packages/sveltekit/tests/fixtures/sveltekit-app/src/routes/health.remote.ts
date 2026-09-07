@@ -6,7 +6,7 @@ import { implementation } from '../api/server'
 
 const api = defineClient(contract, {
   transport: svelteKitRemoteTransport(implementation),
-}).create()
+})
 
 export const health = query(async () => {
   const result = await api.health()

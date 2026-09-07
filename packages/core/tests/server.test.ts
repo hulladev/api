@@ -163,7 +163,7 @@ describe('defineServer', () => {
       return { status: 200, body: 'ok' }
     })
     const organizations = server.implement(contract.routes.organizations, handlers().organizations)
-    const implementation = server.implement(health, organizations)
+    const implementation = server.compose(health, organizations)
 
     expectTypeOf(health).toExtend<
       ServerImplementationFragment<typeof contract, { requestId: string }, readonly ['health']>
@@ -173,7 +173,7 @@ describe('defineServer', () => {
 
     const invalidFragments = () => {
       // @ts-expect-error Fragment composition must cover every contract handler.
-      server.implement(health)
+      server.compose(health)
       // @ts-expect-error Router implementation fragments must cover their selected node.
       server.implement(contract.routes.organizations, { listUsers: handlers().organizations.listUsers })
       // @ts-expect-error Contract nodes must come from the server contract.
@@ -196,7 +196,7 @@ describe('defineServer', () => {
       body: context.requestMethod === 'GET' ? 'ok' : 'ok',
     }))
     const organizations = server.implement(contract.routes.organizations, handlers().organizations)
-    const implementation = server.implement(health, organizations)
+    const implementation = server.compose(health, organizations)
 
     expect(server.context).toBe(health.context)
     expect(health.context).toBe(organizations.context)
@@ -212,10 +212,10 @@ describe('defineServer', () => {
     const organizations = server.implement(contract.routes.organizations, handlers().organizations)
     const foreign = defineServer(contract).implement(contract.routes.health, handlers().health)
 
-    expect(() => server.implement(health, health, organizations)).toThrowError(
+    expect(() => server.compose(health, health, organizations)).toThrowError(
       expect.objectContaining({ code: 'duplicate-handler', handlerKeys: ['health'] })
     )
-    expect(() => server.implement(foreign, organizations)).toThrowError(
+    expect(() => server.compose(foreign, organizations)).toThrowError(
       expect.objectContaining({ code: 'foreign-implementation' })
     )
   })
@@ -269,12 +269,11 @@ describe('defineServer', () => {
       })
       server.implement({
         ...valid,
-        // @ts-expect-error The handler must cover both declared statuses.
         organizations: {
           ...valid.organizations,
           createUser: () => ({
             status: 201,
-            body: { id: 'user-1', organizationId: 'organization-1', createdAt: new Date() },
+            body: { id: 'user-1', organizationId: 'organization-1', createdAt: new Date().toISOString() },
             headers: { etag: 'user-1' },
           }),
         },
@@ -328,6 +327,7 @@ describe('defineServer', () => {
     expect(implementation.middlewares).toEqual([timing, authenticate])
     await expect(
       implementation.middlewares[0]?.({
+        signal: new AbortController().signal,
         context: { requestId: 'request-1' },
         next: async () => 'adapter-result',
         errors: sharedErrors,

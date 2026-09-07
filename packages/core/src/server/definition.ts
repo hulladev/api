@@ -1,5 +1,5 @@
 import type { CompiledContractRoute } from '../compiler'
-import { getCompositionState, registerComposition } from '../composition'
+import { registerComposition } from '../composition'
 import type { Awaitable, ContextFactory, ContextFrom } from '../context'
 import type { Contract, ContractRoute } from '../contract'
 import { isContractMount } from '../contract/state'
@@ -51,23 +51,14 @@ function createDefinition<
     )
   }) as ServerDefinition<ContractType, Context, AdapterId, AdapterInput>['use']
 
-  const implement = ((...values: readonly unknown[]) => {
-    const first = values[0]
-    const firstIsObject = (typeof first === 'object' && first !== null) || typeof first === 'function'
-    if (firstIsObject && getCompositionState(first as object) !== undefined) {
-      const composed = composeServerFragments(contract, scope, values as readonly object[])
-      const handlers = composed.handlers
-      const bindings = composed.bindings
-      const implementation = {
-        contract,
-        handlers,
-        context,
-        middlewares: middlewarePlan[0],
-      }
-      registerComposition(implementation, scope, bindings)
-      return implementation
-    }
+  const compose = ((...fragments: readonly object[]) => {
+    const { handlers, bindings } = composeServerFragments(contract, scope, fragments)
+    const implementation = { contract, handlers, context, middlewares: middlewarePlan.all }
+    registerComposition(implementation, scope, bindings)
+    return implementation
+  }) as ServerDefinition<ContractType, Context, AdapterId, AdapterInput>['compose']
 
+  const implement = ((...values: readonly unknown[]) => {
     const root = values.length === 1
     if (!root && values.length !== 2) {
       throw new ServerImplementationError(
@@ -94,14 +85,14 @@ function createDefinition<
           contract,
           handlers,
           context,
-          middlewares: middlewarePlan[0],
+          middlewares: middlewarePlan.all,
         }
       : {
           contract,
           handlers,
           node,
           context,
-          middlewares: middlewarePlan[0],
+          middlewares: middlewarePlan.all,
         }
     registerComposition(implementation, scope, bindings)
     return implementation
@@ -110,10 +101,11 @@ function createDefinition<
   return {
     contract,
     context,
-    middlewares: middlewarePlan[0],
+    middlewares: middlewarePlan.all,
     middleware,
     use,
     implement,
+    compose,
   }
 }
 

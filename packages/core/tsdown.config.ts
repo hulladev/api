@@ -6,6 +6,7 @@ export default defineConfig({
   entry: [
     'src/index.ts',
     'src/adapters/index.ts',
+    'src/adapters/node.ts',
     'src/client/index.ts',
     'src/compiler.ts',
     'src/errors.ts',

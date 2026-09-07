@@ -47,7 +47,7 @@ describe('SvelteKit remote-function transport', () => {
     })
     const getRequestEvent = vi.fn<() => SvelteKitRequestEvent>(() => event)
     const transport = createSvelteKitRemoteTransport(implementation, getRequestEvent)
-    const client = defineClient(contract, { transport }).create()
+    const client = defineClient(contract, { transport })
 
     await expect(client.profile()).resolves.toEqual({
       status: 200,
@@ -74,7 +74,7 @@ describe('SvelteKit remote-function transport', () => {
     })
     const client = defineClient(queryContract, {
       transport: createSvelteKitRemoteTransport(implementation, getRequestEvent),
-    }).create()
+    })
 
     await expect(client.search()).resolves.toEqual({
       status: 200,
@@ -93,7 +93,7 @@ describe('SvelteKit remote-function transport', () => {
       transport: createSvelteKitRemoteTransport(fragment, () => {
         throw new Error('request event should not be read')
       }),
-    }).create(contract.routes.profile)
+    }).select(contract.routes.profile)
 
     await expect(client()).resolves.toEqual({
       status: 200,

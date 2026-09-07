@@ -1,7 +1,8 @@
-import type { CanonicalRoutePlan } from '../contract/plan'
+import type { ClientRoutePlan } from '../contract/client-plan'
 import type { QueryWireObject } from '../contract/query'
 import { textWireObject, type RequestBodyKind } from '../contract/request'
-import { type ExecutionStep, isPromiseLike, mapExecutionStep } from '../execution'
+import { type ExecutionStep, mapExecutionSteps, mapExecutionStep } from '../execution'
+import type { ResponseHeaderValues } from '../headers'
 import { setOwn } from '../object'
 
 export type ClientRequestOptions = {
@@ -35,11 +36,17 @@ export type ClientTransportRequest = {
 
 export type ClientTransportResponse = {
   readonly status: number
-  readonly headers: Readonly<Record<string, string>>
+  readonly headers: ResponseHeaderValues
   /** The adapter-native response, event, or message when one exists. */
   readonly native?: unknown
+  /** Releases an unread/rejected response; raw and streaming successes transfer ownership to the caller. */
+  readonly dispose?: (reason?: unknown) => ExecutionStep<void>
   /** Reads the response using the representation selected by its declared status. */
-  readonly readBody: (kind: 'bytes' | 'form-data' | 'json' | 'raw' | 'stream' | 'text') => ExecutionStep<unknown>
+  /** A concurrent decoder may reject while reading; keep the owned reader cancellable in that case. */
+  readonly readBody: (
+    kind: 'bytes' | 'form-data' | 'json' | 'raw' | 'stream' | 'text',
+    options?: { readonly cancellable: true }
+  ) => ExecutionStep<unknown>
 }
 
 export type ClientTransport = (request: ClientTransportRequest) => ExecutionStep<ClientTransportResponse>
@@ -76,7 +83,7 @@ function mergedHeaders(
 }
 
 function transportRequest(
-  plan: CanonicalRoutePlan,
+  plan: ClientRoutePlan,
   path: string,
   options: ClientRequestOptions,
   headers: Record<string, string>,
@@ -110,10 +117,7 @@ function encodedBody(kind: RequestBodyKind, contentType: string, value: unknown)
   return { kind, value, contentType }
 }
 
-export function compileClientRequest(
-  plan: CanonicalRoutePlan,
-  configuredHeaders?: ClientHeaders
-): ClientRequestCreator {
+export function compileClientRequest(plan: ClientRoutePlan, configuredHeaders?: ClientHeaders): ClientRequestCreator {
   const compiled = plan.compiled
   const encodePath = plan.encodePath
   const encodeQuery = plan.encodeQuery
@@ -170,13 +174,20 @@ export function compileClientRequest(
   }
 
   return (input, options) => {
-    const values = [
-      staticPath ?? encodePath!(input['params'] as Readonly<Record<string, unknown>>),
-      encodeQuery?.(input['query'] as never),
-      typeof configuredHeaders === 'function' ? configuredHeaders() : configuredHeaders,
-      hasRouteHeaders ? routeHeaders(input['headers']) : undefined,
-      hasBody ? requestBody(input['body']) : undefined,
-    ] as const
+    const resolved = mapExecutionSteps([0, 1, 2, 3, 4], (field): ExecutionStep<unknown> => {
+      switch (field) {
+        case 0:
+          return staticPath ?? encodePath!(input['params'] as Readonly<Record<string, unknown>>)
+        case 1:
+          return encodeQuery?.(input['query'] as never)
+        case 2:
+          return typeof configuredHeaders === 'function' ? configuredHeaders() : configuredHeaders
+        case 3:
+          return hasRouteHeaders ? routeHeaders(input['headers']) : undefined
+        default:
+          return hasBody ? requestBody(input['body']) : undefined
+      }
+    })
     type ResolvedValues = readonly [
       path: string,
       query: QueryWireObject | undefined,
@@ -184,16 +195,17 @@ export function compileClientRequest(
       routeHeaders: Readonly<Record<string, string | undefined>> | undefined,
       body: ClientTransportBody | undefined,
     ]
-    const resolved = values.some(isPromiseLike) ? Promise.all(values) : values
-    return mapExecutionStep(resolved as ExecutionStep<ResolvedValues>, ([path, query, configured, route, body]) =>
-      transportRequest(
-        plan,
-        path,
-        options,
-        mergedHeaders(configured, options.headers, route, body?.kind === 'form-data' ? undefined : body?.contentType),
-        query,
-        body
-      )
+    return mapExecutionStep(
+      resolved as unknown as ExecutionStep<ResolvedValues>,
+      ([path, query, configured, route, body]) =>
+        transportRequest(
+          plan,
+          path,
+          options,
+          mergedHeaders(configured, options.headers, route, body?.kind === 'form-data' ? undefined : body?.contentType),
+          query,
+          body
+        )
     )
   }
 }

@@ -15,6 +15,7 @@ export type ServerHandlerInput<
   Metadata extends RouteMetadata = RouteMetadata,
   Errors extends NormalizedErrorStatusMap = NormalizedErrorStatusMap,
 > = {
+  readonly signal: AbortSignal
   readonly context: Readonly<Context>
   readonly response: ServerResponseFactory<RouteType['responses']>
   readonly route: Metadata
@@ -97,35 +98,19 @@ type HandlerFragmentTree<
 
 type HandlerReturn<Handler> = Handler extends (...args: never[]) => infer Result ? Awaited<Result> : never
 
-type ResponseStatus<Value> = Value extends { readonly status: infer Status extends number } ? Status : never
-
-type ReturnedStatuses<Handler> = ResponseStatus<HandlerReturn<Handler>>
-
-type DeclaredStatuses<RouteType extends Route> = ResponseStatus<ServerResponseResult<RouteType['responses']>>
-
 type UnexpectedResponseKeys<Actual, Allowed> = Actual extends { readonly status: infer Status }
   ? Exclude<keyof Actual, keyof Extract<Allowed, { readonly status: Status }>>
   : never
 
-type CheckedHandler<RouteType extends Route, Handler> = (Exclude<
-  DeclaredStatuses<RouteType>,
-  ReturnedStatuses<Handler>
-> extends never
-  ? unknown
-  : {
-      readonly 'Handler must return every declared response': Exclude<
-        DeclaredStatuses<RouteType>,
-        ReturnedStatuses<Handler>
-      >
-    }) &
-  (UnexpectedResponseKeys<HandlerReturn<Handler>, ServerResponseResult<RouteType['responses']>> extends never
+type CheckedHandler<RouteType extends Route, Handler> =
+  UnexpectedResponseKeys<HandlerReturn<Handler>, ServerResponseResult<RouteType['responses']>> extends never
     ? unknown
     : {
         readonly 'Handler response has unexpected properties': UnexpectedResponseKeys<
           HandlerReturn<Handler>,
           ServerResponseResult<RouteType['responses']>
         >
-      })
+      }
 
 type CheckedHandlerTree<Routes extends ContractRoutes, Fragment> = {
   readonly [Key in keyof Fragment]: Key extends keyof Routes

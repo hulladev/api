@@ -10,7 +10,8 @@ import {
   router,
   type CompiledContractRouteFor,
 } from '../src'
-import { compileCanonicalContract } from '../src/contract/plan'
+import { compileClientContract } from '../src/contract/client-plan'
+import { compileServerContract } from '../src/contract/server-plan'
 
 const organizationParams = z.object({ organizationId: z.string() })
 const userParams = z.object({ userId: z.string() })
@@ -184,7 +185,7 @@ describe('contract compiler', () => {
     expect(compileContract(defineContract({ routes: { health } }))).not.toBe(compileContract(contract))
   })
 
-  test('compiles one shared client/server execution plan per contract', () => {
+  test('compiles directional wire operations while sharing schema plans', async () => {
     const sharedResponse = response.json(z.object({ id: z.string() }))
     const failures = defineErrors({ INVALID_USER: { message: 'Invalid user' } })
     const plannedContract = defineContract({
@@ -200,16 +201,22 @@ describe('contract compiler', () => {
       },
     })
 
-    const plan = compileCanonicalContract(plannedContract)
+    const plan = compileClientContract(plannedContract)
     const plannedRoute = plan.routes[0]!
 
-    expect(compileCanonicalContract(plannedContract)).toBe(plan)
+    expect(compileClientContract(plannedContract)).toBe(plan)
     expect(plannedRoute.compiled).toBe(compileContract(plannedContract).routes[0])
-    expect(plannedRoute).toMatchObject({ hasInput: true, pattern: ['users', ':id'] })
+    expect(plannedRoute.hasInput).toBe(true)
     expect(plannedRoute.encodePath).toBeTypeOf('function')
-    expect(plannedRoute.decodePath).toBeTypeOf('function')
+    const serverRoute = compileServerContract(plannedContract).routes[0]!
+    expect(serverRoute.pattern).toEqual(['users', ':id'])
+    expect(await plannedRoute.encodePath!({ id: 'space /✓' })).toBe('/users/space%20%2F%E2%9C%93')
+    expect(await serverRoute.decodePath!({ id: 'space /✓' })).toEqual({ id: 'space /✓' })
+    expect(serverRoute.responses[0]?.[1]).toBe(plannedRoute.responses[0]?.[1])
+    expect(serverRoute.body?.schema).toBe(plannedRoute.body?.schema)
     expect(plannedRoute.encodeQuery).toBeTypeOf('function')
-    expect(plannedRoute.decodeQuery).toBeTypeOf('function')
+    const query = await plannedRoute.encodeQuery!({ source: 'a & b' })
+    expect(await serverRoute.decodeQuery!(query)).toEqual({ source: 'a & b' })
     expect(plannedRoute.headers).toBeDefined()
     expect(plannedRoute.body).toBeDefined()
     expect(plan.errors[0]?.[0]).toBe(400)
@@ -225,12 +232,12 @@ describe('contract compiler', () => {
       },
     })
 
-    const selected = compileCanonicalContract(plannedContract, [compileContract(plannedContract).routes[1]!])
-    const complete = compileCanonicalContract(plannedContract)
+    const selected = compileClientContract(plannedContract, [compileContract(plannedContract).routes[1]!])
+    const complete = compileClientContract(plannedContract)
 
     expect(selected.routes.map((plan) => plan.compiled.key)).toEqual([['inspect']])
     expect(complete.routes.map((plan) => plan.compiled.key)).toEqual([['health'], ['inspect']])
-    expect(compileCanonicalContract(plannedContract)).toBe(complete)
+    expect(compileClientContract(plannedContract)).toBe(complete)
     expect(selected.routes[0]).toBe(complete.routes[1])
     expect(selected.errors).toBe(complete.errors)
   })

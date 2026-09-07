@@ -1,3 +1,4 @@
+import { fromFetchHeaders } from '../adapters/headers'
 import type { ClientTransport, ClientTransportRequest, ClientTransportResponse } from '../client/request'
 import { ClientResponseError } from '../client/response'
 
@@ -90,55 +91,84 @@ function nativeRequest(request: ClientTransportRequest, baseUrl: string): Reques
   }
 }
 
-function responseHeaders(response: Response): Readonly<Record<string, string>> {
-  return Object.fromEntries(response.headers.entries())
-}
-
-function responseBytes(response: Response, transportResponse: ClientTransportResponse): AsyncIterable<Uint8Array> {
-  async function* read(): AsyncIterable<Uint8Array> {
-    if (response.body === null) {
-      throw new ClientResponseError('missing-body', transportResponse, `Response ${response.status} has no stream body`)
-    }
-    const reader = response.body.getReader()
+function transportResponse(response: Response): ClientTransportResponse {
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
+  let disposed = false
+  async function* bytes(): AsyncIterable<Uint8Array> {
+    if (disposed) throw new TypeError('Response has been disposed')
+    if (response.body === null) return
+    const active = response.body.getReader()
+    reader = active
     let complete = false
     try {
       while (true) {
-        const result = await reader.read()
-        if (result.done) {
+        const item = await active.read()
+        if (item.done) {
           complete = true
           return
         }
-        yield result.value
+        yield item.value
       }
     } finally {
       try {
-        if (!complete) await reader.cancel()
+        if (!complete) await active.cancel()
       } finally {
-        reader.releaseLock()
+        reader = undefined
+        active.releaseLock()
       }
     }
   }
-  return read()
-}
-
-function transportResponse(response: Response): ClientTransportResponse {
-  let result: ClientTransportResponse
-  result = {
+  async function buffered(): Promise<Uint8Array> {
+    const chunks: Uint8Array[] = []
+    let length = 0
+    for await (const chunk of bytes()) {
+      chunks.push(chunk)
+      length += chunk.byteLength
+    }
+    if (chunks.length === 1) return chunks[0]!
+    const value = new Uint8Array(length)
+    let offset = 0
+    for (const chunk of chunks) {
+      value.set(chunk, offset)
+      offset += chunk.byteLength
+    }
+    return value
+  }
+  const result: ClientTransportResponse = {
     status: response.status,
-    headers: responseHeaders(response),
+    headers: fromFetchHeaders(response.headers),
     native: response,
-    readBody: (kind) => {
+    dispose: async (reason) => {
+      disposed = true
+      if (reader !== undefined) await reader.cancel(reason)
+      else if (response.body !== null && !response.body.locked) await response.body.cancel(reason)
+    },
+    readBody: (kind, options) => {
+      if (options?.cancellable !== true) {
+        switch (kind) {
+          case 'json':
+            return response.json()
+          case 'text':
+            return response.text()
+          case 'bytes':
+            return response.arrayBuffer().then((buffer) => new Uint8Array(buffer))
+          case 'form-data':
+            return response.formData()
+        }
+      }
       switch (kind) {
         case 'json':
-          return response.json()
+          return buffered().then((value) => JSON.parse(new TextDecoder().decode(value)) as unknown)
         case 'text':
-          return response.text()
+          return buffered().then((value) => new TextDecoder().decode(value))
         case 'bytes':
-          return response.arrayBuffer().then((buffer) => new Uint8Array(buffer))
+          return buffered()
         case 'form-data':
-          return response.formData()
+          return buffered().then((value) => new Response(value as BodyInit, { headers: response.headers }).formData())
         case 'stream':
-          return responseBytes(response, result)
+          if (response.body === null)
+            throw new ClientResponseError('missing-body', result, `Response ${response.status} has no stream body`)
+          return bytes()
         case 'raw':
           return response
       }

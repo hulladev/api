@@ -39,7 +39,7 @@ describe('inProcessTransport', () => {
         },
       },
     })
-    const client = defineClient(contract, { transport: inProcessTransport(implementation) }).create()
+    const client = defineClient(contract, { transport: inProcessTransport(implementation) })
 
     await expect(
       client.organizations.members.create({

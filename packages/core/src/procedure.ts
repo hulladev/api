@@ -1,5 +1,5 @@
 import type { Awaitable } from './context'
-import { type EitherIsAsync, type ValueIsAsync } from './execution'
+import { isPromiseLike, mapExecutionStep, type ExecutionStep, type EitherIsAsync, type ValueIsAsync } from './execution'
 import {
   assertMiddleware,
   assertMiddlewares,
@@ -12,18 +12,15 @@ import {
   compileSchemaExecution,
   isAsyncSchema,
   isSchema,
-  isSchemaStepAsync,
-  mapSchemaStep,
   type AnySchema,
   type AsyncSchema,
   type SchemaInput,
   type SchemaOutput,
-  type SchemaStep,
   type SchemaValidationOptions,
 } from './validation'
 
 type EmptyProcedureContext = Record<string, never>
-const emptyProcedureContext = {} as EmptyProcedureContext
+const emptyProcedureContext = Object.freeze({}) as EmptyProcedureContext
 
 type DefinedField<Name extends PropertyKey, Value> = [Value] extends [undefined]
   ? object
@@ -124,12 +121,12 @@ export type ProcedureBuilder<
 function compileApplicationSchemaValidation(
   schema: AnySchema,
   options: SchemaValidationOptions
-): (value: unknown) => SchemaStep<unknown> {
+): (value: unknown) => ExecutionStep<unknown> {
   const decode = compileSchemaExecution(schema, options).decode
   const asynchronous = isAsyncSchema(schema)
   return (value) => {
     const validation = decode(value)
-    if (isSchemaStepAsync(validation) && !asynchronous) {
+    if (isPromiseLike(validation) && !asynchronous) {
       void Promise.resolve(validation).catch(() => undefined)
       throw new TypeError('Async schemas require validation.async(schema)')
     }
@@ -180,11 +177,11 @@ function createBuilder<
       const inputValue = hasInput ? args[0] : undefined
       const inputStep = decodeInput === undefined ? inputValue : decodeInput(inputValue)
 
-      return mapSchemaStep(inputStep, (decodedInput) => {
+      return mapExecutionStep(inputStep, (decodedInput) => {
         const contextStep =
           contextFactory === undefined ? (emptyProcedureContext as Context) : contextFactory({ input: decodedInput })
 
-        return mapSchemaStep(contextStep, (context) => {
+        return mapExecutionStep(contextStep, (context) => {
           if (!isRecord(context)) throw new TypeError('Procedure context factory must return an object')
 
           const middlewareInput = { context, input: decodedInput }
@@ -199,7 +196,7 @@ function createBuilder<
                   invalidMiddleware: () => new TypeError('Procedure middleware must be a function'),
                   multipleNext: () => new TypeError('Procedure middleware called next() more than once'),
                 })
-          return decodeOutput === undefined ? result : mapSchemaStep(result, decodeOutput)
+          return decodeOutput === undefined ? result : mapExecutionStep(result, decodeOutput)
         })
       })
     }

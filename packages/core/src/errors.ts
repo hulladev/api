@@ -34,6 +34,7 @@ export type ServerRuntimeErrorCode =
   | 'invalid-context'
   | 'invalid-path-encoding'
   | 'invalid-request-body'
+  | 'request-body-too-large'
   | 'invalid-server-response'
   | 'unsupported-media-type'
 

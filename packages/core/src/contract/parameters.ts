@@ -1,5 +1,5 @@
 import type { CompiledPathParameters } from '../compiler'
-import { type ExecutionStep, isPromiseLike, mapExecutionStep } from '../execution'
+import { type ExecutionStep, mapExecutionSteps, mapExecutionStep } from '../execution'
 import { isRecord, setOwn } from '../object'
 import { compileSchemaExecution } from '../validation'
 
@@ -17,33 +17,19 @@ export type PathParameterDecoder = (
   value: Readonly<Record<string, string>>
 ) => ExecutionStep<Readonly<Record<string, unknown>>>
 
-function substituteParameters(path: string, encodedValues: Readonly<Record<string, unknown>>): string {
-  return path
-    .split('/')
-    .map((segment) =>
-      segment.startsWith(':')
-        ? encodeURIComponent((encodedValues[segment.slice(1)] as string | undefined) ?? '')
-        : segment
-    )
-    .join('/')
-}
-
 /** Compiles application path parameter encoding for a route. */
 export function compilePathParameterEncoder(
   path: string,
   declarations: readonly CompiledPathParameters[]
 ): PathParameterEncoder {
+  const segments = path.split('/').map((segment) => (segment.startsWith(':') ? { name: segment.slice(1) } : segment))
   const plans = declarations.map((declaration) => ({
     declaration,
     encode: compileSchemaExecution(declaration.schema, { location: 'params' }).encode,
   }))
 
   return (value) => {
-    type EncodedGroup = {
-      readonly declaration: CompiledPathParameters
-      readonly encoded: Readonly<Record<string, unknown>>
-    }
-    const steps = plans.map(({ declaration, encode }) => {
+    const resolved = mapExecutionSteps(plans, ({ declaration, encode }) => {
       const group = parameterGroup(declaration, value)
       const encoded = encode === undefined ? group : encode(group)
       return mapExecutionStep(encoded, (resolved) => {
@@ -51,7 +37,6 @@ export function compilePathParameterEncoder(
         return { declaration, encoded: resolved }
       })
     })
-    const resolved = (steps.some(isPromiseLike) ? Promise.all(steps) : steps) as ExecutionStep<readonly EncodedGroup[]>
 
     return mapExecutionStep(resolved, (groups) => {
       const encodedValues: Record<string, string> = {}
@@ -67,7 +52,9 @@ export function compilePathParameterEncoder(
           setOwn(encodedValues, name, parameter)
         }
       }
-      return substituteParameters(path, encodedValues)
+      return segments
+        .map((segment) => (typeof segment === 'string' ? segment : encodeURIComponent(encodedValues[segment.name]!)))
+        .join('/')
     })
   }
 }
@@ -80,17 +67,12 @@ export function compilePathParameterDecoder(declarations: readonly CompiledPathP
   }))
 
   return (value) => {
-    type DecodedGroup = {
-      readonly declaration: CompiledPathParameters
-      readonly decoded: Readonly<Record<string, unknown>>
-    }
-    const steps = plans.map(({ declaration, decode }) => {
+    const resolved = mapExecutionSteps(plans, ({ declaration, decode }) => {
       return mapExecutionStep(decode(parameterGroup(declaration, value)), (decoded) => {
         if (!isRecord(decoded)) throw new TypeError('Decoded route parameters must be an object')
         return { declaration, decoded }
       })
     })
-    const resolved = (steps.some(isPromiseLike) ? Promise.all(steps) : steps) as ExecutionStep<readonly DecodedGroup[]>
 
     return mapExecutionStep(resolved, (groups) => {
       const decodedValues: Record<string, unknown> = {}

@@ -1,5 +1,5 @@
 import type { CompiledContractRoute } from '../compiler'
-import { getCompositionState, registerComposition } from '../composition'
+import { registerComposition } from '../composition'
 import type { ContextFrom } from '../context'
 import type { Contract, ContractRoute } from '../contract'
 import { isContractMount } from '../contract/state'
@@ -48,23 +48,14 @@ function createDefinition<ContractType extends Contract, Context extends object,
     )
   }) as ClientDefinition<ContractType, Context, ErrorMode>['use']
 
-  let rootClient: object | undefined
   let createdFragments: WeakMap<object, object> | undefined
-  const create = ((...values: readonly object[]) => {
-    if (values.length > 0) {
-      const first = values[0]!
-      if (getCompositionState(first) !== undefined || values.length > 1) {
-        return composeClientFragments(contract, clientScope(), values)
-      }
-    }
-
-    const node: Contract | ContractRoute = values.length === 0 ? contract : (values[0] as ContractRoute)
+  const select = ((node: ContractRoute) => {
     const mount = mountedClientNode(contract, node)
     const root = isContractMount(mount)
-    if (root && values.length > 0) {
-      throw new TypeError('Create the root client with create()')
+    if (root) {
+      throw new TypeError('The client is already executable; select a route or router')
     }
-    const cached = root ? rootClient : createdFragments?.get(node)
+    const cached = createdFragments?.get(node)
     if (cached !== undefined) return cached
     const created = buildClientNode(
       contract,
@@ -76,24 +67,54 @@ function createDefinition<ContractType extends Contract, Context extends object,
       middlewarePlan as MiddlewarePlan<ClientMiddleware<object, Contract>, CompiledContractRoute>,
       options.errorMode ?? 'return'
     )
-    if (root) rootClient = created.value
-    else {
+    {
       const fragmentCache = (createdFragments ??= new WeakMap())
       fragmentCache.set(node, created.value)
       registerComposition(created.value, clientScope(), created.bindings)
     }
     return created.value
-  }) as ClientDefinition<ContractType, Context, ErrorMode>['create']
+  }) as ClientDefinition<ContractType, Context, ErrorMode>['select']
 
-  return {
+  const value: Record<string, unknown> = {}
+  const compose = ((...fragments: readonly object[]) =>
+    composeClientFragments(contract, clientScope(), fragments)) as ClientDefinition<
+    ContractType,
+    Context,
+    ErrorMode
+  >['compose']
+  const controls = {
     contract,
     context: options.context,
-    middlewares: middlewarePlan[0],
+    middlewares: middlewarePlan.all,
     middleware,
     use,
-    create,
+    select,
+    compose,
   }
+  for (const [name, control] of Object.entries(controls)) {
+    Object.defineProperty(value, name, { value: control })
+  }
+  for (const [name, node] of Object.entries(contract.routes)) {
+    Object.defineProperty(value, name, {
+      enumerable: true,
+      configurable: true,
+      get() {
+        const selected = select(node as never)
+        Object.defineProperty(value, name, { enumerable: true, value: selected })
+        return selected
+      },
+    })
+  }
+  return value as ClientDefinition<ContractType, Context, ErrorMode>
 }
+
+type ReservedClientNames = 'contract' | 'context' | 'middlewares' | 'middleware' | 'use' | 'select' | 'compose'
+type ClientContract<C extends Contract> =
+  Extract<keyof C['routes'], ReservedClientNames> extends never
+    ? unknown
+    : {
+        readonly 'Reserved client root names': Extract<keyof C['routes'], ReservedClientNames>
+      }
 
 export function defineClient<
   const ContractType extends Contract,
@@ -101,16 +122,18 @@ export function defineClient<
   const ErrorMode extends ClientErrorMode = 'return',
 >(
   contract: ContractType,
-  options: DefineClientOptions<ContextFrom<Factory>, NoInfer<ContractType>, ErrorMode> & {
-    readonly context: Factory
-  }
+  options: DefineClientOptions<ContextFrom<Factory>, NoInfer<ContractType>, ErrorMode> &
+    ClientContract<NoInfer<ContractType>> & {
+      readonly context: Factory
+    }
 ): ClientDefinition<ContractType, ContextFrom<Factory>, ErrorMode>
 
 export function defineClient<const ContractType extends Contract, const ErrorMode extends ClientErrorMode = 'return'>(
   contract: ContractType,
-  options: DefineClientOptions<EmptyClientContext, NoInfer<ContractType>, ErrorMode> & {
-    readonly context?: undefined
-  }
+  options: DefineClientOptions<EmptyClientContext, NoInfer<ContractType>, ErrorMode> &
+    ClientContract<NoInfer<ContractType>> & {
+      readonly context?: undefined
+    }
 ): ClientDefinition<ContractType, EmptyClientContext, ErrorMode>
 
 export function defineClient(
@@ -125,5 +148,9 @@ export function defineClient(
   if (options.errorMode !== undefined && options.errorMode !== 'return' && options.errorMode !== 'throw') {
     throw new TypeError('Client errorMode must be "return" or "throw"')
   }
-  return createDefinition(contract, options, options.transport, createMiddlewarePlan(), {})
+  for (const name of ['contract', 'context', 'middlewares', 'middleware', 'use', 'select', 'compose']) {
+    if (Object.hasOwn(contract.routes, name))
+      throw new TypeError(`Client root name "${name}" is reserved for authoring`)
+  }
+  return createDefinition(contract, { ...options }, options.transport, createMiddlewarePlan(), {})
 }

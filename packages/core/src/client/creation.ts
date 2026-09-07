@@ -1,7 +1,7 @@
 import type { CompiledContractRoute } from '../compiler'
 import { getCompositionState, isScopeDescendant, type CompositionScope } from '../composition'
 import type { Contract, ContractRoute } from '../contract'
-import { compileCanonicalContract } from '../contract/plan'
+import { compileClientContract } from '../contract/client-plan'
 import {
   compileContractRoutes,
   findContractMount,
@@ -76,11 +76,25 @@ async function executeRoute(
   const contextStep = contextFactory === undefined ? emptyContext : contextFactory({ request, route: runtime.metadata })
   const context = isPromiseLike(contextStep) ? await contextStep : contextStep
   if (!isRecord(context)) throw new TypeError('Client context factory must return an object')
+  const decode = (response: ClientTransportResponse) => {
+    const failed = async (error: unknown): Promise<never> => {
+      try {
+        await response.dispose?.(error)
+      } catch {
+        /* Preserve the primary decode failure. */
+      }
+      throw error
+    }
+    try {
+      const result = responseDecoder(runtime, response)(response)
+      return isPromiseLike(result) ? Promise.resolve(result).catch(failed) : result
+    } catch (error) {
+      return failed(error)
+    }
+  }
   const transportAndDecode = () => {
     const response = transport(request)
-    return isPromiseLike(response)
-      ? Promise.resolve(response).then((resolved) => responseDecoder(runtime, resolved)(resolved))
-      : responseDecoder(runtime, response)(response)
+    return isPromiseLike(response) ? Promise.resolve(response).then(decode) : decode(response)
   }
 
   if (middlewares.length === 0) return transportAndDecode()
@@ -156,7 +170,7 @@ export function buildClientNode(
   const tree: Record<string, unknown> = {}
   const root = isContractMount(mount)
   const route = isRouteMount(mount, node)
-  const contractPlan = compileCanonicalContract(contract, root ? undefined : mount.routes)
+  const contractPlan = compileClientContract(contract, root ? undefined : mount.routes)
   const selectedPlans = contractPlan.routes
   const bindings: ClientRouteBinding[] | undefined = root ? undefined : []
   let errorResponses: ReadonlyMap<number, ClientResponseDecoder> | undefined

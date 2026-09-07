@@ -51,7 +51,7 @@ describe('Nuxt fetch transport', () => {
     const fetcher = createFetch({
       fetch: async () => Response.json({ message: 'Name is unavailable' }, { status: 422 }),
     })
-    const client = defineClient(contract, { transport: nuxtFetchTransport(fetcher) }).create()
+    const client = defineClient(contract, { transport: nuxtFetchTransport(fetcher) })
 
     await expect(client.rename({ body: { name: 'Ada' } })).resolves.toEqual({
       status: 422,
@@ -62,7 +62,7 @@ describe('Nuxt fetch transport', () => {
 
   test('uses a relative request-aware raw fetch and preserves repeated query fields', async () => {
     const request = requestFetch(() => Response.json({ ok: true }))
-    const client = defineClient(contract, { transport: nuxtFetchTransport(request.fetcher) }).create()
+    const client = defineClient(contract, { transport: nuxtFetchTransport(request.fetcher) })
 
     await expect(client.search({ query: { tag: ['typed', 'nuxt'], term: 'hulla api' } })).resolves.toEqual({
       status: 200,
@@ -84,7 +84,7 @@ describe('Nuxt fetch transport', () => {
     const request = requestFetch(() => Response.json({ message: 'Name is unavailable' }, { status: 422 }))
     const client = defineClient(contract, {
       transport: nuxtFetchTransport(request.fetcher, { baseUrl: '/internal' }),
-    }).create()
+    })
 
     await expect(client.rename({ body: { name: 'Ada' } })).resolves.toEqual({
       status: 422,
@@ -102,7 +102,7 @@ describe('Nuxt fetch transport', () => {
 
   test('passes abort signals through and rejects an already aborted call', async () => {
     const request = requestFetch(() => Response.json({ ok: true }))
-    const client = defineClient(contract, { transport: nuxtFetchTransport(request.fetcher) }).create()
+    const client = defineClient(contract, { transport: nuxtFetchTransport(request.fetcher) })
     const active = new AbortController()
 
     await client.search({ query: { tag: ['one'], term: 'active' } }, { signal: active.signal })

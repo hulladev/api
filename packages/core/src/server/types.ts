@@ -156,6 +156,8 @@ export type ServerDefinition<
       AdapterId,
       AdapterInput
     >
+  }
+  readonly compose: {
     <
       const Fragments extends readonly [
         ServerImplementationFragment<

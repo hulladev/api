@@ -1,23 +1,16 @@
 import type { CompiledContractRoute } from '../compiler'
 import type { RouteMetadata } from '../context'
 import { errorFactories, type AnyErrorDeclaration } from '../declared-errors'
-import { compileSchemaExecution, type AnySchema, type ObjectSchema, type SchemaStep } from '../validation'
-import {
-  compilePathParameterDecoder,
-  compilePathParameterEncoder,
-  type PathParameterDecoder,
-  type PathParameterEncoder,
-} from './parameters'
-import { compileQueryDecoder, compileQueryEncoder, type QueryDecoder, type QueryEncoder } from './query'
+import { type ExecutionStep } from '../execution'
+import { compileSchemaExecution, type AnySchema } from '../validation'
 import { mimeEssence, type AnyRequestBody } from './request'
 import type { AnyRouteResponse } from './response'
 import { compileContractRoutes, getContractState } from './state'
 import type { Contract } from './types'
 
-type RuntimeQuery = ObjectSchema
 type RuntimeSchemaExecutionPlan = {
-  readonly decode: (value: unknown) => SchemaStep<unknown>
-  readonly encode?: (value: unknown) => SchemaStep<unknown>
+  readonly decode: (value: unknown) => ExecutionStep<unknown>
+  readonly encode?: (value: unknown) => ExecutionStep<unknown>
 }
 
 export type CanonicalRequestBodyPlan = {
@@ -45,32 +38,19 @@ type CanonicalErrorEntry = readonly [status: number, errors: readonly CanonicalE
 export type CanonicalRoutePlan = {
   readonly compiled: CompiledContractRoute
   readonly metadata: RouteMetadata
-  readonly pattern: readonly string[]
   readonly hasInput: boolean
-  readonly encodePath?: PathParameterEncoder
-  readonly decodePath?: PathParameterDecoder
-  readonly encodeQuery?: QueryEncoder<RuntimeQuery>
-  readonly decodeQuery?: QueryDecoder<RuntimeQuery>
   readonly headers?: RuntimeSchemaExecutionPlan
   readonly body?: CanonicalRequestBodyPlan
   readonly responses: readonly CanonicalResponseEntry[]
 }
 
-export type CanonicalContractPlan = {
-  readonly routes: readonly CanonicalRoutePlan[]
+export type CanonicalContractPlan<RoutePlan extends CanonicalRoutePlan = CanonicalRoutePlan> = {
+  readonly routes: readonly RoutePlan[]
   readonly errors: readonly CanonicalErrorEntry[]
   readonly errorFactories: Readonly<Record<string, AnyErrorDeclaration>>
 }
 
 const responsePlans = new WeakMap<object, CanonicalResponsePlan>()
-const routePlans = new WeakMap<object, CanonicalRoutePlan>()
-const emptyPattern: readonly string[] = []
-
-function pathSegments(path: string): readonly string[] {
-  if (path === '' || path === '/') return emptyPattern
-  return path.startsWith('/') ? path.slice(1).split('/') : path.split('/')
-}
-
 function compileRuntimeSchema(
   schema: AnySchema,
   location: 'body' | 'headers' | 'response'
@@ -114,31 +94,18 @@ function compileContractErrors(contract: Contract): readonly CanonicalErrorEntry
   return errors
 }
 
-function compileRoutePlan(compiled: CompiledContractRoute): CanonicalRoutePlan {
-  const cached = routePlans.get(compiled)
-  if (cached !== undefined) return cached
+function compileRoutePlan<Direction extends object>(
+  compiled: CompiledContractRoute,
+  direction: Direction
+): CanonicalRoutePlan & Direction {
   const route = compiled.route
-  const query = 'query' in route ? (route.query as RuntimeQuery) : undefined
   const body = 'body' in route ? route.body : undefined
-  const hasPathParameters = compiled.pathParameters.length > 0
 
-  const plan: CanonicalRoutePlan = {
+  const plan = {
+    ...direction,
     compiled,
     metadata: { key: compiled.key, method: compiled.method, path: compiled.path },
-    pattern: pathSegments(compiled.path),
-    hasInput: hasPathParameters || query !== undefined || 'headers' in route || body !== undefined,
-    ...(hasPathParameters
-      ? {
-          encodePath: compilePathParameterEncoder(compiled.path, compiled.pathParameters),
-          decodePath: compilePathParameterDecoder(compiled.pathParameters),
-        }
-      : {}),
-    ...(query === undefined
-      ? {}
-      : {
-          encodeQuery: compileQueryEncoder(query),
-          decodeQuery: compileQueryDecoder(query),
-        }),
+    hasInput: compiled.pathParameters.length > 0 || 'query' in route || 'headers' in route || body !== undefined,
     ...('headers' in route ? { headers: compileRuntimeSchema(route.headers, 'headers') } : {}),
     ...(body === undefined
       ? {}
@@ -151,25 +118,36 @@ function compileRoutePlan(compiled: CompiledContractRoute): CanonicalRoutePlan {
         }),
     responses: compileResponses(route.responses),
   }
-  routePlans.set(compiled, plan)
   return plan
 }
 
-/** @internal Compiles route-invariant client/server execution data once per contract. */
-export function compileCanonicalContract(
+/** Directional compilers share schema plans but retain only their own wire operations. */
+export function createContractCompiler<Direction extends object>(
+  specialize: (compiled: CompiledContractRoute) => Direction
+): (
   contract: Contract,
   selectedRoutes?: readonly CompiledContractRoute[]
-): CanonicalContractPlan {
-  const complete = selectedRoutes === undefined
-  const state = getContractState(contract)
-  if (complete && state.canonical !== undefined) return state.canonical as CanonicalContractPlan
-  const plannedRoutes = selectedRoutes ?? compileContractRoutes(contract)
-  const errors = compileContractErrors(contract)
-  const plan = {
-    routes: plannedRoutes.map(compileRoutePlan),
-    errors,
-    errorFactories: errors.length === 0 ? {} : errorFactories(contract.errors),
+) => CanonicalContractPlan<CanonicalRoutePlan & Direction> {
+  const contracts = new WeakMap<object, CanonicalContractPlan<CanonicalRoutePlan & Direction>>()
+  const routes = new WeakMap<object, CanonicalRoutePlan & Direction>()
+  return (contract, selectedRoutes) => {
+    const complete = selectedRoutes === undefined
+    const cached = complete ? contracts.get(contract) : undefined
+    if (cached !== undefined) return cached
+    const errors = compileContractErrors(contract)
+    const plan = {
+      routes: (selectedRoutes ?? compileContractRoutes(contract)).map((compiled) => {
+        let route = routes.get(compiled)
+        if (route === undefined) {
+          route = compileRoutePlan(compiled, specialize(compiled))
+          routes.set(compiled, route)
+        }
+        return route
+      }),
+      errors,
+      errorFactories: errors.length === 0 ? {} : errorFactories(contract.errors),
+    }
+    if (complete) contracts.set(contract, plan)
+    return plan
   }
-  if (complete) state.canonical = plan
-  return plan
 }

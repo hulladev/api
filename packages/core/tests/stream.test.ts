@@ -172,3 +172,23 @@ describe('stream formats', () => {
     response.stream(ndjson)
   })
 })
+
+test('bounds UTF-8 records across chunks and closes an oversized producer', async () => {
+  const { createNdjsonFormat, createSseJsonFormat } = await import('../src/stream')
+  let finalized = false
+  async function* source() {
+    try {
+      for (const chunk of chunks('"ééé"\n', [1, 2, 3, 4, 5])) yield chunk
+    } finally {
+      finalized = true
+    }
+  }
+  await expect(collect(createNdjsonFormat({ maxRecordBytes: 7 }).decode(source()))).rejects.toThrow(/exceeds/)
+  expect(finalized).toBe(true)
+  await expect(collect(createNdjsonFormat({ maxRecordBytes: 8 }).decode(chunks('"ééé"\n', [2, 4])))).resolves.toEqual([
+    'ééé',
+  ])
+  await expect(
+    collect(createSseJsonFormat({ maxRecordBytes: 12 }).decode(chunks('data: "abcdefgh"\ndata: "more"\n\n', [8, 15])))
+  ).rejects.toThrow(/exceeds/)
+})

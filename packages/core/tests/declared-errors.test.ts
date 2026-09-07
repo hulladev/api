@@ -82,7 +82,7 @@ describe('declared errors', () => {
         always() ? errors.ITEM_NOT_FOUND({ data: { id: 'item-1' } }) : response(200, 'ok'),
       thrown: ({ response }) => response(200, 'ok'),
     })
-    const client = defineClient(contract, { transport: inProcessTransport(implementation) }).create()
+    const client = defineClient(contract, { transport: inProcessTransport(implementation) })
     const result = await client.returned()
 
     expect(result).toEqual({
@@ -104,7 +104,7 @@ describe('declared errors', () => {
     const client = defineClient(contract, {
       transport: inProcessTransport(implementation),
       errorMode: 'throw',
-    }).create()
+    })
 
     await expect(client.returned()).rejects.toMatchObject({
       code: 'ITEM_NOT_FOUND',

@@ -49,6 +49,7 @@ export function createServerAdapter<const Id extends string, const Extension ext
 export type { Awaitable, ContextFactory, ContractRouteMetadata as ServerRouteMetadata, RouteMetadata } from '../context'
 
 export type ServerContextInput<ContractType extends Contract = Contract> = {
+  readonly signal: AbortSignal
   readonly route: ContractRouteMetadata<ContractType>
 }
 

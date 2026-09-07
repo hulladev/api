@@ -25,9 +25,13 @@ type MergeObjectSchemas<
     : First
   : Second
 
-type ScopedRoute<RouteType extends Route, Params extends ObjectSchema | undefined> = RouteType & {
+/** Type-only inherited parameters, named for downstream declaration emission. */
+export type RouterParameterScope<Params extends ObjectSchema | undefined> = {
   readonly [routerParamsType]: Params
 }
+
+type ScopedRoute<RouteType extends Route, Params extends ObjectSchema | undefined> = RouteType &
+  RouterParameterScope<Params>
 
 type ScopedDefinition<Definition, Params extends ObjectSchema | undefined> = Definition extends Route
   ? ScopedRoute<Definition, Params>

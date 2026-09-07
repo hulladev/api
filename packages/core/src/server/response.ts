@@ -1,4 +1,5 @@
 import type { AnyRouteResponse, ResponseHeaders, RouteResponses } from '../contract/response'
+import type { ResponseHeaderValues } from '../headers'
 import type { StreamSource } from '../stream'
 import type { AnySchema, SchemaOutbound } from '../validation'
 
@@ -25,7 +26,7 @@ type ResponseHeaderFields<ResponseDefinition extends AnyRouteResponse> = Respons
   ? object
   : ResponseDefinition['headers'] extends ResponseHeaders
     ? { readonly headers: SchemaOutbound<ResponseDefinition['headers']> }
-    : { readonly headers?: Readonly<Record<string, string>> }
+    : { readonly headers?: ResponseHeaderValues }
 
 type ResponseBodyArguments<ResponseDefinition extends AnyRouteResponse> = ResponseDefinition['body'] extends {
   readonly kind: 'empty'
@@ -39,7 +40,7 @@ type ResponseHeaderArguments<ResponseDefinition extends AnyRouteResponse> = Resp
   ? readonly []
   : ResponseDefinition['headers'] extends ResponseHeaders
     ? readonly [headers: SchemaOutbound<ResponseDefinition['headers']>]
-    : readonly [headers?: Readonly<Record<string, string>>]
+    : readonly [headers?: ResponseHeaderValues]
 
 export type ServerResponseResultFor<Status extends number, ResponseDefinition extends AnyRouteResponse> = {
   readonly status: Status
@@ -70,7 +71,7 @@ export type ServerErrorResult<
   readonly [CurrentStatus in Status]: ServerResponseResultFor<CurrentStatus, Errors[CurrentStatus]>
 }[Status]
 
-export const createServerResponse = ((status: number, body?: unknown, headers?: Readonly<Record<string, string>>) => ({
+export const createServerResponse = ((status: number, body?: unknown, headers?: ResponseHeaderValues) => ({
   status,
   ...(body === undefined ? {} : { body }),
   ...(headers === undefined ? {} : { headers }),

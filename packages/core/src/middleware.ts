@@ -23,14 +23,14 @@ export function assertMiddlewares(
   for (const value of values) assertMiddleware(label, value)
 }
 
-export type MiddlewarePlan<Middleware, Route> = readonly [
-  all: readonly Middleware[],
-  global: readonly Middleware[],
-  routes?: ReadonlyMap<Route, readonly Middleware[]>,
-]
+export type MiddlewarePlan<Middleware, Route> = {
+  readonly all: readonly Middleware[]
+  readonly global: readonly Middleware[]
+  readonly routes?: ReadonlyMap<Route, readonly Middleware[]>
+}
 
 export function createMiddlewarePlan<Middleware, Route>(): MiddlewarePlan<Middleware, Route> {
-  return [[], []]
+  return { all: [], global: [] }
 }
 
 export function appendMiddlewarePlan<Middleware, Route>(
@@ -39,33 +39,28 @@ export function appendMiddlewarePlan<Middleware, Route>(
   values: readonly unknown[],
   routesFor: (node: unknown) => readonly Route[]
 ): MiddlewarePlan<Middleware, Route> {
+  if (values.length !== 1 && values.length !== 2) assertMiddleware(label, undefined)
+  const candidate = values[values.length - 1]
+  assertMiddleware(label, candidate)
+  const middleware = candidate as Middleware
+  const all = [...plan.all, middleware]
   if (values.length === 1) {
-    assertMiddleware(label, values[0])
-    const middleware = values[0] as Middleware
-    if (plan[2] === undefined)
-      return [
-        [...plan[0], middleware],
-        [...plan[1], middleware],
-      ]
-    const routes = new Map(plan[2])
-    for (const [route, middlewares] of routes) routes.set(route, [...middlewares, middleware])
-    return [[...plan[0], middleware], [...plan[1], middleware], routes]
+    const global = [...plan.global, middleware]
+    if (plan.routes === undefined) return { all, global }
+    const routes = new Map(plan.routes)
+    for (const [route, stack] of routes) routes.set(route, [...stack, middleware])
+    return { all, global, routes }
   }
-  if (values.length !== 2) assertMiddleware(label, undefined)
-  assertMiddleware(label, values[1])
-  const middleware = values[1] as Middleware
-  const routes = new Map(plan[2])
-  for (const route of routesFor(values[0])) {
-    routes.set(route, [...(routes.get(route) ?? plan[1]), middleware])
-  }
-  return [[...plan[0], middleware], plan[1], routes]
+  const routes = new Map(plan.routes)
+  for (const route of routesFor(values[0])) routes.set(route, [...(routes.get(route) ?? plan.global), middleware])
+  return { all, global: plan.global, routes }
 }
 
 export function routeMiddlewares<Middleware, Route>(
   plan: MiddlewarePlan<Middleware, Route>,
   route: Route
 ): readonly Middleware[] {
-  return plan[2]?.get(route) ?? plan[1]
+  return plan.routes?.get(route) ?? plan.global
 }
 
 export type MiddlewareDispatchErrors = {

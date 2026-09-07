@@ -9,6 +9,7 @@ export { contractInput, contractNodeKey, defineContract } from './contract'
 export type {
   Contract,
   ContractNodeFor,
+  ContractNodeIdentity,
   ContractNodeKey,
   ContractOptions,
   ContractRoute,
@@ -88,6 +89,9 @@ export type {
   RouterMetadata,
   RouterOptions,
   RouterParams,
+  RouterParameterScope,
   RouterParamsForRoute,
   RouterRoutes,
 } from './contract/router'
+
+export type { ResponseHeaderValues } from './headers'

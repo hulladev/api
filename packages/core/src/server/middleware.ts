@@ -7,11 +7,15 @@ import type { ServerRouteMetadata } from './context'
 export type ServerMiddlewareNext<Result> = MiddlewareNext<Promise<Result>>
 
 export type Middleware<Context extends object, Route, Errors extends NormalizedErrorStatusMap> = <Result>(
-  options: MiddlewareOptions<{ readonly context: Readonly<Context>; readonly route: Route }, Promise<Result>> &
+  options: MiddlewareOptions<
+    { readonly signal: AbortSignal; readonly context: Readonly<Context>; readonly route: Route },
+    Promise<Result>
+  > &
     ErrorFactoryField<Errors>
 ) => Awaitable<Result | ErrorInstance<Errors>>
 
 export type ServerMiddlewareInput<Context extends object, ContractType extends Contract = Contract> = {
+  readonly signal: AbortSignal
   readonly context: Readonly<Context>
   readonly route: ServerRouteMetadata<ContractType>
 }

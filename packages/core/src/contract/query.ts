@@ -71,7 +71,17 @@ function encodedQuery(value: unknown): QueryWireObject {
 }
 
 function queryInput(parameters: QuerySource): Readonly<Record<string, unknown>> {
-  if (!(parameters instanceof URLSearchParams)) return parameters
+  if (!(parameters instanceof URLSearchParams)) {
+    let normalized: Record<string, unknown> | undefined
+    for (const [key, value] of Object.entries(parameters)) {
+      if (value === undefined || (Array.isArray(value) && value.length <= 1)) {
+        normalized ??= { ...parameters }
+        if (value === undefined || (Array.isArray(value) && value.length === 0)) delete normalized[key]
+        else setOwn(normalized, key, (value as unknown[])[0])
+      }
+    }
+    return normalized ?? parameters
+  }
   const input: Record<string, string | string[]> = {}
   for (const [key, value] of parameters) {
     const existing = input[key]

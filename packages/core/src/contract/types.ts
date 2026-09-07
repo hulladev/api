@@ -8,19 +8,19 @@ export type ContractRoute = Route | AnyRouter
 
 export type ContractRoutes = Readonly<Record<string, ContractRoute>>
 
-type MountedNode<Key extends readonly string[]> = {
+export type ContractNodeIdentity<Key extends readonly string[]> = {
   readonly [contractNodeType]?: Key
 }
 
 type MountedRouter<Definition extends AnyRouter, Key extends readonly string[]> = Definition &
-  MountedNode<Key> & {
+  ContractNodeIdentity<Key> & {
     readonly [Child in keyof RouterRoutes<Definition>]: Child extends keyof Definition
       ? MountedContractRoute<Extract<Definition[Child], ContractRoute>, readonly [...Key, Child & string]>
       : never
   }
 
 type MountedContractRoute<Definition extends ContractRoute, Key extends readonly string[]> = Definition extends Route
-  ? Definition & MountedNode<Key>
+  ? Definition & ContractNodeIdentity<Key>
   : Definition extends AnyRouter
     ? MountedRouter<Definition, Key>
     : never
@@ -41,7 +41,7 @@ export type Contract<
   readonly basePath: BasePath
   readonly routes: ContractRoutesFor<Routes>
   readonly errors: Readonly<Errors>
-} & MountedNode<readonly []>
+} & ContractNodeIdentity<readonly []>
 
 type NestedContractNode<Definition> = Definition extends AnyRouter
   ?

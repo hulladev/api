@@ -223,7 +223,7 @@ export const formData = /* @__PURE__ */ defineDefaultBodyResponse<
   'multipart/form-data'
 >('form-data', formDataSchema, 'multipart/form-data')
 
-export const stream = defineStreamResponse()
+export const stream = /* @__PURE__ */ defineStreamResponse()
 
 export function raw(): RouteResponse<ResponseBody<'raw'>, undefined, undefined> {
   return Object.freeze({

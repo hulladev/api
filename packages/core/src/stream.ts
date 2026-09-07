@@ -117,10 +117,11 @@ function stringifyJson(value: JsonValue): string {
   return encoded
 }
 
-async function* decodeTextLines(source: StreamSource<Uint8Array>): AsyncIterable<string> {
+async function* decodeTextLines(source: StreamSource<Uint8Array>, maxRecordBytes: number): AsyncIterable<string> {
   const decoder = new TextDecoder()
   let buffer = ''
   let scanStart = 0
+  let recordBytes = 0
 
   function takeLine(final: boolean): string | undefined {
     for (let index = scanStart; index < buffer.length; index++) {
@@ -156,6 +157,10 @@ async function* decodeTextLines(source: StreamSource<Uint8Array>): AsyncIterable
   }
 
   for await (const chunk of source) {
+    for (const byte of chunk) {
+      if (byte === 10 || byte === 13) recordBytes = 0
+      else if (++recordBytes > maxRecordBytes) throw new RangeError('Stream record exceeds maxRecordBytes')
+    }
     buffer += decoder.decode(chunk, { stream: true })
     let line = takeLine(false)
     while (line !== undefined) {
@@ -208,8 +213,8 @@ async function* encodeNdjson(source: StreamSource<JsonValue>): AsyncIterable<Uin
   for await (const value of source) yield textEncoder.encode(`${stringifyJson(value)}\n`)
 }
 
-async function* decodeNdjson(source: StreamSource<Uint8Array>): AsyncIterable<JsonValue> {
-  for await (const line of decodeTextLines(source)) {
+async function* decodeNdjson(source: StreamSource<Uint8Array>, limit: number): AsyncIterable<JsonValue> {
+  for await (const line of decodeTextLines(source, limit)) {
     if (line.length > 0) yield JSON.parse(line) as JsonValue
   }
 }
@@ -218,14 +223,16 @@ async function* encodeSseJson(source: StreamSource<JsonValue>): AsyncIterable<Ui
   for await (const value of source) yield textEncoder.encode(`data: ${stringifyJson(value)}\n\n`)
 }
 
-async function* decodeSseJson(source: StreamSource<Uint8Array>): AsyncIterable<JsonValue> {
+async function* decodeSseJson(source: StreamSource<Uint8Array>, limit: number): AsyncIterable<JsonValue> {
   let data: string[] = []
+  let dataBytes = 0
 
-  for await (const line of decodeTextLines(source)) {
+  for await (const line of decodeTextLines(source, limit)) {
     if (line === '') {
       if (data.length > 0) {
         yield JSON.parse(data.join('\n')) as JsonValue
         data = []
+        dataBytes = 0
       }
       continue
     }
@@ -236,25 +243,44 @@ async function* decodeSseJson(source: StreamSource<Uint8Array>): AsyncIterable<J
     const field = separator === -1 ? line : line.slice(0, separator)
     let value = separator === -1 ? '' : line.slice(separator + 1)
     if (value.startsWith(' ')) value = value.slice(1)
-    if (field === 'data') data.push(value)
+    if (field === 'data') {
+      dataBytes += textEncoder.encode(value).byteLength + 1
+      if (dataBytes > limit) throw new RangeError('SSE event exceeds maxRecordBytes')
+      data.push(value)
+    }
   }
 }
 
-/** Frames JSON wire values as newline-delimited JSON records. */
-export const ndjson = /* @__PURE__ */ defineStreamFormat({
-  id: 'ndjson',
-  contentType: 'application/x-ndjson',
-  encode: encodeNdjson,
-  decode: decodeNdjson,
-})
+export type JsonStreamOptions = { readonly maxRecordBytes?: number }
 
-/**
- * Frames JSON wire values in server-sent event data fields.
- * Event names, IDs, retry directives, and reconnection policy remain application concerns.
- */
-export const sseJson = /* @__PURE__ */ defineStreamFormat({
-  id: 'sse-json',
-  contentType: 'text/event-stream',
-  encode: encodeSseJson,
-  decode: decodeSseJson,
-})
+function recordLimit(options: JsonStreamOptions): number {
+  const limit = options.maxRecordBytes ?? 1_048_576
+  if (limit !== Infinity && (!Number.isSafeInteger(limit) || limit < 0))
+    throw new TypeError('maxRecordBytes must be a non-negative safe integer or Infinity')
+  return limit
+}
+
+/** Creates NDJSON framing with a bound on incoming record bytes. */
+export function createNdjsonFormat(options: JsonStreamOptions = {}) {
+  const limit = recordLimit(options)
+  return defineStreamFormat({
+    id: 'ndjson',
+    contentType: 'application/x-ndjson',
+    encode: encodeNdjson,
+    decode: (source: StreamSource<Uint8Array>) => decodeNdjson(source, limit),
+  })
+}
+
+/** Creates JSON SSE framing with a bound on incoming line and event bytes. */
+export function createSseJsonFormat(options: JsonStreamOptions = {}) {
+  const limit = recordLimit(options)
+  return defineStreamFormat({
+    id: 'sse-json',
+    contentType: 'text/event-stream',
+    encode: encodeSseJson,
+    decode: (source: StreamSource<Uint8Array>) => decodeSseJson(source, limit),
+  })
+}
+
+export const ndjson = /* @__PURE__ */ createNdjsonFormat()
+export const sseJson = /* @__PURE__ */ createSseJsonFormat()

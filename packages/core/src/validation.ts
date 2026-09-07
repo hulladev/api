@@ -27,12 +27,9 @@ export type AsyncSchema<Schema extends AnySchema = AnySchema> = Schema & {
   readonly [asyncSchemaType]: Schema
 }
 
-/** @internal A validation step that stays synchronous unless its schema actually suspends. */
-export type SchemaStep<Value> = ExecutionStep<Value>
-
 export type SchemaExecutionPlan<Schema extends AnySchema = AnySchema> = {
-  readonly decode: (value: unknown) => SchemaStep<SchemaOutput<Schema>>
-  readonly encode?: (value: SchemaOutput<Schema>) => SchemaStep<SchemaInput<Schema>>
+  readonly decode: (value: unknown) => ExecutionStep<SchemaOutput<Schema>>
+  readonly encode?: (value: SchemaOutput<Schema>) => ExecutionStep<SchemaInput<Schema>>
 }
 
 type HullaCodecProperties<Wire, Application> = {
@@ -53,8 +50,8 @@ export type CodecSchema<Wire, Application> = StandardSchemaV1<Wire, Application>
 }
 
 export type CodecOptions<Wire, Application> = {
-  readonly decode: (value: Wire) => SchemaStep<Application>
-  readonly encode: (value: Application) => SchemaStep<Wire>
+  readonly decode: (value: Wire) => ExecutionStep<Application>
+  readonly encode: (value: Application) => ExecutionStep<Wire>
 }
 
 type IdentityCheckedSchema<Schema extends AnySchema> = [SchemaInput<Schema>] extends [SchemaOutput<Schema>]
@@ -100,7 +97,7 @@ function isObject(value: unknown): value is Record<PropertyKey, unknown> {
 function codecValidation<Input, Output>(
   source: StandardSchemaV1<Input, Input>,
   target: StandardSchemaV1<Output, Output>,
-  transform: (value: Input) => SchemaStep<Output>
+  transform: (value: Input) => ExecutionStep<Output>
 ): StandardSchemaV1<Input, Output>['~standard']['validate'] {
   return (value: unknown) => {
     const result = mapExecutionStep(source['~standard'].validate(value), (sourceResult) => {
@@ -200,19 +197,6 @@ export function asyncSchema<const Schema extends AnySchema>(schema: Schema): Asy
   return wrapper
 }
 
-/** @internal */
-export function isSchemaStepAsync<Value>(value: SchemaStep<Value>): value is PromiseLike<Value> {
-  return isPromiseLike(value)
-}
-
-/** @internal Maps a validation step without scheduling synchronous validators on the microtask queue. */
-export function mapSchemaStep<Value, Result>(
-  value: SchemaStep<Value>,
-  transform: (value: Value) => Result
-): SchemaStep<Result> {
-  return mapExecutionStep(value, transform)
-}
-
 function validationValue<Output>(result: StandardSchemaV1.Result<Output>, options?: SchemaValidationOptions): Output {
   if (result.issues !== undefined) throw new SchemaValidationError(result.issues, options)
   return result.value
@@ -222,9 +206,9 @@ function validateWithValue<Output>(
   schema: StandardSchemaV1<unknown, Output>,
   value: unknown,
   options?: SchemaValidationOptions
-): SchemaStep<Output> {
+): ExecutionStep<Output> {
   const result = schema['~standard'].validate(value)
-  return isSchemaStepAsync(result)
+  return isPromiseLike(result)
     ? Promise.resolve(result).then((resolved) => validationValue(resolved, options))
     : validationValue(result, options)
 }
@@ -269,7 +253,7 @@ export function decodeSchemaValue<const Schema extends AnySchema>(
   schema: Schema,
   value: unknown,
   options?: SchemaValidationOptions
-): SchemaStep<SchemaOutput<Schema>> {
+): ExecutionStep<SchemaOutput<Schema>> {
   return compileSchemaExecution(schema, options).decode(value)
 }
 
