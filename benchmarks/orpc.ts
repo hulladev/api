@@ -134,14 +134,14 @@ export const orpcBenchmarks: readonly Benchmark[] = [
     runtime: 'oRPC',
     scenario: 'small-json-post',
     async run() {
-      assertCreatedUser(await client.createUser(encodeValue(createUserInput, createUserValue)))
+      assertCreatedUser(await client.createUser(createUserValue))
     },
   },
   {
     runtime: 'oRPC',
     scenario: 'large-json-post',
     async run() {
-      assertLarge(await client.large(encodeValue(largeInput, largeValue)))
+      assertLarge(await client.large(largeValue))
     },
   },
 ]
@@ -152,7 +152,7 @@ export const orpcApplicationBenchmarks: readonly Benchmark[] = [
     runtime: 'oRPC',
     scenario: 'path-parameter-read',
     async run() {
-      assertResource(await client.resource(encodeValue(resourceParams, resourceValue)))
+      assertResource(await client.resource(resourceValue))
     },
   },
   {
@@ -162,9 +162,9 @@ export const orpcApplicationBenchmarks: readonly Benchmark[] = [
     async run() {
       assertCollection(
         await client.collection({
-          params: encodeValue(organizationParams, { organizationId: resourceValue.organizationId }),
-          query: encodeValue(resourceQuery, queryValue),
-          headers: encodeValue(resourceHeaders, headerValue),
+          params: { organizationId: resourceValue.organizationId },
+          query: queryValue,
+          headers: headerValue,
         })
       )
     },
@@ -176,10 +176,10 @@ export const orpcApplicationBenchmarks: readonly Benchmark[] = [
     async run() {
       assertResource(
         await client.update({
-          params: encodeValue(resourceParams, resourceValue),
-          query: encodeValue(updateQuery, updateQueryValue),
-          headers: encodeValue(resourceHeaders, headerValue),
-          body: encodeValue(updateBody, updateBodyValue),
+          params: resourceValue,
+          query: updateQueryValue,
+          headers: headerValue,
+          body: updateBodyValue,
         })
       )
     },

@@ -30,7 +30,8 @@ type Env = {
 }
 
 const env: Env = { enabled: true }
-const executionContext: CloudflareExecutionContext = {
+const executionContext: CloudflareExecutionContext & { props: Record<string, unknown> } = {
+  props: {},
   passThroughOnException() {},
   waitUntil() {},
 }

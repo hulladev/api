@@ -32,7 +32,7 @@ async function hullaApiFirstCall(): Promise<void> {
   const handler = fetchAdapter().mount(server.implement({ health: () => ({ status: 200, body: healthValue }) }))
   const client = defineClient(contract, {
     transport: fetchTransport({ baseUrl: 'https://bench.local', fetch: handler }),
-  }).create()
+  })
   const result = await client.health()
   if (result.status !== 200 || !result.body.ok) throw new Error('Unexpected cold @hulla/api result')
 }

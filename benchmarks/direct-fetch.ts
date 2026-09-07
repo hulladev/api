@@ -114,7 +114,7 @@ export const directFetchApplicationBenchmarks: readonly Benchmark[] = [
     runtime: 'Direct Fetch',
     scenario: 'path-parameter-read',
     async run() {
-      const params = encodeValue(resourceParams, resourceValue)
+      const params = resourceValue
       const response = await applicationHandler(
         new Request(
           `https://bench.local/organizations/${encodeURIComponent(params.organizationId)}/users/${encodeURIComponent(params.userId)}`
@@ -128,9 +128,9 @@ export const directFetchApplicationBenchmarks: readonly Benchmark[] = [
     runtime: 'Direct Fetch',
     scenario: 'query-header-read',
     async run() {
-      const params = encodeValue(organizationParams, { organizationId: resourceValue.organizationId })
-      const query = encodeValue(resourceQuery, queryValue)
-      const headers = encodeValue(resourceHeaders, headerValue)
+      const params = { organizationId: resourceValue.organizationId }
+      const query = queryValue
+      const headers = headerValue
       const search = new URLSearchParams({ cursor: query.cursor, limit: query.limit })
       for (const role of query.role) search.append('role', role)
       const response = await applicationHandler(
@@ -146,9 +146,9 @@ export const directFetchApplicationBenchmarks: readonly Benchmark[] = [
     runtime: 'Direct Fetch',
     scenario: 'mixed-update',
     async run() {
-      const query = encodeValue(updateQuery, updateQueryValue)
-      const headers = encodeValue(resourceHeaders, headerValue)
-      const body = encodeValue(updateBody, updateBodyValue)
+      const query = updateQueryValue
+      const headers = headerValue
+      const body = updateBodyValue
       const response = await applicationHandler(
         new Request(`https://bench.local${resourcePath()}?notify=${query.notify}`, {
           method: 'PATCH',
@@ -214,7 +214,7 @@ export const directFetchBenchmarks: readonly Benchmark[] = [
     runtime: 'Direct Fetch',
     scenario: 'small-json-post',
     async run() {
-      const input = encodeValue(createUserInput, createUserValue)
+      const input = createUserValue
       const response = await handler(
         new Request('https://bench.local/users', {
           method: 'POST',
@@ -229,7 +229,7 @@ export const directFetchBenchmarks: readonly Benchmark[] = [
     runtime: 'Direct Fetch',
     scenario: 'large-json-post',
     async run() {
-      const input = encodeValue(largeInput, largeValue)
+      const input = largeValue
       const response = await handler(
         new Request('https://bench.local/large', {
           method: 'POST',

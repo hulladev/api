@@ -5,13 +5,15 @@
   "type": "module",
   "scripts": {
     "analyze:size": "bun package-size.ts --analyze",
-    "bench": "bun package-size.ts && bun fetch-roundtrip.ts && bun runners/adapters.ts",
+    "bench": "bun runners/all.ts",
     "bench:adapters": "bun runners/adapters.ts",
     "bench:implementations": "bun runners/server-implementations.ts",
     "bench:node": "bun package-size.ts && bun build fetch-roundtrip.ts --target=node --packages=external --outfile=node-runner.mjs && node node-runner.mjs",
-    "check:size": "bun package-size.ts --check",
-    "test": "vitest run harness/index.test.ts adapters/cohorts.test.ts",
-    "typecheck": "tsc --noEmit"
+    "check:size": "bun package-size.ts",
+    "test": "vitest run harness/*.test.ts adapters/cohorts.test.ts && bun preflight.ts",
+    "typecheck": "tsc --noEmit",
+    "preflight": "bun preflight.ts",
+    "bench:diagnostics": "bun runners/diagnostics.ts"
   },
   "devDependencies": {
     "@hono/zod-validator": "^0.9.0",

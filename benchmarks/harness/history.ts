@@ -1,19 +1,19 @@
 import { execFileSync } from 'node:child_process'
-import { createHash } from 'node:crypto'
-import { appendFile, mkdir, readFile, readdir } from 'node:fs/promises'
-import { arch, cpus, hostname, platform, release } from 'node:os'
-import { dirname, relative, resolve } from 'node:path'
+import { appendFile, mkdir, readFile } from 'node:fs/promises'
+import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { benchmarkScenarios, type BenchmarkScenario } from '../fixtures/scenario'
 import {
+  independentSamples,
+  withSampleGroups,
   compareBenchmarkSamples,
-  runtimeLabel,
   summarizeBenchmarkResult,
   type BenchmarkDimensions,
   type BenchmarkOptions,
   type BenchmarkProfile,
   type BenchmarkResult,
 } from './index'
+import { benchmarkIdentity, METHODOLOGY_VERSION, type BenchmarkIdentity } from './provenance'
 
 type StoredResult = Partial<BenchmarkDimensions> & {
   readonly iterations?: number
@@ -22,6 +22,9 @@ type StoredResult = Partial<BenchmarkDimensions> & {
   readonly runtimeKey?: string
   readonly runs?: number
   readonly samples: readonly number[]
+  readonly sampleGroups?: readonly (readonly number[])[]
+  readonly processId?: number
+  readonly processIds?: readonly number[]
   readonly scenario: BenchmarkScenario
   readonly warmup?: number
 }
@@ -42,6 +45,7 @@ export type BenchmarkEnvironment = {
 }
 
 type HistoryRecord = {
+  readonly identity?: BenchmarkIdentity
   readonly environment: BenchmarkEnvironment
   readonly fingerprint: string
   readonly iterations: number
@@ -55,6 +59,7 @@ type HistoryRecord = {
 }
 
 export type BenchmarkHistory = {
+  readonly identity: BenchmarkIdentity
   readonly compatibleRuns: number
   readonly currentLabel: string
   readonly environment: BenchmarkEnvironment
@@ -68,56 +73,7 @@ export type BenchmarkHistory = {
 
 const benchmarkDirectory = dirname(fileURLToPath(import.meta.url))
 const repositoryDirectory = resolve(benchmarkDirectory, '../..')
-const benchmarkRoot = resolve(repositoryDirectory, 'benchmarks')
 const corePackagePath = resolve(repositoryDirectory, 'packages/core/package.json')
-const fingerprintPaths = [
-  resolve(repositoryDirectory, 'packages'),
-  benchmarkRoot,
-  resolve(benchmarkRoot, 'package.json'),
-  resolve(repositoryDirectory, 'bun.lock'),
-  resolve(repositoryDirectory, 'package.json'),
-]
-
-async function sourceFiles(path: string): Promise<readonly string[]> {
-  const entries = await readdir(path, { withFileTypes: true })
-  const files: string[] = []
-  for (const entry of entries) {
-    if (entry.name === 'node_modules' || entry.name === 'results' || entry.name.startsWith('.')) continue
-    const child = resolve(path, entry.name)
-    if (entry.isDirectory()) files.push(...(await sourceFiles(child)))
-    else if (entry.isFile() && (entry.name.endsWith('.ts') || entry.name === 'package.json')) files.push(child)
-  }
-  return files
-}
-
-async function sourceFingerprint(): Promise<string> {
-  const hash = createHash('sha256')
-  const files: string[] = []
-  for (const path of fingerprintPaths) {
-    const entries = await readdir(path).catch(() => undefined)
-    if (entries === undefined) files.push(path)
-    else files.push(...(await sourceFiles(path)))
-  }
-
-  for (const path of files.sort()) {
-    hash.update(relative(repositoryDirectory, path))
-    hash.update('\0')
-    hash.update(await readFile(path, 'utf8'))
-    hash.update('\0')
-  }
-  return hash.digest('hex')
-}
-
-function environment(): BenchmarkEnvironment {
-  return {
-    architecture: arch(),
-    cpu: cpus()[0]?.model ?? 'unknown',
-    host: hostname(),
-    osRelease: release(),
-    platform: platform(),
-    runtime: runtimeLabel(),
-  }
-}
 
 function gitOutput(arguments_: readonly string[]): string | undefined {
   try {
@@ -266,23 +222,34 @@ function stableRuntimeKey(result: StoredResult): string {
   return result.runtimeKey ?? result.runtime.replace(/\s+\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?=\s|$)(?:\s+-)?/, '')
 }
 
-function resultKey(result: StoredResult): string {
-  return `${result.profile}\0${result.scenario}\0${stableRuntimeKey(result)}`
+export function resultKey(result: StoredResult): string {
+  return `${result.profile}\0${result.scenario}\0${stableRuntimeKey(result)}\0${result.iterations}\0${result.warmup}`
 }
 
-function aggregateResults(
+export function aggregateResults(
   current: readonly BenchmarkResult[],
-  records: readonly HistoryRecord[]
+  records: readonly Pick<HistoryRecord, 'results'>[]
 ): readonly BenchmarkResult[] {
-  const collected = new Map<string, { runs: number; samples: number[] }>()
+  const collected = new Map<
+    string,
+    { runs: number; samples: number[]; groups: (readonly number[])[]; processIds: number[] }
+  >()
   for (const record of records) {
     for (const result of record.results) {
       const key = resultKey(result)
       const aggregate = collected.get(key)
-      if (aggregate === undefined) collected.set(key, { runs: result.runs ?? 1, samples: [...result.samples] })
+      if (aggregate === undefined)
+        collected.set(key, {
+          runs: result.runs ?? 1,
+          samples: [...result.samples],
+          processIds: [...(result.processIds ?? (result.processId === undefined ? [] : [result.processId]))],
+          groups: [...(result.sampleGroups ?? [result.samples])],
+        })
       else {
         aggregate.runs += result.runs ?? 1
+        aggregate.processIds.push(...(result.processIds ?? (result.processId === undefined ? [] : [result.processId])))
         aggregate.samples.push(...result.samples)
+        aggregate.groups.push(...(result.sampleGroups ?? [result.samples]))
       }
     }
   }
@@ -290,7 +257,7 @@ function aggregateResults(
   return current.map((result) => {
     const aggregate = collected.get(resultKey(result))
     if (aggregate === undefined) return result
-    return summarizeBenchmarkResult(
+    const summary = summarizeBenchmarkResult(
       result.profile,
       result.runtime,
       result.scenario,
@@ -301,6 +268,7 @@ function aggregateResults(
       result.iterations,
       result.warmup
     )
+    return { ...withSampleGroups(summary, aggregate.groups), processIds: aggregate.processIds }
   })
 }
 
@@ -317,8 +285,8 @@ function previousSamples(records: readonly HistoryRecord[]): ReadonlyMap<string,
     for (const result of record.results) {
       const key = resultKey(result)
       const values = samples.get(key)
-      if (values === undefined) samples.set(key, [...result.samples])
-      else values.push(...result.samples)
+      if (values === undefined) samples.set(key, [...independentSamples(result)])
+      else values.push(...independentSamples(result))
     }
   }
   return samples
@@ -337,15 +305,17 @@ export async function persistBenchmarkHistory(
   options: BenchmarkOptions,
   path: string
 ): Promise<BenchmarkHistory> {
-  const currentEnvironment = environment()
-  const fingerprint = await sourceFingerprint()
+  const identity = await benchmarkIdentity()
+  const currentEnvironment = identity.environment
+  const fingerprint = identity.productFingerprint
   const source = await sourceRevision()
   const record: HistoryRecord = {
+    identity,
     environment: currentEnvironment,
     fingerprint,
     iterations: options.iterations,
     minSampleTimeMs: options.minSampleTimeMs,
-    methodologyVersion: 2,
+    methodologyVersion: METHODOLOGY_VERSION,
     results: results.map(
       ({
         adapter,
@@ -359,6 +329,9 @@ export async function persistBenchmarkHistory(
         runtimeKey,
         runs,
         samples,
+        sampleGroups,
+        processId,
+        processIds,
         scenario,
         suite,
         warmup,
@@ -374,6 +347,9 @@ export async function persistBenchmarkHistory(
         runtimeKey,
         runs,
         samples,
+        ...(sampleGroups === undefined ? {} : { sampleGroups }),
+        ...(processId === undefined ? {} : { processId }),
+        ...(processIds === undefined ? {} : { processIds }),
         scenario,
         suite,
         warmup,
@@ -393,7 +369,8 @@ export async function persistBenchmarkHistory(
     (candidate) =>
       candidate.iterations === options.iterations &&
       (candidate.minSampleTimeMs ?? 0) === options.minSampleTimeMs &&
-      candidate.methodologyVersion === 2 &&
+      candidate.methodologyVersion === METHODOLOGY_VERSION &&
+      candidate.identity?.workloadFingerprint === identity.workloadFingerprint &&
       candidate.warmup === options.warmup &&
       sameEnvironment(candidate.environment, currentEnvironment)
   )
@@ -419,12 +396,19 @@ export async function persistBenchmarkHistory(
     const priorDirect = direct === undefined ? undefined : samples?.get(resultKey(direct))
     return {
       ...result,
-      comparison: compareBenchmarkSamples(result.samples, prior, direct?.samples, priorDirect),
+      comparison: compareBenchmarkSamples(
+        independentSamples(result),
+        prior,
+        direct === undefined ? undefined : independentSamples(direct),
+        priorDirect
+      ),
+      rawComparison: compareBenchmarkSamples(independentSamples(result), prior),
       previousMedian: median(prior),
     }
   })
   const compatibleRuns = compatible.reduce((total, candidate) => total + (candidate.results[0]?.runs ?? 1), 0)
   return {
+    identity,
     compatibleRuns,
     currentLabel: revisionLabel(record),
     environment: currentEnvironment,

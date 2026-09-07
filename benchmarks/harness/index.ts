@@ -11,6 +11,7 @@ import {
   type BenchmarkSuite,
 } from '../fixtures/scenario'
 import type { BenchmarkEnvironment, SourceRevision } from './history'
+import { METHODOLOGY_VERSION, type BenchmarkIdentity } from './provenance'
 
 /** One complete in-memory client-to-server round trip. */
 export type Benchmark = {
@@ -46,12 +47,12 @@ const benchmarkProfiles: Readonly<Record<BenchmarkProfile, { readonly descriptio
         'Common REST-shaped reads and writes covering path parameters, query values, headers, and JSON bodies. RPC packages carry the equivalent values through their native protocol.',
     },
     'strict-parity': {
-      title: 'Validated round trips',
+      title: 'Equivalent validation policy',
       description:
-        'Each package validates requests and responses at the boundaries provided by its public model. Guarantees differ and are listed in the benchmark README.',
+        'Server input, server output, and client output are validated; no manually added client input validation. HTTP/RPC protocol differences remain explicit.',
     },
     native: {
-      title: 'Native validated paths',
+      title: 'Recommended everyday setup',
       description:
         'Each package uses its simplest practical validated/recommended path. Runtime guarantees differ, so these results show idiomatic cost rather than equal-capability performance.',
     },
@@ -93,6 +94,7 @@ export type BenchmarkResult = {
   readonly phase: BenchmarkPhase
   readonly profile: BenchmarkProfile
   readonly protocol: BenchmarkProtocol
+  readonly rawComparison?: BenchmarkComparison
   readonly comparison?: BenchmarkComparison
   readonly previousMedian?: number
   readonly runs: number
@@ -100,6 +102,9 @@ export type BenchmarkResult = {
   readonly runtimeKey: string
   readonly scenario: BenchmarkScenario
   readonly samples: readonly number[]
+  readonly sampleGroups?: readonly (readonly number[])[]
+  readonly processId?: number
+  readonly processIds?: readonly number[]
   readonly standardDeviation: number
   readonly suite: BenchmarkSuite
   readonly warmup: number
@@ -244,7 +249,7 @@ export function compareBenchmarkSamples(
     change,
     confidenceHigh,
     confidenceLow,
-    verdict,
+    verdict: current.length < 3 || previous.length < 3 ? 'inconclusive' : verdict,
   }
 }
 
@@ -313,6 +318,16 @@ export function summarizeBenchmarkResult(
   }
 }
 
+/** Runs are the sampling units; batches within one run are correlated. */
+export function independentSamples(result: Pick<BenchmarkResult, 'samples' | 'sampleGroups'>): readonly number[] {
+  return (result.sampleGroups ?? [result.samples]).map(median)
+}
+
+export function withSampleGroups(result: BenchmarkResult, groups: readonly (readonly number[])[]): BenchmarkResult {
+  const confidence = medianConfidenceInterval(groups.map(median))
+  return { ...result, sampleGroups: groups, confidenceLow: confidence.low, confidenceHigh: confidence.high }
+}
+
 function formatMicroseconds(nanoseconds: number): string {
   return (nanoseconds / 1_000).toFixed(2)
 }
@@ -344,12 +359,13 @@ function formatMedian(result: BenchmarkResult): string {
 function formatComparison(result: BenchmarkResult): string {
   const comparison = result.comparison
   if (comparison === undefined) return '—'
+  const raw = result.rawComparison === undefined ? '' : `; raw ${formatPercent(result.rawComparison.change)}`
   const basis = comparison.basis === 'direct-normalized' ? 'normalized' : 'raw'
-  return `${formatPercent(comparison.change)} [${formatPercent(comparison.confidenceLow)}, ${formatPercent(comparison.confidenceHigh)}] · ${comparison.verdict} (${basis})`
+  return `${formatPercent(comparison.change)} [${formatPercent(comparison.confidenceLow)}, ${formatPercent(comparison.confidenceHigh)}] · ${comparison.verdict} (${basis}${raw})`
 }
 
 function profileOrder(): readonly BenchmarkProfile[] {
-  return ['application', 'strict-parity', 'native', 'focused']
+  return ['native', 'application', 'strict-parity', 'focused']
 }
 
 type ApplicationSummary = {
@@ -432,15 +448,9 @@ type AggregateCohort = {
 
 const aggregateCohorts: readonly AggregateCohort[] = [
   {
-    title: 'All comparable request round trips',
+    title: 'Recommended everyday setup',
     adapter: 'fetch',
     selectors: [
-      { profile: 'application', scenario: 'path-parameter-read' },
-      { profile: 'application', scenario: 'query-header-read' },
-      { profile: 'application', scenario: 'mixed-update' },
-      { profile: 'strict-parity', scenario: 'static-get' },
-      { profile: 'strict-parity', scenario: 'small-json-post' },
-      { profile: 'strict-parity', scenario: 'large-json-post' },
       { profile: 'native', scenario: 'static-get' },
       { profile: 'native', scenario: 'small-json-post' },
       { profile: 'native', scenario: 'large-json-post' },
@@ -456,7 +466,7 @@ const aggregateCohorts: readonly AggregateCohort[] = [
     ],
   },
   {
-    title: 'Strict-parity validated round trips',
+    title: 'Equivalent validation policy',
     adapter: 'fetch',
     selectors: [
       { profile: 'strict-parity', scenario: 'static-get' },
@@ -464,15 +474,7 @@ const aggregateCohorts: readonly AggregateCohort[] = [
       { profile: 'strict-parity', scenario: 'large-json-post' },
     ],
   },
-  {
-    title: 'Native validated round trips',
-    adapter: 'fetch',
-    selectors: [
-      { profile: 'native', scenario: 'static-get' },
-      { profile: 'native', scenario: 'small-json-post' },
-      { profile: 'native', scenario: 'large-json-post' },
-    ],
-  },
+
   {
     title: 'Adapter dispatch',
     adapter: 'fetch',
@@ -566,7 +568,12 @@ function comparisonInterval(result: BenchmarkResult): string {
   const comparison = result.comparison
   if (comparison === undefined) return '—'
   const basis = comparison.basis === 'direct-normalized' ? 'direct-normalized' : 'raw'
-  return `${formatPercent(comparison.change)} [${formatPercent(comparison.confidenceLow)}, ${formatPercent(comparison.confidenceHigh)}] (${basis})`
+  const raw = result.rawComparison
+  const absolute =
+    raw === undefined
+      ? ''
+      : `; raw ${formatPercent(raw.change)} [${formatPercent(raw.confidenceLow)}, ${formatPercent(raw.confidenceHigh)}]`
+  return `${formatPercent(comparison.change)} [${formatPercent(comparison.confidenceLow)}, ${formatPercent(comparison.confidenceHigh)}] (${basis})${absolute}`
 }
 
 function hullaApiReference(results: readonly BenchmarkResult[]): BenchmarkResult | undefined {
@@ -764,7 +771,7 @@ function detailedResultLines(results: readonly BenchmarkResult[]): readonly stri
     '',
     '## Measured operation comparisons',
     '',
-    'Every measured operation is listed below in its host environment. Latencies are medians with deterministic 95% bootstrap intervals; lower is faster. Ratios compare medians within the same operation and adapter. The previous-change column reports the exact change and interval, not a qualitative summary.',
+    'Every measured operation is listed below in its host environment. Latencies are medians with deterministic 95% run-level bootstrap intervals; lower is faster. Ratios compare medians within the same operation and adapter. The previous-change column reports the exact change and interval, not a qualitative summary.',
   ]
 
   for (const adapter of [
@@ -891,19 +898,21 @@ export async function runBenchmarkRuns(
     onRun?.(run + 1, options.runs)
     completed.push(await runBenchmarks(benchmarks, options, run))
   }
-  return completed[0]!.map((result, index) =>
-    summarizeBenchmarkResult(
+  return completed[0]!.map((result, index) => {
+    const groups = completed.map((run) => run[index]!.samples)
+    const summary = summarizeBenchmarkResult(
       result.profile,
       result.runtime,
       result.scenario,
-      completed.flatMap((run) => run[index]!.samples),
+      groups.flat(),
       options.runs,
       result.runtimeKey,
       benchmarkDimensions(result.runtimeKey, result.scenario),
       result.iterations,
       result.warmup
     )
-  )
+    return { ...withSampleGroups(summary, groups), processId: process.pid }
+  })
 }
 
 export function printResults(
@@ -918,7 +927,9 @@ export function printResults(
   )
   if (previousLabel !== undefined) {
     console.log(`Previous revision: ${previousLabel}`)
-    console.log('Previous-change intervals are 95% bootstraps; package rows are normalized to matching direct drift.')
+    console.log(
+      'Previous-change intervals are 95% run-level bootstraps; package rows are normalized to matching direct drift.'
+    )
   }
   printApplicationSummary(results)
   for (const selectedProfile of profileOrder()) {
@@ -934,7 +945,7 @@ export function printResults(
       if (scenarioResults.length === 0 || direct === undefined || hullaApi === undefined) continue
       console.log(`\n${description}`)
       console.log(
-        '| Runtime | Median [95% CI] | CV | Samples | Ops/sec | vs direct | vs @hulla/api | vs previous [95% CI] |'
+        '| Runtime | Median batch-average cost [95% CI] | CV | Samples | Sequential ops/sec | vs direct | vs @hulla/api | vs previous [95% CI] |'
       )
       console.log('|---|---:|---:|---:|---:|---:|---:|---|')
       for (const result of scenarioResults) {
@@ -986,7 +997,7 @@ function bundleFootprintLines(results: readonly PackageSizeResult[]): readonly s
   ]
 }
 
-export function runtimeLabel(): string {
+function runtimeLabel(): string {
   return process.versions['bun'] === undefined ? `Node ${process.version}` : `Bun ${process.versions['bun']}`
 }
 
@@ -1044,12 +1055,12 @@ export async function writeBenchmarkReport(
     '',
     '## How to read the report',
     '',
-    '- `Median [95% CI]` is the primary measured latency; lower is faster.',
+    '- `Median [95% CI]` is median batch-average operation cost, not individual-request latency. Sequential ops/sec is its reciprocal, not loaded throughput.',
     '- `vs direct` and `vs @hulla/api` compare medians only within the same operation and host adapter.',
     ...(history.previousLabel === undefined
       ? []
       : [
-          '- `Change from previous` is a deterministic 95% bootstrap interval. Negative values are faster; positive values are slower. Non-direct rows are normalized by matching direct-baseline drift.',
+          '- `Change from previous` is a deterministic 95% run-level bootstrap interval. Negative values are faster; positive values are slower. Non-direct rows are normalized by matching direct-baseline drift.',
         ]),
     '- Aggregate rows use geometric means and require every operation in that cohort; missing coverage is shown as an em dash.',
     '- Native-protocol cohorts compare equivalent work through each package’s own protocol, not identical URL shapes or validation guarantees.',
@@ -1066,7 +1077,8 @@ export async function writeBenchmarkReport(
 
 type BenchmarkSnapshot = {
   readonly schemaVersion: 2
-  readonly methodologyVersion: 2
+  readonly methodologyVersion: number
+  readonly identity: BenchmarkIdentity
   readonly generatedAt: string
   readonly source: {
     readonly fingerprint: string
@@ -1084,6 +1096,7 @@ type BenchmarkSnapshot = {
   readonly results: readonly {
     readonly adapter: BenchmarkAdapter
     readonly coefficientOfVariation: number
+    readonly rawComparison?: BenchmarkComparison
     readonly comparison?: BenchmarkComparison
     readonly confidenceInterval95: readonly [number, number]
     readonly functionality: BenchmarkFunctionality
@@ -1100,6 +1113,8 @@ type BenchmarkSnapshot = {
     readonly runCount: number
     readonly runtime: string
     readonly runtimeKey: string
+    readonly processIds: readonly number[]
+    readonly sampleGroupsNs: readonly (readonly number[])[]
     readonly sampleCount: number
     readonly scenario: BenchmarkScenario
     readonly standardDeviationNs: number
@@ -1123,6 +1138,7 @@ export async function writeBenchmarkSnapshot(
     readonly previousLabel?: string
     readonly source: SourceRevision
     readonly totalRuns: number
+    readonly identity: BenchmarkIdentity
   }
 ): Promise<void> {
   const ordered = [...results].sort((left, right) => {
@@ -1141,7 +1157,8 @@ export async function writeBenchmarkSnapshot(
   })
   const snapshot: BenchmarkSnapshot = {
     schemaVersion: 2,
-    methodologyVersion: 2,
+    methodologyVersion: METHODOLOGY_VERSION,
+    identity: history.identity,
     generatedAt: new Date().toISOString(),
     source: {
       fingerprint: history.fingerprint,
@@ -1156,6 +1173,7 @@ export async function writeBenchmarkSnapshot(
       adapter: result.adapter,
       coefficientOfVariation: result.coefficientOfVariation,
       ...(result.comparison === undefined ? {} : { comparison: result.comparison }),
+      ...(result.rawComparison === undefined ? {} : { rawComparison: result.rawComparison }),
       confidenceInterval95: [result.confidenceLow, result.confidenceHigh],
       functionality: result.functionality,
       implementation: result.implementation,
@@ -1171,6 +1189,8 @@ export async function writeBenchmarkSnapshot(
       runCount: result.runs,
       runtime: result.runtime,
       runtimeKey: result.runtimeKey,
+      processIds: result.processIds ?? (result.processId === undefined ? [] : [result.processId]),
+      sampleGroupsNs: result.sampleGroups ?? [result.samples],
       sampleCount: result.samples.length,
       scenario: result.scenario,
       standardDeviationNs: result.standardDeviation,

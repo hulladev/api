@@ -11,7 +11,7 @@ const transport: ClientTransport = () => {
   throw new Error('Size fixture transport')
 }
 
-export const client = defineClient(contract, { transport }).create()
+export const client = defineClient(contract, { transport })
 export const server = defineServer(contract).implement({
   health: () => ({ status: 200, body: { ok: true } }),
 })

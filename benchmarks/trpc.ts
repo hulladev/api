@@ -143,14 +143,14 @@ export const trpcBenchmarks: readonly Benchmark[] = [
     runtime: 'tRPC',
     scenario: 'small-json-post',
     async run() {
-      assertCreatedUser(await client.createUser.mutate(encodeValue(createUserInput, createUserValue)))
+      assertCreatedUser(await client.createUser.mutate(createUserValue))
     },
   },
   {
     runtime: 'tRPC',
     scenario: 'large-json-post',
     async run() {
-      assertLarge(await client.large.mutate(encodeValue(largeInput, largeValue)))
+      assertLarge(await client.large.mutate(largeValue))
     },
   },
 ]
@@ -161,7 +161,7 @@ export const trpcApplicationBenchmarks: readonly Benchmark[] = [
     runtime: 'tRPC',
     scenario: 'path-parameter-read',
     async run() {
-      assertResource(await client.resource.query(encodeValue(resourceParams, resourceValue)))
+      assertResource(await client.resource.query(resourceValue))
     },
   },
   {
@@ -171,9 +171,9 @@ export const trpcApplicationBenchmarks: readonly Benchmark[] = [
     async run() {
       assertCollection(
         await client.collection.query({
-          params: encodeValue(organizationParams, { organizationId: resourceValue.organizationId }),
-          query: encodeValue(resourceQuery, queryValue),
-          headers: encodeValue(resourceHeaders, headerValue),
+          params: { organizationId: resourceValue.organizationId },
+          query: queryValue,
+          headers: headerValue,
         })
       )
     },
@@ -185,10 +185,10 @@ export const trpcApplicationBenchmarks: readonly Benchmark[] = [
     async run() {
       assertResource(
         await client.update.mutate({
-          params: encodeValue(resourceParams, resourceValue),
-          query: encodeValue(updateQuery, updateQueryValue),
-          headers: encodeValue(resourceHeaders, headerValue),
-          body: encodeValue(updateBody, updateBodyValue),
+          params: resourceValue,
+          query: updateQueryValue,
+          headers: headerValue,
+          body: updateBodyValue,
         })
       )
     },

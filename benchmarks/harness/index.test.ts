@@ -14,6 +14,7 @@ import {
   type Benchmark,
   type BenchmarkOptions,
 } from './index'
+import { benchmarkIdentity } from './provenance'
 
 describe('benchmark statistics', () => {
   test('reports an exact interval for constant samples', () => {
@@ -50,7 +51,7 @@ describe('benchmark statistics', () => {
 })
 
 describe('benchmark runner', () => {
-  test('collects multiple independent runs by default runner semantics', async () => {
+  test('preserves repeated runs and their batch samples', async () => {
     let calls = 0
     const benchmark: Benchmark = {
       runtime: 'Direct Fetch',
@@ -139,6 +140,7 @@ describe('benchmark artifacts', () => {
       },
     ]
     const history = {
+      identity: await benchmarkIdentity(),
       compatibleRuns: 1,
       currentLabel: '@hulla/api 0.0.0 · local',
       environment: {
@@ -221,7 +223,7 @@ describe('benchmark artifacts', () => {
       }[]
       schemaVersion: number
     }
-    expect(snapshot).toMatchObject({ schemaVersion: 2, methodologyVersion: 2 })
+    expect(snapshot).toMatchObject({ schemaVersion: 2, methodologyVersion: 3 })
     expect(
       snapshot.results.map(({ adapter, implementation, scenario }) => `${adapter}:${scenario}:${implementation}`)
     ).toEqual([
@@ -272,6 +274,7 @@ describe('benchmark artifacts', () => {
       summarizeBenchmarkResult('native', '@hulla/api Next.js', 'next-adapter-static-dispatch', [200, 201, 202]),
     ]
     const history = {
+      identity: await benchmarkIdentity(),
       compatibleRuns: 1,
       currentLabel: '@hulla/api 0.0.0 · local',
       path: 'history.ndjson',

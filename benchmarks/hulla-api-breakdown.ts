@@ -36,7 +36,7 @@ const transportHandler = fetchHost.mount(
 )
 const transportClient = defineClient(transportContract, {
   transport: fetchTransport({ baseUrl: 'https://bench.local', fetch: transportHandler }),
-}).create()
+})
 
 async function directTransport(): Promise<void> {
   const params = parameterSchema.parse({ id: transportValue.id })
@@ -84,7 +84,7 @@ const clientMiddleware = middlewareClientBase.middleware(({ context, next }) => 
   if (context.method !== 'GET') throw new Error('Unexpected method')
   return next()
 })
-const middlewareClient = middlewareClientBase.use(clientMiddleware).create()
+const middlewareClient = middlewareClientBase.use(clientMiddleware)
 
 async function directMiddleware(): Promise<void> {
   const request = new Request('https://bench.local/protected', {
@@ -216,7 +216,7 @@ const codecServer = defineServer(codecContract)
 const codecHandler = fetchHost.mount(codecServer.implement({ echo: (input) => ({ status: 200, body: input.body }) }))
 const codecClient = defineClient(codecContract, {
   transport: fetchTransport({ baseUrl: 'https://bench.local', fetch: codecHandler }),
-}).create()
+})
 
 async function directCodecRoundtrip(): Promise<void> {
   const clientWire = z.encode(nativeDateCodec, codecValue)
@@ -248,7 +248,7 @@ const streamServer = defineServer(streamContract)
 const streamHandler = fetchHost.mount(streamServer.implement({ events: () => ({ status: 200, body: chunks }) }))
 const streamClient = defineClient(streamContract, {
   transport: fetchTransport({ baseUrl: 'https://bench.local', fetch: streamHandler }),
-}).create()
+})
 
 async function directStream(): Promise<void> {
   const encoder = new TextEncoder()

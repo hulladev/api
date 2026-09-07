@@ -275,7 +275,7 @@ export const tsRestBenchmarks: readonly Benchmark[] = [
     runtime: 'ts-rest',
     scenario: 'small-json-post',
     async run() {
-      const result = await client.createUser({ body: encodeValue(createUserInput, createUserValue), query: undefined })
+      const result = await client.createUser({ body: createUserValue, query: undefined })
       if (result.status !== 201) throw new Error('Unexpected benchmark status')
       const output = result.body as CreateUserOutput
       if (output.id !== 'user-1' || output.name !== 'Ada') throw new Error('Unexpected benchmark result')
@@ -285,7 +285,7 @@ export const tsRestBenchmarks: readonly Benchmark[] = [
     runtime: 'ts-rest',
     scenario: 'large-json-post',
     async run() {
-      const result = await client.large({ body: encodeValue(largeInput, largeValue), query: undefined })
+      const result = await client.large({ body: largeValue, query: undefined })
       if (result.status !== 200 || (result.body as LargeOutput).count !== 100) {
         throw new Error('Unexpected large result')
       }
@@ -299,7 +299,7 @@ export const tsRestApplicationBenchmarks: readonly Benchmark[] = [
     runtime: 'ts-rest',
     scenario: 'path-parameter-read',
     async run() {
-      const result = await client.resource({ params: encodeValue(resourceParams, resourceValue) })
+      const result = await client.resource({ params: resourceValue })
       if (result.status !== 200 || (result.body as ResourceOutput).userId !== resourceValue.userId) {
         throw new Error('Unexpected resource')
       }
@@ -311,9 +311,9 @@ export const tsRestApplicationBenchmarks: readonly Benchmark[] = [
     scenario: 'query-header-read',
     async run() {
       const result = await client.collection({
-        params: encodeValue(organizationParams, { organizationId: resourceValue.organizationId }),
-        query: encodeValue(resourceQuery, queryValue),
-        headers: encodeValue(resourceHeaders, headerValue),
+        params: { organizationId: resourceValue.organizationId },
+        query: queryValue,
+        headers: headerValue,
       })
       if (result.status !== 200 || (result.body as CollectionOutput).roles.length !== 2) {
         throw new Error('Unexpected collection')
@@ -326,10 +326,10 @@ export const tsRestApplicationBenchmarks: readonly Benchmark[] = [
     scenario: 'mixed-update',
     async run() {
       const result = await client.update({
-        params: encodeValue(resourceParams, resourceValue),
-        query: encodeValue(updateQuery, updateQueryValue),
-        headers: encodeValue(resourceHeaders, headerValue),
-        body: encodeValue(updateBody, updateBodyValue),
+        params: resourceValue,
+        query: updateQueryValue,
+        headers: headerValue,
+        body: updateBodyValue,
       })
       if (result.status !== 200 || (result.body as ResourceOutput).displayName !== updateBodyValue.displayName) {
         throw new Error('Unexpected update')

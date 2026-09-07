@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { observedSchema } from './validation-observer'
 
 /** Shared validated workloads consumed by every benchmark implementation. */
 
@@ -63,7 +64,7 @@ export const benchmarkScenarioExamples: Readonly<Record<BenchmarkScenario, strin
   'large-static-dispatch': 'adapter.dispatch({ method: "GET", path: "/static/255" }) // 256 registered routes',
   'large-dynamic-dispatch':
     'adapter.dispatch({ method: "GET", path: "/dynamic/255/item%2F42" }) // 256 registered routes',
-  'server-implementation-setup': 'const handler = adapter.mount(server.implement(...fragments))',
+  'server-implementation-setup': 'const handler = adapter.mount(server.compose(...fragments))',
   'server-implementation-dispatch':
     'await handler(new Request("https://bench.local/implementation/3")) // reuse a prebuilt implementation',
   'adapter-registration': 'register 257 REST routes on an Express router',
@@ -398,43 +399,61 @@ export const benchmarkScenarioDimensions: Readonly<Record<BenchmarkScenario, Ben
 }
 
 /** Shared wire schemas and values used by every implementation. */
-export const healthOutput = z.object({ ok: z.boolean() })
+export const healthOutput = observedSchema('healthOutput', z.object({ ok: z.boolean() }))
 export const healthValue = { ok: true }
-export const createUserInput = z.object({ name: z.string().min(1) })
-export const createUserOutput = z.object({ id: z.string(), name: z.string() })
+export const createUserInput = observedSchema('createUserInput', z.object({ name: z.string().min(1) }))
+export const createUserOutput = observedSchema('createUserOutput', z.object({ id: z.string(), name: z.string() }))
 export const createUserValue = { name: 'Ada' }
 export const createdUserValue = { id: 'user-1', name: 'Ada' }
 const largeItem = z.object({ id: z.number().int(), label: z.string(), active: z.boolean() })
-export const largeInput = z.object({ items: z.array(largeItem) })
-export const largeOutput = z.object({ count: z.number().int(), items: z.array(largeItem) })
+export const largeInput = observedSchema('largeInput', z.object({ items: z.array(largeItem) }))
+export const largeOutput = observedSchema(
+  'largeOutput',
+  z.object({ count: z.number().int(), items: z.array(largeItem) })
+)
 export const largeValue = {
   items: Array.from({ length: 100 }, (_, id) => ({ id, label: `item-${id}`, active: id % 2 === 0 })),
 }
 export const largeResult = { count: largeValue.items.length, items: largeValue.items }
 
-export const resourceParams = z.object({ organizationId: z.string().min(1), userId: z.string().min(1) })
-export const organizationParams = z.object({ organizationId: z.string().min(1) })
-export const resourceQuery = z.object({
-  cursor: z.string().min(1),
-  limit: z.string().regex(/^\d+$/),
-  role: z.array(z.enum(['admin', 'member'])).min(1),
-})
-export const resourceHeaders = z.object({ 'x-tenant-token': z.string().min(1) })
-export const updateQuery = z.object({ notify: z.enum(['true', 'false']) })
-export const updateBody = z.object({ active: z.boolean(), displayName: z.string().min(1) })
-export const resourceOutput = z.object({
-  active: z.boolean(),
-  displayName: z.string(),
-  organizationId: z.string(),
-  userId: z.string(),
-})
-export const collectionOutput = z.object({
-  cursor: z.string(),
-  limit: z.number().int(),
-  organizationId: z.string(),
-  roles: z.array(z.string()),
-  token: z.string(),
-})
+export const resourceParams = observedSchema(
+  'resourceParams',
+  z.object({ organizationId: z.string().min(1), userId: z.string().min(1) })
+)
+export const organizationParams = observedSchema('organizationParams', z.object({ organizationId: z.string().min(1) }))
+export const resourceQuery = observedSchema(
+  'resourceQuery',
+  z.object({
+    cursor: z.string().min(1),
+    limit: z.string().regex(/^\d+$/),
+    role: z.array(z.enum(['admin', 'member'])).min(1),
+  })
+)
+export const resourceHeaders = observedSchema('resourceHeaders', z.object({ 'x-tenant-token': z.string().min(1) }))
+export const updateQuery = observedSchema('updateQuery', z.object({ notify: z.enum(['true', 'false']) }))
+export const updateBody = observedSchema(
+  'updateBody',
+  z.object({ active: z.boolean(), displayName: z.string().min(1) })
+)
+export const resourceOutput = observedSchema(
+  'resourceOutput',
+  z.object({
+    active: z.boolean(),
+    displayName: z.string(),
+    organizationId: z.string(),
+    userId: z.string(),
+  })
+)
+export const collectionOutput = observedSchema(
+  'collectionOutput',
+  z.object({
+    cursor: z.string(),
+    limit: z.number().int(),
+    organizationId: z.string(),
+    roles: z.array(z.string()),
+    token: z.string(),
+  })
+)
 export const resourceValue = { organizationId: 'org-engineering', userId: 'user-42' }
 export const queryValue: z.input<typeof resourceQuery> = {
   cursor: 'next-page',

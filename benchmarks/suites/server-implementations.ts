@@ -62,7 +62,7 @@ async function composedFragmentsSetup(): Promise<void> {
   const route1 = server.implement(contract.routes.route1, handlers.route1)
   const route2 = server.implement(contract.routes.route2, handlers.route2)
   const route3 = server.implement(contract.routes.route3, handlers.route3)
-  retainSetup(adapter.mount(server.implement(route0, route1, route2, route3)))
+  retainSetup(adapter.mount(server.compose(route0, route1, route2, route3)))
 }
 
 const rootImplementationFetch = adapter.mount(server.implement(handlers))
@@ -71,7 +71,7 @@ const route1 = server.implement(contract.routes.route1, handlers.route1)
 const route2 = server.implement(contract.routes.route2, handlers.route2)
 const route3 = server.implement(contract.routes.route3, handlers.route3)
 const standaloneFragmentFetch = adapter.mount(route3)
-const composedFragmentsFetch = adapter.mount(server.implement(route0, route1, route2, route3))
+const composedFragmentsFetch = adapter.mount(server.compose(route0, route1, route2, route3))
 const targetRequest = new Request('https://bench.local/implementation/3')
 
 async function rawHandlerDispatch(): Promise<void> {

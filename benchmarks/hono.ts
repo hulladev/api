@@ -147,7 +147,7 @@ export const honoBenchmarks: readonly Benchmark[] = [
     runtime: 'Hono RPC',
     scenario: 'small-json-post',
     async run() {
-      const input = encodeValue(createUserInput, createUserValue)
+      const input = createUserValue
       assertCreatedUser(await (await client.users.$post({ json: input })).json())
     },
   },
@@ -155,7 +155,7 @@ export const honoBenchmarks: readonly Benchmark[] = [
     runtime: 'Hono RPC',
     scenario: 'large-json-post',
     async run() {
-      const input = encodeValue(largeInput, largeValue)
+      const input = largeValue
       assertLarge(await (await client.large.$post({ json: input })).json())
     },
   },
@@ -168,7 +168,7 @@ export const honoApplicationBenchmarks: readonly Benchmark[] = [
     scenario: 'path-parameter-read',
     async run() {
       const response = await client.organizations[':organizationId'].users[':userId'].$get({
-        param: encodeValue(resourceParams, resourceValue),
+        param: resourceValue,
       })
       assertResource(await response.json())
     },
@@ -179,9 +179,9 @@ export const honoApplicationBenchmarks: readonly Benchmark[] = [
     scenario: 'query-header-read',
     async run() {
       const response = await client.organizations[':organizationId'].users.$get({
-        param: encodeValue(organizationParams, { organizationId: resourceValue.organizationId }),
-        query: encodeValue(resourceQuery, queryValue),
-        header: encodeValue(resourceHeaders, headerValue),
+        param: { organizationId: resourceValue.organizationId },
+        query: queryValue,
+        header: headerValue,
       })
       assertCollection(await response.json())
     },
@@ -192,10 +192,10 @@ export const honoApplicationBenchmarks: readonly Benchmark[] = [
     scenario: 'mixed-update',
     async run() {
       const response = await client.organizations[':organizationId'].users[':userId'].$patch({
-        param: encodeValue(resourceParams, resourceValue),
-        query: encodeValue(updateQuery, updateQueryValue),
-        header: encodeValue(resourceHeaders, headerValue),
-        json: encodeValue(updateBody, updateBodyValue),
+        param: resourceValue,
+        query: updateQueryValue,
+        header: headerValue,
+        json: updateBodyValue,
       })
       assertResource(await response.json())
     },

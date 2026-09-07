@@ -1,6 +1,8 @@
+import { spawnSync } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import { coldStartBenchmarks } from './cold-start'
 import { directFetchApplicationBenchmarks, directFetchBenchmarks, directFetchNativeBenchmarks } from './direct-fetch'
+import { withSampleGroups, summarizeBenchmarkResult } from './harness'
 import {
   benchmarkOptions,
   printPackageSizes,
@@ -12,7 +14,9 @@ import {
   type IndependentAdapterCohortResult,
   type PackageSizeResult,
 } from './harness'
+import { resultKey } from './harness/history'
 import { persistBenchmarkHistory } from './harness/history'
+import { benchmarkIdentity, compatibleIdentity, type BenchmarkIdentity } from './harness/provenance'
 import { honoApplicationBenchmarks, honoBenchmarks, honoNativeBenchmarks } from './hono'
 import {
   hullaApiApplicationBenchmarks,
@@ -33,6 +37,7 @@ async function packageVersion(path: string): Promise<string> {
   return contents.version
 }
 
+const identity = await benchmarkIdentity()
 const options = benchmarkOptions()
 const versions = new Map([
   ['@hulla/api', await packageVersion('./node_modules/@hulla/api/package.json')],
@@ -50,6 +55,11 @@ function versionedRuntime(runtime: string): string {
   return suffix === '' ? `${runtimeName} ${version}` : `${runtimeName} ${version} - ${suffix}`
 }
 
+const sizeIdentity = JSON.parse(
+  await readFile(new URL('./results/package-size.provenance.json', import.meta.url), 'utf8')
+) as { identity: BenchmarkIdentity }
+if (!compatibleIdentity(identity, sizeIdentity.identity))
+  throw new Error('Bundle size snapshot is stale; run package-size.ts before benchmarking')
 const packageSizes = (
   JSON.parse(await readFile(new URL('./results/package-size.json', import.meta.url), 'utf8')) as PackageSizeResult[]
 ).map((result) => ({ ...result, runtime: versionedRuntime(result.runtime) }))
@@ -57,8 +67,11 @@ let adapterCohorts: readonly IndependentAdapterCohortResult[] = []
 try {
   const adapterSnapshot = JSON.parse(
     await readFile(new URL('./results/adapters-latest.json', import.meta.url), 'utf8')
-  ) as { readonly cohorts?: readonly IndependentAdapterCohortResult[] }
-  adapterCohorts = adapterSnapshot.cohorts ?? []
+  ) as { readonly identity?: BenchmarkIdentity; readonly cohorts?: readonly IndependentAdapterCohortResult[] }
+  adapterCohorts =
+    adapterSnapshot.identity !== undefined && compatibleIdentity(identity, adapterSnapshot.identity)
+      ? (adapterSnapshot.cohorts ?? [])
+      : []
 } catch (cause) {
   if (typeof cause !== 'object' || cause === null || !('code' in cause) || cause.code !== 'ENOENT') throw cause
 }
@@ -87,8 +100,50 @@ const benchmarks: readonly Benchmark[] = [
   ...routeScalingBenchmarks,
   ...serverImplementationBenchmarks,
 ].map((benchmark) => ({ ...benchmark, runtimeKey: benchmark.runtime, runtime: versionedRuntime(benchmark.runtime) }))
-const results = await runBenchmarkRuns(benchmarks, options, (completed, total) => {
-  console.error(`Benchmark run ${completed}/${total}`)
+if (process.env['BENCH_MAIN_CHILD'] === '1') {
+  const results = await runBenchmarkRuns(benchmarks, { ...options, runs: 1 })
+  console.log(JSON.stringify({ identity, results }))
+  process.exit(0)
+}
+const processRuns: Awaited<ReturnType<typeof runBenchmarkRuns>>[] = []
+for (let run = 0; run < options.runs; run++) {
+  console.error(`Fresh benchmark process ${run + 1}/${options.runs}`)
+  const child = spawnSync(process.execPath, [process.argv[1]!], {
+    encoding: 'utf8',
+    timeout: 600000,
+    maxBuffer: 32 * 1024 * 1024,
+    env: { ...process.env, BENCH_RUN_ID: identity.runId, BENCH_MAIN_CHILD: '1', BENCH_RUNS: '1' },
+  })
+  if (child.status !== 0) throw new Error(`Benchmark process failed: ${child.stderr}\n${child.stdout}`)
+  const snapshot = JSON.parse(child.stdout) as {
+    identity: BenchmarkIdentity
+    results: Awaited<ReturnType<typeof runBenchmarkRuns>>
+  }
+  if (!compatibleIdentity(identity, snapshot.identity)) throw new Error('Source/environment changed during measurement')
+  processRuns.push(snapshot.results)
+}
+const results = processRuns[0]!.map((result) => {
+  const matching = processRuns.map((run) => run.find((candidate) => resultKey(candidate) === resultKey(result))!)
+  if (matching.some((result) => result === undefined))
+    throw new Error('Benchmark process returned a different workload set')
+  const groups = matching.map((result) => result.samples)
+  return {
+    ...withSampleGroups(
+      summarizeBenchmarkResult(
+        result.profile,
+        result.runtime,
+        result.scenario,
+        groups.flat(),
+        options.runs,
+        result.runtimeKey,
+        undefined,
+        result.iterations,
+        result.warmup
+      ),
+      groups
+    ),
+    processIds: matching.flatMap((result) => (result.processId === undefined ? [] : [result.processId])),
+  }
 })
 const historyPath = process.env['BENCH_HISTORY'] ?? new URL('./results/history.ndjson', import.meta.url).pathname
 const history = await persistBenchmarkHistory(results, options, historyPath)

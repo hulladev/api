@@ -13,4 +13,4 @@ const handler = fetchAdapter().mount(server.implement({ health: () => ({ status:
 
 export const client = defineClient(contract, {
   transport: fetchTransport({ baseUrl: 'https://size.local', fetch: handler }),
-}).create()
+})

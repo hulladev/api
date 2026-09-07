@@ -10,4 +10,4 @@ const transport: ClientTransport = () => {
   throw new Error('Size fixture transport')
 }
 
-export const client = defineClient(contract, { transport }).create()
+export const client = defineClient(contract, { transport })

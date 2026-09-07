@@ -83,8 +83,8 @@ const implementation = server.implement({
 const handler = fetchAdapter().mount(implementation)
 const client = defineClient(contract, {
   transport: fetchTransport({ baseUrl: 'https://bench.local', fetch: handler }),
-}).create()
-const inProcessClient = defineClient(contract, { transport: inProcessAdapter().mount(implementation) }).create()
+})
+const inProcessClient = defineClient(contract, { transport: inProcessAdapter().mount(implementation) })
 
 export const hullaApiBenchmarks: readonly Benchmark[] = [
   {

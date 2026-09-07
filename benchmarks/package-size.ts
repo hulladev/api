@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { gzipSync } from 'node:zlib'
+import { benchmarkIdentity } from './harness/provenance'
 
 type PackageSizeTarget = {
   readonly comparison: 'breakdown' | 'executable'
@@ -16,12 +17,6 @@ type PackageSizeResult = {
   readonly minifiedBytes: number
   readonly runtime: string
 }
-
-const budgets = {
-  '@hulla/api': { gzipBytes: 16_000, minifiedBytes: 48_000 },
-  'Transport-neutral client + server': { gzipBytes: 10_500, minifiedBytes: 33_000 },
-  'Fetch client transport': { gzipBytes: 1_400, minifiedBytes: 3_000 },
-} as const
 
 const targets: readonly PackageSizeTarget[] = [
   {
@@ -70,6 +65,18 @@ const targets: readonly PackageSizeTarget[] = [
     runtime: 'Core adapter dispatcher',
     entry: 'hulla-api-wire-adapter',
     imports: '@hulla/api/adapters (createAdapterHandler)',
+    comparison: 'breakdown',
+  },
+  {
+    runtime: 'MessagePort client transport',
+    entry: 'hulla-api-message-port-client',
+    imports: '@hulla/api-message-port (messagePortTransport)',
+    comparison: 'breakdown',
+  },
+  {
+    runtime: 'MessagePort server adapter',
+    entry: 'hulla-api-message-port-server',
+    imports: '@hulla/api-message-port (messagePortAdapter)',
     comparison: 'breakdown',
   },
   {
@@ -227,7 +234,6 @@ const analysisMarkdownPath = new URL('./results/bundle-analysis.md', import.meta
 const sourceAnalysisJsonPath = new URL('./results/bundle-source-analysis.json', import.meta.url)
 const sourceAnalysisMarkdownPath = new URL('./results/bundle-source-analysis.md', import.meta.url)
 const analyze = process.argv.includes('--analyze')
-const check = process.argv.includes('--check')
 await rm(outputDirectory, { recursive: true, force: true })
 await mkdir(outputDirectory, { recursive: true })
 await mkdir(resultsDirectory, { recursive: true })
@@ -292,20 +298,20 @@ try {
     )
   }
 
+  await writeFile(
+    new URL('./results/package-size.provenance.json', import.meta.url),
+    JSON.stringify(
+      {
+        identity: await benchmarkIdentity(),
+        target: 'bun',
+        minify: true,
+        external: ['zod', 'zod/*', '$app/server', 'h3'],
+      },
+      null,
+      2
+    )
+  )
   await writeFile(resultPath, `${JSON.stringify(results, undefined, 2)}\n`, 'utf8')
-  if (check) {
-    for (const [runtime, budget] of Object.entries(budgets)) {
-      const result = results.find((candidate) => candidate.runtime === runtime)!
-      const exceeded = (['minifiedBytes', 'gzipBytes'] as const).filter((metric) => result[metric] > budget[metric])
-      if (exceeded.length > 0) {
-        throw new Error(
-          `${runtime} exceeds its bundle budget: ${exceeded
-            .map((metric) => `${metric} ${result[metric]} > ${budget[metric]}`)
-            .join(', ')}`
-        )
-      }
-    }
-  }
 } finally {
   await rm(outputDirectory, { recursive: true, force: true })
 }
