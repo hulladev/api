@@ -1,5 +1,5 @@
-import type { AdapterResponseBody } from '../adapters'
-import type { ClientTransportBody } from '../client/request'
+import type { AdapterResponseBody } from '@hulla/api/adapters'
+import type { ClientTransportBody } from '@hulla/api/client'
 import type {
   MessagePortBody,
   MessagePortFormDataEntry,

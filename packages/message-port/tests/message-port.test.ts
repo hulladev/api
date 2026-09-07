@@ -1,19 +1,14 @@
 import { MessageChannel } from 'node:worker_threads'
+import { defineContract } from '@hulla/api'
+import { request } from '@hulla/api'
+import { response } from '@hulla/api'
+import { route } from '@hulla/api'
+import { defineClient } from '@hulla/api/client'
+import { fetchAdapter } from '@hulla/api/fetch'
+import { defineServer } from '@hulla/api/server'
 import { describe, expect, expectTypeOf, test, vi } from 'vitest'
 import { z } from 'zod'
-import { defineClient } from '../src/client'
-import { defineContract } from '../src/contract'
-import { request } from '../src/contract/request'
-import { response } from '../src/contract/response'
-import { route } from '../src/contract/route'
-import { fetchAdapter } from '../src/fetch'
-import {
-  messagePortAdapter,
-  messagePortTransport,
-  type MessageEndpoint,
-  type MessagePortLike,
-} from '../src/message-port'
-import { defineServer } from '../src/server'
+import { messagePortAdapter, messagePortTransport, type MessageEndpoint, type MessagePortLike } from '../src'
 
 function closePorts(channel: MessageChannel): void {
   channel.port1.close()
@@ -57,7 +52,7 @@ describe('messagePortTransport', () => {
     })
     const server = adapter.mount(implementation)
     const transport = messagePortTransport(channel.port2)
-    const client = defineClient(contract, { transport }).create()
+    const client = defineClient(contract, { transport })
 
     try {
       await Promise.all([server.ready, transport.ready])
@@ -109,7 +104,7 @@ describe('messagePortTransport', () => {
     const channel = new MessageChannel()
     const server = messagePortAdapter(channel.port1).mount(implementation)
     const transport = messagePortTransport(channel.port2)
-    const client = defineClient(contract, { transport }).create()
+    const client = defineClient(contract, { transport })
 
     try {
       const data = new FormData()
@@ -153,7 +148,7 @@ describe('messagePortTransport', () => {
     const channel = new MessageChannel()
     const server = messagePortAdapter(channel.port1).mount(implementation)
     const transport = messagePortTransport(channel.port2)
-    const client = defineClient(contract, { transport }).create()
+    const client = defineClient(contract, { transport })
 
     try {
       const result = await client.download()
@@ -162,10 +157,9 @@ describe('messagePortTransport', () => {
         chunks.push(chunk[0]!)
         if (chunks.length === 2) break
       }
-      await new Promise((resolve) => setTimeout(resolve, 0))
       expect(chunks).toEqual([1, 2])
       expect(produced).toBe(2)
-      expect(finalized).toBe(true)
+      await vi.waitFor(() => expect(finalized).toBe(true))
     } finally {
       await transport.close()
       await server.close()
@@ -206,7 +200,7 @@ describe('messagePortTransport', () => {
     })
     const server = adapter.mount(implementation)
     const transport = messagePortTransport(channel.port2)
-    const client = defineClient(contract, { transport }).create()
+    const client = defineClient(contract, { transport })
     const controller = new AbortController()
 
     try {
@@ -238,7 +232,7 @@ describe('messagePortTransport', () => {
     })
     const server = messagePortAdapter(electronPort(channel.port1)).mount(implementation)
     const transport = messagePortTransport(electronPort(channel.port2))
-    const client = defineClient(contract, { transport }).create()
+    const client = defineClient(contract, { transport })
 
     try {
       await expect(client.health()).resolves.toMatchObject({ status: 200, body: 'ok' })
@@ -273,7 +267,7 @@ describe('messagePortTransport', () => {
     const implementation = defineServer(contract).implement({ health: () => ({ status: 204 }) })
     const server = messagePortAdapter(endpoint(0), { channel: 'desktop-ipc' }).mount(implementation)
     const transport = messagePortTransport(endpoint(1), { channel: 'desktop-ipc' })
-    const client = defineClient(contract, { transport }).create()
+    const client = defineClient(contract, { transport })
 
     try {
       await expect(client.health()).resolves.toEqual({ status: 204, headers: {} })

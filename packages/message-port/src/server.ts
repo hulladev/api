@@ -1,19 +1,19 @@
-import { createAdapterHandler } from '../adapters/runtime'
-import type { AdapterErrorInput, AdapterResponse } from '../adapters/types'
-import type { ClientTransportRequest } from '../client/request'
-import type { Awaitable } from '../context'
-import type { Contract } from '../contract'
-import { isRecord } from '../object'
+import type { Contract } from '@hulla/api'
+import { createAdapterHandler } from '@hulla/api/adapters'
+import type { AdapterErrorInput, AdapterResponse } from '@hulla/api/adapters'
+import type { ClientTransportRequest } from '@hulla/api/client'
+import type { Awaitable } from '@hulla/api/server'
 import {
   assertAdapterContext,
   createServerAdapter,
   serverContextAdapterId,
   type ServerAdapter,
   type ServerContextInput,
-} from '../server/context'
-import type { ServerExecutableFor } from '../server/types'
+} from '@hulla/api/server'
+import type { ServerExecutableFor } from '@hulla/api/server'
 import { decodeMessagePortFormData, encodeResponseBody } from './body'
 import { resolveMessageEndpoint, type MessageEndpoint, type MessagePortLike } from './endpoint'
+import { isRecord } from './object'
 import {
   DEFAULT_MESSAGE_PORT_CHANNEL,
   MESSAGE_PORT_PROTOCOL_VERSION,
@@ -201,7 +201,11 @@ function createMessagePortServer<const ContractType extends Contract, const Cont
         })
       }
     } catch (error) {
-      active.delete(id)
+      try {
+        await cancel(id, request)
+      } catch {
+        /* Preserve the stream failure. */
+      }
       await send({
         protocol: MESSAGE_PORT_PROTOCOL_VERSION,
         channel,
@@ -239,6 +243,7 @@ function createMessagePortServer<const ContractType extends Contract, const Cont
       const request = decodeRequest(message, state.controller.signal)
       const response = await dispatch({
         request,
+        signal: request.signal,
         ...(usesNativeContext ? { contextInput: { endpoint, message, port, request } } : {}),
         method: request.method,
         pathname: request.path,
@@ -270,6 +275,11 @@ function createMessagePortServer<const ContractType extends Contract, const Cont
       if (response.body.kind !== 'stream') active.delete(id)
     } catch (error) {
       active.delete(id)
+      try {
+        await state.iterator?.return?.()
+      } catch {
+        /* Preserve the send/setup failure. */
+      }
       if (state.cancelled) return
       await send({
         protocol: MESSAGE_PORT_PROTOCOL_VERSION,
@@ -307,10 +317,16 @@ function createMessagePortServer<const ContractType extends Contract, const Cont
     close: async () => {
       if (closed) return
       await ready
-      await send({ protocol: MESSAGE_PORT_PROTOCOL_VERSION, channel, type: 'close' })
-      closed = true
-      await unsubscribe?.()
-      await Promise.all([...active].map(([id, request]) => cancel(id, request)))
+      try {
+        await send({ protocol: MESSAGE_PORT_PROTOCOL_VERSION, channel, type: 'close' })
+      } finally {
+        closed = true
+        try {
+          await unsubscribe?.()
+        } finally {
+          await Promise.all([...active].map(([id, request]) => cancel(id, request)))
+        }
+      }
     },
   })
 }

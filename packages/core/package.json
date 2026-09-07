@@ -37,10 +37,6 @@
       "types": "./dist/in-process/index.d.ts",
       "import": "./dist/in-process/index.js"
     },
-    "./message-port": {
-      "types": "./dist/message-port/index.d.ts",
-      "import": "./dist/message-port/index.js"
-    },
     "./procedure": {
       "types": "./dist/procedure.d.ts",
       "import": "./dist/procedure.js"

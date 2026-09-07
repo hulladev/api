@@ -1,4 +1,5 @@
-import { isRecord } from '../object'
+import type { ResponseHeaderValues } from '@hulla/api'
+import { isRecord } from './object'
 
 export const MESSAGE_PORT_PROTOCOL_VERSION = 1 as const
 export const DEFAULT_MESSAGE_PORT_CHANNEL = '@hulla/api' as const
@@ -51,7 +52,7 @@ export type MessagePortResponseMessage = MessagePortEnvelope & {
   readonly type: 'response'
   readonly response: {
     readonly status: number
-    readonly headers: Readonly<Record<string, string>>
+    readonly headers: ResponseHeaderValues
     readonly body: MessagePortBody
   }
 }

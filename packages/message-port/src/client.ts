@@ -1,7 +1,8 @@
-import type { ClientTransport, ClientTransportRequest, ClientTransportResponse } from '../client/request'
-import { isRecord } from '../object'
+import type { ResponseHeaderValues } from '@hulla/api'
+import type { ClientTransport, ClientTransportRequest, ClientTransportResponse } from '@hulla/api/client'
 import { decodeMessagePortFormData, encodeRequestBody } from './body'
 import { resolveMessageEndpoint, type MessageEndpoint, type MessagePortLike } from './endpoint'
+import { isRecord } from './object'
 import {
   DEFAULT_MESSAGE_PORT_CHANNEL,
   MESSAGE_PORT_PROTOCOL_VERSION,
@@ -62,8 +63,13 @@ function remoteError(value: unknown, fallback: string): MessagePortTransportErro
   return new MessagePortTransportError('remote-error', name === undefined ? message : `${name}: ${message}`)
 }
 
-function stringHeaders(value: unknown): value is Readonly<Record<string, string>> {
-  return isRecord(value) && Object.values(value).every((field) => typeof field === 'string')
+function stringHeaders(value: unknown): value is ResponseHeaderValues {
+  return (
+    isRecord(value) &&
+    Object.values(value).every(
+      (field) => typeof field === 'string' || (Array.isArray(field) && field.every((item) => typeof item === 'string'))
+    )
+  )
 }
 
 function responseBody(value: unknown): MessagePortBody | undefined {
@@ -162,13 +168,13 @@ class MessagePortRemoteStream implements AsyncIterable<Uint8Array>, AsyncIterato
 
   chunk(value: unknown): void {
     if (this.#finished) return
-    const waiter = this.#waiters.shift()
-    if (waiter === undefined) {
-      this.fail(new MessagePortTransportError('invalid-message', 'Received an unrequested stream chunk'))
+    if (!(value instanceof Uint8Array)) {
+      this.abort(new MessagePortTransportError('invalid-message', 'Received a non-binary stream chunk'))
       return
     }
-    if (!(value instanceof Uint8Array)) {
-      this.fail(new MessagePortTransportError('invalid-message', 'Received a non-binary stream chunk'))
+    const waiter = this.#waiters.shift()
+    if (waiter === undefined) {
+      this.abort(new MessagePortTransportError('invalid-message', 'Received an unrequested stream chunk'))
       return
     }
     waiter.resolve({ done: false, value })
@@ -300,6 +306,9 @@ export function messagePortTransport(
       status: responseValue['status'],
       headers: responseValue['headers'],
       native: value as MessagePortResponseMessage,
+      dispose: async () => {
+        await remoteStream?.return()
+      },
       readBody: (kind) => {
         if (body.kind !== kind) {
           remoteStream?.return()

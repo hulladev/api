@@ -34,6 +34,7 @@
         "@hulla/api-google-cloud-functions": "workspace:*",
         "@hulla/api-h3": "workspace:*",
         "@hulla/api-hono": "workspace:*",
+        "@hulla/api-message-port": "workspace:*",
         "@hulla/api-netlify-functions": "workspace:*",
         "@hulla/api-next": "workspace:*",
         "@hulla/api-node-http": "workspace:*",
@@ -199,6 +200,18 @@
       "peerDependencies": {
         "@hulla/api": "^2.0.0",
         "hono": "^4.12.31",
+      },
+    },
+    "packages/message-port": {
+      "name": "@hulla/api-message-port",
+      "version": "2.0.0",
+      "devDependencies": {
+        "@hulla/api": "workspace:*",
+        "@types/node": "^26.2.0",
+        "zod": "^4.4.3",
+      },
+      "peerDependencies": {
+        "@hulla/api": "^2.0.0",
       },
     },
     "packages/netlify-functions": {
@@ -647,6 +660,8 @@
     "@hulla/api-h3": ["@hulla/api-h3@workspace:packages/h3"],
 
     "@hulla/api-hono": ["@hulla/api-hono@workspace:packages/hono"],
+
+    "@hulla/api-message-port": ["@hulla/api-message-port@workspace:packages/message-port"],
 
     "@hulla/api-netlify-functions": ["@hulla/api-netlify-functions@workspace:packages/netlify-functions"],
 

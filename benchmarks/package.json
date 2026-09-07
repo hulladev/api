@@ -23,6 +23,7 @@
     "@hulla/api-google-cloud-functions": "workspace:*",
     "@hulla/api-h3": "workspace:*",
     "@hulla/api-hono": "workspace:*",
+    "@hulla/api-message-port": "workspace:*",
     "@hulla/api-netlify-functions": "workspace:*",
     "@hulla/api-next": "workspace:*",
     "@hulla/api-node-http": "workspace:*",
