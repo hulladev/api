@@ -180,3 +180,7 @@ dist
 # Generated browser artifacts
 .playwright-cli/
 output/
+
+# Generated host integration fixtures
+.start/
+.react-router/

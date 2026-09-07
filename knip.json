@@ -16,7 +16,7 @@
       "project": ["**/*.{js,cjs,mjs,jsx,ts,cts,mts,tsx}", "!legacy/**"]
     },
     "benchmarks": {
-      "entry": ["size/*.ts"]
+      "entry": ["size/*.ts", "fetch-roundtrip.ts", "runners/*-child.ts", "check-exports.ts"]
     },
     "packages/astro": {
       "ignoreDependencies": ["@astrojs/node"]
