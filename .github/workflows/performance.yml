@@ -1,0 +1,42 @@
+name: Performance evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: Runner label (use a dedicated stable host for regression decisions)
+        default: ubuntu-latest
+        type: string
+  schedule:
+    - cron: '0 4 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: performance-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  measure:
+    runs-on: ${{ inputs.runner || 'ubuntu-latest' }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
+      - run: bun ci
+      - run: bun run build
+      - name: Validate fixtures and measure complete suites
+        run: bun run --cwd benchmarks bench
+        env:
+          BENCH_RUNS: '5'
+          BENCH_SAMPLES: '7'
+          BENCH_DIAGNOSTIC_REQUESTS: '1000'
+          BENCH_LOAD_DURATION_MS: '3000'
+      - name: Keep raw measurements and provenance
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-${{ github.sha }}
+          path: benchmarks/results/
+          retention-days: 90
