@@ -15,7 +15,7 @@ import { contract } from './contract'
 
 const client = defineClient(contract, {
   transport: fetchTransport({ baseUrl: 'https://api.example.com' }),
-}).create()
+})
 
 const query = createTanStackQuery(client)
 const input = { params: { id: 'user-1' } }
@@ -69,3 +69,11 @@ if (user.data?.status === 200) {
 Both integrations expose router prefix keys, exact route keys, bound query helpers, and bound or unbound mutation helpers. Input-free routes use `queryOptions()` without arguments.
 
 Server integrations should likewise wrap a completed implementation or adapter explicitly. Core intentionally has no generic lifecycle hook system.
+
+## Cache namespaces and error policy
+
+Pass `{ prefix: ['api-name', tenantId, sessionVersion] }` as the second argument to `createTanStackQuery` or `createSWR` when clients share a cache. The default remains an empty prefix. Recreate the integration when tenant/auth scope changes, and clear sensitive cached data on logout. Prefixes identify a scope; do not put credentials in keys.
+
+TanStack Query uses router keys for prefix invalidation and forwards its query signal. SWR uses structurally serialized route/input keys. The name `queryKey` is reserved at every level of these integration views. Authoring controls such as `use` and `select` are excluded from their types and runtime keys.
+
+Declared error responses are data by default. A query library therefore considers them a successful fetch unless application code throws or the client uses the declared-error `errorMode: 'throw'` policy. Choose this policy deliberately; a transport/schema failure already rejects.

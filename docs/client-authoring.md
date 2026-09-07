@@ -1,8 +1,8 @@
 # Client authoring
 
 `defineClient()` creates a transport-neutral client authoring scope. Start with the shared contract from
-[contract authoring](./contract-authoring.md); the same module can be imported by server and client code. `create()`
-materializes the complete contract-shaped client, while `create(node)` selects one route or recursive router fragment.
+[contract authoring](./contract-authoring.md); the same module can be imported by server and client code. The returned scope is immediately callable. `select(node)` selects one route or recursive router fragment.
+Top-level subtrees are materialized on first access and cached within that scope.
 There is no extra `routes`, `api`, or procedure namespace. An executable client receives one transport in its options:
 
 ```ts
@@ -12,7 +12,7 @@ import { contract } from './contract'
 
 const client = defineClient(contract, {
   transport: fetchTransport({ baseUrl: 'https://api.example.com' }),
-}).create()
+})
 
 const result = await client.users.rename({
   params: { id: 'user-1' },
@@ -83,7 +83,7 @@ const base = defineClient(contract, {
 
 The returned object may contain lazy memoized functions when only some middleware paths need expensive data. This keeps request lifetime and caching explicit without eagerly fetching every possible context value.
 
-Middleware receives one options object, matching server and procedure middleware. `middleware()` defines a reusable middleware value, `use()` returns a derived scope, and `create()` captures that scope on every generated route:
+Middleware receives one options object, matching server and procedure middleware. `middleware()` defines a reusable middleware value, `use()` returns a derived scope, and every call on that scope uses its captured middleware:
 
 ```ts
 const authenticate = base.middleware(async ({ context, next, request }) => {
@@ -91,7 +91,7 @@ const authenticate = base.middleware(async ({ context, next, request }) => {
   return next()
 })
 
-export const client = base.use(authenticate).create()
+export const client = base.use(authenticate)
 ```
 
 Pass a mounted contract router or route as the first argument to scope one middleware without changing the generated client shape:
@@ -100,7 +100,7 @@ Pass a mounted contract router or route as the first argument to scope one middl
 export const client = base
   .use(logRequests)
   .use(contract.routes.organizations, authenticate)
-  .create()
+
 ```
 
 `use(middleware)` applies globally, `use(router, middleware)` applies below that router, and `use(route, middleware)` applies only to that route. Registrations run in declaration order. Separately registering the same middleware in overlapping scopes runs it once per matching registration; there is no function-identity deduplication.
@@ -116,13 +116,13 @@ Fragments remain useful when a route or router client must be exported or deploy
 ```ts
 const observed = base.use(logRequests)
 
-const health = observed.create(contract.routes.health)
-const organizations = observed.use(authenticate).create(contract.routes.organizations)
+const health = observed.select(contract.routes.health)
+const organizations = observed.use(authenticate).select(contract.routes.organizations)
 
-export const client = observed.create(health, organizations)
+export const client = observed.compose(health, organizations)
 ```
 
-Here both fragments use `logRequests`, while only the organization routes use `authenticate`. `create(...fragments)` requires complete route coverage and rejects duplicates, fragments from another client definition, and fragments that do not inherit the composition scope middleware. A route fragment is its route call, and a router fragment is its callable subtree, so either can also be used independently.
+Here both fragments use `logRequests`, while only the organization routes use `authenticate`. `compose(...fragments)` requires complete route coverage and rejects duplicates, fragments from another client definition, and fragments that do not inherit the composition scope middleware. A route fragment is its route call, and a router fragment is its callable subtree, so either can also be used independently.
 
 ## Transport boundary
 
@@ -151,7 +151,7 @@ import { inProcessAdapter } from '@hulla/api/in-process'
 
 const client = defineClient(contract, {
   transport: inProcessAdapter().mount(implementation),
-}).create()
+})
 ```
 
 This still runs contract encoding, server validation, middleware, and response decoding, but skips native Fetch object construction. It is suitable for colocated SSR, tests, and same-process application boundaries—not for communication between separate processes.
@@ -161,7 +161,7 @@ Use `inProcessAdapter().context()` for the server definition only when its conte
 adapter.
 
 For Web Workers, Node worker threads, Electron ports, or a custom ordered desktop IPC bridge, use the multiplexed
-[`@hulla/api/message-port` transport](./message-port.md). It preserves the same client call surface across a process or
+[`@hulla/api-message-port` transport](./message-port.md). It preserves the same client call surface across a process or
 worker boundary and adds request cancellation and pull-driven response streaming.
 
 Use an `@hulla/api/procedure` procedure only when its validation, context, or middleware provides concrete value. Otherwise use an ordinary function. Client creation does not add custom route implementations or change the generated call surface.

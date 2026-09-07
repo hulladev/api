@@ -87,7 +87,7 @@ if (import.meta.env.SSR && (!baseUrl || !URL.canParse(baseUrl))) {
 
 export const api = defineClient(contract, {
   transport: fetchTransport({ baseUrl }),
-}).create()
+})
 ```
 
 An omitted `baseUrl` produces same-origin relative requests in the browser. A Solid Router query can also execute during

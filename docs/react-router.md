@@ -149,7 +149,7 @@ import { contract } from './contract'
 
 export const api = defineClient(contract, {
   transport: fetchTransport({ baseUrl: process.env.API_ORIGIN }),
-}).create()
+})
 ```
 
 ```tsx

@@ -1,6 +1,6 @@
 # @hulla/api
 
-Greenfield implementation of a small directional contract layer for TypeScript APIs. Contracts accept any Standard Schema directly for one-way validation and expose an explicit validator-neutral codec when client and server should share an application value. Client and server authoring stay transport-neutral; optional transports include `@hulla/api/fetch`, `@hulla/api/in-process`, and `@hulla/api/message-port`.
+Greenfield implementation of a small directional contract layer for TypeScript APIs. Contracts accept any Standard Schema directly for one-way validation and expose an explicit validator-neutral codec when client and server should share an application value. Client and server authoring stay transport-neutral; optional transports include `@hulla/api/fetch`, `@hulla/api/in-process`, and the separately installed `@hulla/api-message-port` package.
 
 The active workspace contains the batteries-included [`@hulla/api`](./packages/core) package. Zod, Valibot, and other Standard Schema implementations remain application dependencies. The previous implementation remains in [`legacy`](./legacy) for behavioral reference and is excluded from the active workspace.
 
@@ -21,7 +21,7 @@ The first vertical slice includes:
 - native directional Standard Schemas and explicit bidirectional codecs without validator configuration
 - a transport-neutral client runtime plus an opt-in `@hulla/api/fetch` transport and server adapter
 - an opt-in `@hulla/api/in-process` transport for colocated clients and servers
-- an opt-in `@hulla/api/message-port` transport for workers, Electron, and custom ordered IPC endpoints
+- an optional `@hulla/api-message-port` package for workers, Electron, and custom ordered IPC endpoints
 - explicit TanStack Query and SWR client wrappers with no core plugin hooks
 - an advanced `@hulla/api/adapters` server-adapter boundary
 - a dependency-free `@hulla/api-node-http` integration with native request/response context and streaming backpressure
@@ -59,7 +59,7 @@ import { contract } from './api/contract'
 
 const api = defineClient(contract, {
   transport: fetchTransport({ baseUrl: 'https://api.example.com' }),
-}).create()
+})
 
 const result = await api.users.byId({ params: { id: 'user-1' } })
 
@@ -178,3 +178,5 @@ packages/astro/     Astro endpoint and explicit-context in-process adapters
 ```
 
 The publishable package uses the next major version while the root workspace and benchmarks remain private.
+
+See the [migration guide](./docs/migration.md) for executable client scopes, explicit composition, response headers and request lifetime changes.

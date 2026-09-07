@@ -101,7 +101,7 @@ if (typeof window === 'undefined' && (!baseUrl || !URL.canParse(baseUrl))) {
 
 export const api = defineClient(contract, {
   transport: fetchTransport({ baseUrl }),
-}).create()
+})
 ```
 
 ```tsx

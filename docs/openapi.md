@@ -126,7 +126,7 @@ import { contract } from './api.generated'
 
 export const api = defineClient(contract, {
   transport: fetchTransport({ baseUrl: 'https://api.example.com' }),
-}).create()
+})
 ```
 
 Route names and request inputs come from the generated contract. Calls return the generated status-discriminated

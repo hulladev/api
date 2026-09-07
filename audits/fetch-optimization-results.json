@@ -1,0 +1,2494 @@
+{
+  "baseline": "Built workspace snapshot at the start of this optimization follow-up; after the broad core refactor, before directional compilation and response serialization optimizations.",
+  "baselineBuiltJsSha256": "67ba7e20b59f767c2c64d9006ae2cd29088e384d969c380297a480e39650d1f0",
+  "afterBuiltJsSha256": "59af6a6e6a43b74fe4e4970fa7985cdd6c55e5ce108b2dd67ce326cda048d902",
+  "runtimes": {
+    "bun": "1.4.0",
+    "node": "22.18.0"
+  },
+  "methodology": "Three fresh processes per runtime, 11 alternating-order batches of at least 80 ms, 1,000 warmup calls. Medians of process medians; samples are nanoseconds per complete operation. Same validated Unicode GET workload before/after, with zero or five server middleware layers. Shared-machine evidence, not a production throughput claim.",
+  "fixtures": {
+    "get": "import { z } from '/Users/samuel/Coding/hulla/api/benchmarks/node_modules/zod/index.js'\nconst current = '/Users/samuel/Coding/hulla/api/packages/core/dist'\nconst old = '/private/tmp/hulla-optimization-start/dist'\nconst jobs = []\nfor (const [version, path] of [['before', old], ['after', current]]) {\n  const { defineContract, response, route } = await import(`${path}/index.js`)\n  const { defineServer } = await import(`${path}/server/index.js`)\n  const { defineClient } = await import(`${path}/client/index.js`)\n  const { inProcessTransport } = await import(`${path}/in-process/index.js`)\n  const { fetchAdapter, fetchTransport } = await import(`${path}/fetch/index.js`)\n  for (const depth of [0, 5]) {\n    const contract = defineContract({ routes: { get: route.get('/organizations/:org/users/:id', { params: z.object({ org: z.string(), id: z.string() }), responses: { 200: response.json(z.object({ id: z.string(), org: z.string() })) } }) } })\n    let server = defineServer(contract)\n    for (let i = 0; i < depth; i++) server = server.use(async ({next}) => next())\n    const implementation = server.implement({ get: ({params}) => ({status:200, body:params}) })\n    for (const transport of ['inprocess', 'fetch']) {\n      const scope = defineClient(contract, { transport: transport === 'fetch' ? fetchTransport({ baseUrl: 'http://bench', fetch: fetchAdapter().mount(implementation) }) : inProcessTransport(implementation) })\n      const client = scope\n      const run = async () => { const value = await client.get({params:{org:'example',id:'space /\u2713'}}); if(value.body.id !== 'space /\u2713') throw new Error('Invalid result') }\n      for(let i=0;i<1000;i++) await run()\n      jobs.push({version,depth,transport,run,samples:[]})\n    }\n  }\n}\nfor(let round=0;round<11;round++) {\n  const order=round%2? [...jobs].reverse():jobs\n  for(const job of order) {\n    let iterations=0; const start=performance.now()\n    do { for(let i=0;i<100;i++) await job.run(); iterations+=100 } while(performance.now()-start<80)\n    job.samples.push((performance.now()-start)*1e6/iterations)\n  }\n}\nconsole.log(JSON.stringify({processId:process.pid,results:jobs.map(({run,...value})=>value)}))\n",
+    "post": "import { z } from '/Users/samuel/Coding/hulla/api/benchmarks/node_modules/zod/index.js'\nconst jobs = []\nfor (const [version, path] of [['before', '/private/tmp/hulla-optimization-start/dist'], ['after', '/Users/samuel/Coding/hulla/api/packages/core/dist']]) {\n  const { defineContract, response, route } = await import(`${path}/index.js`)\n  const { defineServer } = await import(`${path}/server/index.js`)\n  const { defineClient } = await import(`${path}/client/index.js`)\n  const { fetchAdapter, fetchTransport } = await import(`${path}/fetch/index.js`)\n  const { readFetchBody } = await import(`${path}/adapters/index.js`)\n  const schema = z.object({ text: z.string() })\n  const contract = defineContract({ routes: { post: route.post('/', { body: schema, responses: { 200: response.json(z.object({ length: z.number() })) } }) } })\n  const implementation = defineServer(contract).implement({ post: ({body}) => ({status:200, body:{length:body.text.length}}) })\n  const client = defineClient(contract, { transport: fetchTransport({ baseUrl:'http://bench', fetch:fetchAdapter().mount(implementation) }) })\n  for(const size of [256,16384,262144]) {\n    const body={text:'x'.repeat(size)}\n    jobs.push({version,scenario:'fetch-post',size,run:async()=>{const result=await client.post({body});if(result.body.length!==size)throw new Error('Invalid body')},samples:[]})\n    const encoded=new TextEncoder().encode(JSON.stringify(body))\n    const chunks=[];for(let i=0;i<encoded.length;i+=1024)chunks.push(encoded.subarray(i,i+1024))\n    jobs.push({version,scenario:'chunked-bounded-json',size,run:async()=>{\n      let i=0\n      const body=new ReadableStream({pull(c){if(i===chunks.length)c.close();else c.enqueue(chunks[i++])}})\n      const value=await readFetchBody(new Request('http://bench',{method:'POST',body,duplex:'half'}), 'json',false,1048576)\n      if(value.text.length!==size)throw new Error('Invalid chunked body')\n    },samples:[]})\n  }\n}\nfor(const job of jobs)for(let i=0;i<300;i++)await job.run()\nfor(let round=0;round<9;round++)for(const job of round%2?[...jobs].reverse():jobs){\n  let iterations=0;const start=performance.now()\n  do{for(let i=0;i<10;i++)await job.run();iterations+=10}while(performance.now()-start<60)\n  job.samples.push((performance.now()-start)*1e6/iterations)\n}\nconsole.log(JSON.stringify({processId:process.pid,results:jobs.map(({run,...value})=>value)}))\n",
+    "smallPost": "import { z } from '/Users/samuel/Coding/hulla/api/benchmarks/node_modules/zod/index.js'\nconst jobs = []\nfor (const [version, path] of (process.env.OPT_ORDER === 'reverse' ? [['after', '/Users/samuel/Coding/hulla/api/packages/core/dist'], ['before', '/private/tmp/hulla-optimization-start/dist']] : [['before', '/private/tmp/hulla-optimization-start/dist'], ['after', '/Users/samuel/Coding/hulla/api/packages/core/dist']])) {\n  const { defineContract, response, route } = await import(`${path}/index.js`)\n  const { defineServer } = await import(`${path}/server/index.js`)\n  const { defineClient } = await import(`${path}/client/index.js`)\n  const { fetchAdapter, fetchTransport } = await import(`${path}/fetch/index.js`)\n  const { readFetchBody } = await import(`${path}/adapters/index.js`)\n  const schema = z.object({ text: z.string() })\n  const contract = defineContract({ routes: { post: route.post('/', { body: schema, responses: { 200: response.json(z.object({ length: z.number() })) } }) } })\n  const implementation = defineServer(contract).implement({ post: ({body}) => ({status:200, body:{length:body.text.length}}) })\n  const client = defineClient(contract, { transport: fetchTransport({ baseUrl:'http://bench', fetch:fetchAdapter().mount(implementation) }) })\n  for(const size of [256]) {\n    const body={text:'x'.repeat(size)}\n    jobs.push({version,scenario:'fetch-post',size,run:async()=>{const result=await client.post({body});if(result.body.length!==size)throw new Error('Invalid body')},samples:[]})\n    const encoded=new TextEncoder().encode(JSON.stringify(body))\n    const chunks=[];for(let i=0;i<encoded.length;i+=1024)chunks.push(encoded.subarray(i,i+1024))\n    jobs.push({version,scenario:'chunked-bounded-json',size,run:async()=>{\n      let i=0\n      const body=new ReadableStream({pull(c){if(i===chunks.length)c.close();else c.enqueue(chunks[i++])}})\n      const value=await readFetchBody(new Request('http://bench',{method:'POST',body,duplex:'half'}), 'json',false,1048576)\n      if(value.text.length!==size)throw new Error('Invalid chunked body')\n    },samples:[]})\n  }\n}\nfor(const job of jobs)for(let i=0;i<300;i++)await job.run()\nfor(let round=0;round<15;round++)for(const job of round%2?[...jobs].reverse():jobs){\n  let iterations=0;const start=performance.now()\n  do{for(let i=0;i<10;i++)await job.run();iterations+=10}while(performance.now()-start<120)\n  job.samples.push((performance.now()-start)*1e6/iterations)\n}\nconsole.log(JSON.stringify({processId:process.pid,results:jobs.map(({run,...value})=>value)}))\n",
+    "ablationSetup": "from pathlib import Path\nimport shutil\nroot=Path('/private/tmp/hulla-optimization-start/dist')\nvariants=[]\nfor name in ['control','without-native-signal','without-dispose-guard']:\n dest=Path('/private/tmp/hulla-get-ablation')/name\n shutil.copytree(root,dest,dirs_exist_ok=True)\n if name=='without-native-signal':\n  p=dest/'fetch/index.js';s=p.read_text();assert 'signal: request.signal' in s;p.write_text(s.replace('signal: request.signal','signal: undefined'))\n if name=='without-dispose-guard':\n  p=dest/'client/index.js';s=p.read_text();assert 'Promise.resolve(result).catch(failed)' in s;p.write_text(s.replace('Promise.resolve(result).catch(failed)','Promise.resolve(result)'))\n variants.append([name,str(dest)])\nimport json\ns=Path('/private/tmp/hulla-opt-get.ts').read_text()\ns=s.replace(\"[['before', old], ['after', current]]\",json.dumps(variants)).replace(\"['inprocess', 'fetch']\",\"['fetch']\").replace('round<11','round<9').replace('start<80','start<60')\nPath('/private/tmp/hulla-get-ablation.ts').write_text(s)\n",
+    "browserSetup": "from pathlib import Path\nimport subprocess,json,gzip\nresults=[]\nfor version,root in [('before','/private/tmp/hulla-optimization-start/dist'),('after','/Users/samuel/Coding/hulla/api/packages/core/dist')]:\n p=Path(f'/private/tmp/hulla-opt-browser-{version}.ts')\n p.write_text(f\"import {{ defineContract, response, route }} from '{root}/index.js';\\nimport {{ defineClient }} from '{root}/client/index.js';\\nimport {{ fetchTransport }} from '{root}/fetch/index.js';\\nconst contract = defineContract({{ routes: {{ health: route.get('/', {{ responses: {{ 200: response.json() }} }}) }} }});\\nexport const client = defineClient(contract, {{ transport: fetchTransport({{ baseUrl: 'https://api.example.com' }}) }});\\nexport const health = () => client.health();\\n\")\n out=p.with_suffix('.js');subprocess.run(['bun','build',str(p),'--target=browser','--minify',f'--outfile={out}'],check=True,capture_output=True)\n data=out.read_bytes();results.append(dict(version=version,minifiedBytes=len(data),gzipBytes=len(gzip.compress(data,compresslevel=6,mtime=0))))\nPath('/private/tmp/hulla-opt-browser.json').write_text(json.dumps(results))\nprint(results)\n"
+  },
+  "finalGetRuns": {
+    "bunGet": [
+      {
+        "processId": 88719,
+        "results": [
+          {
+            "version": "before",
+            "depth": 0,
+            "transport": "inprocess",
+            "samples": [
+              2357.748764705882, 2090.843133159266, 2074.9222797927487, 1979.8179012345656, 1935.5052415458988,
+              1978.136839506179, 1993.1136069651789, 1978.0535061728403, 1994.0370895522426, 1987.514466501231,
+              1934.3387681159593
+            ]
+          },
+          {
+            "version": "before",
+            "depth": 0,
+            "transport": "fetch",
+            "samples": [
+              4152.493523316062, 4131.273608247422, 3716.423611111113, 3490.679347826086, 3578.99741071429,
+              3809.898809523821, 3660.2358904109547, 3479.2445652174138, 3552.711991150463, 3625.510950226218,
+              3605.156950672624
+            ]
+          },
+          {
+            "version": "before",
+            "depth": 5,
+            "transport": "inprocess",
+            "samples": [
+              2600.8590259740267, 2398.9216417910447, 2428.507575757577, 2418.881381381379, 2354.8124999999936,
+              2473.9595987654393, 2278.6227731092326, 2356.268274853785, 2367.707100591726, 2351.7314369501487,
+              2346.796187683305
+            ]
+          },
+          {
+            "version": "before",
+            "depth": 5,
+            "transport": "fetch",
+            "samples": [
+              3947.883842364532, 4164.634896907215, 4136.035206185564, 4314.715483870953, 4135.262010309281,
+              4028.0632663316464, 4049.316060606056, 3912.424829268275, 4232.912263157902, 3969.4141584158215,
+              4112.514974358978
+            ]
+          },
+          {
+            "version": "after",
+            "depth": 0,
+            "transport": "inprocess",
+            "samples": [
+              2238.1348746518106, 3491.262695652173, 1861.5535498839865, 1803.6076853932582, 1786.8545312500064,
+              1763.2261758241768, 1837.1435550458723, 1831.1446469248444, 1866.5501165501123, 1835.1912100456816,
+              1862.1773255813953
+            ]
+          },
+          {
+            "version": "after",
+            "depth": 0,
+            "transport": "fetch",
+            "samples": [
+              3560.181466666667, 4216.601562500001, 3911.75, 3356.6771129706995, 3518.9847161572047, 3386.2921940928327,
+              3595.070986547084, 3736.406976744209, 3763.7715492957727, 3533.7426872246742, 3624.2647058823345
+            ]
+          },
+          {
+            "version": "after",
+            "depth": 5,
+            "transport": "inprocess",
+            "samples": [
+              2185.4042547425456, 2255.9835774647877, 3156.0695275590565, 2163.9177837837824, 2186.4685792349737,
+              2164.685268817205, 2288.8083142857017, 2589.0635048231497, 2308.024726224789, 2310.213103448258,
+              2239.1037988826706
+            ]
+          },
+          {
+            "version": "after",
+            "depth": 5,
+            "transport": "fetch",
+            "samples": [
+              3886.9842233009695, 4070.1438578680195, 4351.847826086948, 4051.5677272727166, 4113.6431794871805,
+              4009.6624999999904, 4363.802065217403, 4412.939560439544, 4049.4696969697065, 4090.3976142131974,
+              3950.2032019704375
+            ]
+          }
+        ]
+      },
+      {
+        "processId": 89062,
+        "results": [
+          {
+            "version": "before",
+            "depth": 0,
+            "transport": "inprocess",
+            "samples": [
+              2018.6146095717884, 1751.5271772428916, 1766.6556291390752, 1809.3393468468385, 1791.3255033557084,
+              1804.1760585585632, 1857.1452204176308, 2505.076812500022, 2137.1566666666577, 3482.30978260871,
+              3112.6094208493982
+            ]
+          },
+          {
+            "version": "before",
+            "depth": 0,
+            "transport": "fetch",
+            "samples": [
+              3655.9075342465762, 3426.2019230769242, 3385.1301265822776, 3621.8956306306445, 3505.1200873362395,
+              3499.7816593886455, 3600.149461883422, 3541.244469026536, 4322.072096774181, 19102.015348837172,
+              8573.499999999944
+            ]
+          },
+          {
+            "version": "before",
+            "depth": 5,
+            "transport": "inprocess",
+            "samples": [
+              2101.3702887139107, 2149.3342359249327, 2164.042783783783, 2201.082884615394, 2207.173994490351,
+              2231.347493036214, 2221.883656509709, 2283.526837606854, 2894.4765342960177, 7120.438596491208,
+              3946.929359605877
+            ]
+          },
+          {
+            "version": "before",
+            "depth": 5,
+            "transport": "fetch",
+            "samples": [
+              3802.4683886255916, 3950.160098522164, 3970.0451724137915, 4118.463692307695, 3929.726323529407,
+              4029.6291999999994, 4001.7562500000163, 4499.761235955028, 4535.911016949177, 7241.156126126149,
+              4467.755524861907
+            ]
+          },
+          {
+            "version": "after",
+            "depth": 0,
+            "transport": "inprocess",
+            "samples": [
+              1887.2710377358487, 1747.5800655021815, 1755.7547587719268, 1772.1377212389386, 1762.021054945053,
+              1752.7552954048185, 1791.0887472035781, 1841.5498160919578, 7810.319514563127, 3094.7200772200886,
+              2081.5898181818184
+            ]
+          },
+          {
+            "version": "after",
+            "depth": 0,
+            "transport": "fetch",
+            "samples": [
+              3438.6963519313304, 3226.942771084336, 3214.8443775100354, 3456.910905172404, 3589.2656950672686,
+              3448.6063362068903, 3366.285000000008, 3634.558823529392, 6214.470232558146, 6369.573412698412,
+              4199.7687434555055
+            ]
+          },
+          {
+            "version": "after",
+            "depth": 5,
+            "transport": "inprocess",
+            "samples": [
+              2132.476728723403, 2122.9531299734726, 2135.337786666666, 2229.5194986072397, 2164.386270270272,
+              2123.452705570286, 2202.445054945051, 2217.3049307479323, 2360.639144542796, 3518.393640350863,
+              2491.108944099386
+            ]
+          },
+          {
+            "version": "after",
+            "depth": 5,
+            "transport": "fetch",
+            "samples": [
+              3689.2242396313345, 3582.2470089285725, 3895.1557766990204, 3698.2546082949407, 4118.339693877552,
+              3822.8650952380904, 3934.67730392157, 3943.741773399031, 4033.371005025127, 3854.2748557692294,
+              4539.265536723178
+            ]
+          }
+        ]
+      },
+      {
+        "processId": 89387,
+        "results": [
+          {
+            "version": "before",
+            "depth": 0,
+            "transport": "inprocess",
+            "samples": [
+              2391.2985074626868, 1757.3026315789432, 1706.6222601279333, 1851.5810392609617, 1757.6535087719271,
+              1808.9719638826218, 1843.427958715605, 2918.263636363653, 2175.03622282609, 1934.0344471153842,
+              1925.2053365384716
+            ]
+          },
+          {
+            "version": "before",
+            "depth": 0,
+            "transport": "fetch",
+            "samples": [
+              3962.746305418719, 3551.0066371681364, 3509.831885964904, 3636.6837272727353, 3420.9366239316164,
+              3396.7885169491537, 3547.69358407081, 6132.143740458017, 4025.1297989949426, 3697.776497695859,
+              3615.444819819835
+            ]
+          },
+          {
+            "version": "before",
+            "depth": 5,
+            "transport": "inprocess",
+            "samples": [
+              2205.5016253443528, 2291.9845142857152, 2131.1347340425536, 2177.3437499999945, 2231.1350974930338,
+              2186.0985792349825, 2160.1347708894777, 2262.3579718310025, 2333.6200291545133, 2384.114583333328,
+              2306.6810662824273
+            ]
+          },
+          {
+            "version": "before",
+            "depth": 5,
+            "transport": "fetch",
+            "samples": [
+              3919.3507281553407, 3885.134879227052, 3970.2248019801964, 4161.778911917102, 4146.049222797914,
+              3963.8985148515007, 4353.639021739146, 4152.7784974093165, 4530.190677966091, 4253.544973544964,
+              4130.601391752581
+            ]
+          },
+          {
+            "version": "after",
+            "depth": 0,
+            "transport": "inprocess",
+            "samples": [
+              1969.2936117936126, 1695.73536016949, 1798.9850337078658, 1952.244902439028, 1822.9128701594593,
+              1750.733960612692, 1854.3942824074174, 1836.4267889908185, 1972.5790147783432, 1862.322674418613,
+              1870.557827102802
+            ]
+          },
+          {
+            "version": "after",
+            "depth": 0,
+            "transport": "fetch",
+            "samples": [
+              3679.770642201835, 3326.141078838173, 3576.6759555555536, 3560.257422222215, 3531.8483700440574,
+              3371.5498326359716, 3642.6894090909213, 3460.168836206894, 3848.6618749999916, 3588.1072197309645,
+              3631.1218099547564
+            ]
+          },
+          {
+            "version": "after",
+            "depth": 5,
+            "transport": "inprocess",
+            "samples": [
+              2316.799132947977, 2107.233552631579, 2081.6331865284947, 2164.6317567567557, 2249.0449438202195,
+              2190.0967759562823, 2189.665300546467, 2225.508111111114, 2305.748069164252, 2336.2402915451744,
+              2314.0510693641604
+            ]
+          },
+          {
+            "version": "after",
+            "depth": 5,
+            "transport": "fetch",
+            "samples": [
+              4158.562176165806, 3764.135352112674, 3734.693767441862, 3595.842645739908, 3906.638195121936,
+              3840.1654545454544, 3785.849056603784, 3744.2698598130855, 3908.978543689319, 3813.775809523793,
+              4103.279897435875
+            ]
+          }
+        ]
+      }
+    ],
+    "nodeGet": [
+      {
+        "processId": 89742,
+        "results": [
+          {
+            "version": "before",
+            "depth": 0,
+            "transport": "inprocess",
+            "samples": [
+              3232.9906048387097, 3156.245078740158, 3074.966475095785, 3112.8891050583757, 3151.387795275595,
+              2990.883097014925, 3229.213709677417, 2968.510814814821, 3022.092754716965, 3176.97750000001,
+              3167.4160079051344
+            ]
+          },
+          {
+            "version": "before",
+            "depth": 0,
+            "transport": "fetch",
+            "samples": [
+              11001.48397260274, 11801.746323529402, 9987.77271604939, 9388.972790697691, 10054.427125000018,
+              9419.460823529387, 10510.14610389615, 9974.7943209876, 9945.427037037007, 12178.83196969703,
+              11003.926986301338
+            ]
+          },
+          {
+            "version": "before",
+            "depth": 5,
+            "transport": "inprocess",
+            "samples": [
+              3505.100087336245, 3656.9848636363636, 3371.150210084035, 3295.8144444444456, 3469.446277056279,
+              3300.1800411522645, 3463.827532467532, 3434.2989699570835, 3363.1057563025406, 3922.3284313725703,
+              3592.414080717492
+            ]
+          },
+          {
+            "version": "before",
+            "depth": 5,
+            "transport": "fetch",
+            "samples": [
+              11670.585797101448, 10794.372133333309, 10788.755466666651, 10332.083333333358, 11182.945555555585,
+              10212.26265822786, 11090.850410958921, 10327.804487179515, 10579.292763157857, 11234.392361111153,
+              10751.461066666647
+            ]
+          },
+          {
+            "version": "after",
+            "depth": 0,
+            "transport": "inprocess",
+            "samples": [
+              3256.8546747967503, 2927.668795620442, 2806.3505244755274, 2856.3241637010706, 3503.7227074235684,
+              2808.372807017533, 4021.6562500000236, 2825.1188380281615, 2911.228799999993, 2952.389298892995,
+              2923.0322262773816
+            ]
+          },
+          {
+            "version": "after",
+            "depth": 0,
+            "transport": "fetch",
+            "samples": [
+              11068.264794520543, 10576.408947368409, 10583.442894736841, 9412.549058823543, 14912.67740740745,
+              9758.529156626526, 10791.344399999918, 10210.675189873426, 11233.749999999973, 10003.821975308565,
+              10422.738051948054
+            ]
+          },
+          {
+            "version": "after",
+            "depth": 5,
+            "transport": "inprocess",
+            "samples": [
+              3122.8145136186786, 3353.4606276150616, 3152.7083464566936, 3095.2686486486446, 8184.863877551035,
+              3080.532038461535, 3291.3797950819485, 3219.7389558232717, 3226.1559274193573, 3177.209007936502,
+              3368.7692857142983
+            ]
+          },
+          {
+            "version": "after",
+            "depth": 5,
+            "transport": "fetch",
+            "samples": [
+              10137.721518987339, 10259.978717948716, 10360.897435897443, 10339.626153846171, 10444.074675324668,
+              10108.854124999993, 10784.42773333336, 10575.1425, 11349.788732394329, 10534.610789473652,
+              11573.196428571464
+            ]
+          }
+        ]
+      },
+      {
+        "processId": 90077,
+        "results": [
+          {
+            "version": "before",
+            "depth": 0,
+            "transport": "inprocess",
+            "samples": [
+              3303.5185185185187, 3090.405461538458, 3019.221698113211, 3083.9503461538525, 2958.11040590406,
+              2915.248472727283, 3028.4292452830277, 2810.3917894736937, 2764.941068965527, 2830.6610954063563,
+              2795.49505226481
+            ]
+          },
+          {
+            "version": "before",
+            "depth": 0,
+            "transport": "fetch",
+            "samples": [
+              11674.202898550728, 10636.101973684228, 10247.858607594935, 10260.806666666704, 9799.928780487777,
+              9584.875952380928, 9909.331234567942, 9086.376404494342, 8754.107826086965, 9357.083372093088,
+              8997.275280898873
+            ]
+          },
+          {
+            "version": "before",
+            "depth": 5,
+            "transport": "inprocess",
+            "samples": [
+              3568.2963111111126, 3770.041079812201, 3611.7713004484312, 3315.4545454545423, 3470.734112554106,
+              3256.8021544715507, 3364.7881512605322, 3135.071640625, 3046.8361977186364, 3213.704819277136,
+              3183.2605952380954
+            ]
+          },
+          {
+            "version": "before",
+            "depth": 5,
+            "transport": "fetch",
+            "samples": [
+              10981.335616438357, 11737.19057142856, 14144.45912280702, 10645.487894736874, 10321.597307692326,
+              10373.547051282027, 10913.265810810804, 9528.606071428601, 9840.38109756101, 9926.090493827134,
+              10142.716202531637
+            ]
+          },
+          {
+            "version": "after",
+            "depth": 0,
+            "transport": "inprocess",
+            "samples": [
+              3244.6710526315783, 3235.8299596774123, 3038.536931818189, 2961.883468634684, 2907.9076086956634,
+              2914.3757454545594, 2833.3436395759923, 2778.732638888894, 2842.412836879419, 2732.0790443686296,
+              2762.755758620689
+            ]
+          },
+          {
+            "version": "after",
+            "depth": 0,
+            "transport": "fetch",
+            "samples": [
+              12296.679242424247, 11644.716086956532, 10429.090909090892, 9895.138888888916, 9734.216867469864,
+              9727.148674698792, 9595.312500000004, 9792.611707317164, 9209.535402298841, 9396.836279069841,
+              9116.221590909081
+            ]
+          },
+          {
+            "version": "after",
+            "depth": 5,
+            "transport": "inprocess",
+            "samples": [
+              3574.057422222222, 3458.4213362069004, 3200.8383200000026, 3201.6499999999905, 3201.966679999987,
+              3134.039726562499, 3023.6273584905575, 3189.5219123505894, 3037.0849242424147, 3103.800077519383,
+              3005.424494382026
+            ]
+          },
+          {
+            "version": "after",
+            "depth": 5,
+            "transport": "fetch",
+            "samples": [
+              11872.346764705893, 11325.522253521125, 10668.144399999983, 10626.25552631576, 10079.505250000011,
+              9886.373456790105, 9746.164578313234, 9913.755185185257, 9544.652857142906, 9711.365421686774,
+              9553.804523809504
+            ]
+          }
+        ]
+      },
+      {
+        "processId": 90433,
+        "results": [
+          {
+            "version": "before",
+            "depth": 0,
+            "transport": "inprocess",
+            "samples": [
+              3083.530461538461, 2965.188259259262, 3005.1076779026284, 2971.6913703703676, 2970.375000000011,
+              2955.4873800737964, 2997.290861423236, 2956.9649446494454, 2946.6421323529094, 2907.9785507246593,
+              2886.136079136672
+            ]
+          },
+          {
+            "version": "before",
+            "depth": 0,
+            "transport": "fetch",
+            "samples": [
+              10572.03407894737, 9462.82352941176, 9871.707317073155, 9824.674756097544, 9748.684698795196,
+              9722.675662650632, 9725.662650602404, 9540.02476190475, 8960.03711111108, 9507.32352941176,
+              9039.765842696674
+            ]
+          },
+          {
+            "version": "before",
+            "depth": 5,
+            "transport": "inprocess",
+            "samples": [
+              3259.7848780487816, 3222.6070682730983, 3144.6470588235284, 3379.1350210970522, 3363.998613445389,
+              3440.6312446352013, 3293.1824279835514, 3325.637966804965, 3166.0573122529527, 3258.7889430894534,
+              3303.2441563786047
+            ]
+          },
+          {
+            "version": "before",
+            "depth": 5,
+            "transport": "fetch",
+            "samples": [
+              10088.666625000002, 9639.703855421689, 9339.46220930233, 10969.2793243243, 9721.450843373521,
+              10456.114675324685, 9912.978395061797, 10646.266447368505, 9536.071428571435, 10296.004230769237,
+              10287.954102564072
+            ]
+          },
+          {
+            "version": "after",
+            "depth": 0,
+            "transport": "inprocess",
+            "samples": [
+              2997.963483146066, 2771.3581314878866, 2613.0089576547275, 3179.0228174603158, 2716.2669491525453,
+              2883.9942805755386, 2685.9228187919484, 2816.986842105268, 2674.015266666659, 4892.64903030303,
+              2784.178229166672
+            ]
+          },
+          {
+            "version": "after",
+            "depth": 0,
+            "transport": "fetch",
+            "samples": [
+              9512.490235294106, 9904.012345678993, 9576.443452380929, 9920.64814814815, 9803.038658536569,
+              9678.669759036127, 9147.817272727252, 9652.921686747066, 9035.978426966343, 9091.40625000005,
+              9263.71643678161
+            ]
+          },
+          {
+            "version": "after",
+            "depth": 5,
+            "transport": "inprocess",
+            "samples": [
+              2998.5517977528084, 3234.0137903225796, 3109.3733720930168, 3270.8231020408175, 3109.7399999999975,
+              3191.8459760956207, 3013.306691729319, 3118.2036186770342, 2941.940845588232, 2964.2453703703454,
+              2980.1053159851235
+            ]
+          },
+          {
+            "version": "after",
+            "depth": 5,
+            "transport": "fetch",
+            "samples": [
+              10249.435696202536, 10860.242162162154, 10108.92187500002, 10581.118421052608, 9642.25690476193,
+              9932.103827160501, 10214.931392405146, 10210.627721519042, 9381.022325581314, 9504.298941176517,
+              9415.250000000015
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "finalGetSummary": {
+    "bunGet": [
+      {
+        "transport": "inprocess",
+        "depth": 0,
+        "beforeNs": 1857.1452204176308,
+        "afterNs": 1837.1435550458723,
+        "changePercent": -1.077011380254933,
+        "processMediansNs": {
+          "before": [1987.514466501231, 1857.1452204176308, 1851.5810392609617],
+          "after": [1837.1435550458723, 1791.0887472035781, 1854.3942824074174]
+        }
+      },
+      {
+        "transport": "fetch",
+        "depth": 0,
+        "beforeNs": 3615.444819819835,
+        "afterNs": 3576.6759555555536,
+        "changePercent": -1.07231243170276,
+        "processMediansNs": {
+          "before": [3625.510950226218, 3600.149461883422, 3615.444819819835],
+          "after": [3595.070986547084, 3456.910905172404, 3576.6759555555536]
+        }
+      },
+      {
+        "transport": "inprocess",
+        "depth": 5,
+        "beforeNs": 2231.1350974930338,
+        "afterNs": 2225.508111111114,
+        "changePercent": -0.2522028535269949,
+        "processMediansNs": {
+          "before": [2367.707100591726, 2221.883656509709, 2231.1350974930338],
+          "after": [2255.9835774647877, 2202.445054945051, 2225.508111111114]
+        }
+      },
+      {
+        "transport": "fetch",
+        "depth": 5,
+        "beforeNs": 4112.514974358978,
+        "afterNs": 3895.1557766990204,
+        "changePercent": -5.285310789508745,
+        "processMediansNs": {
+          "before": [4112.514974358978, 4029.6291999999994, 4146.049222797914],
+          "after": [4070.1438578680195, 3895.1557766990204, 3813.775809523793]
+        }
+      }
+    ],
+    "nodeGet": [
+      {
+        "transport": "inprocess",
+        "depth": 0,
+        "beforeNs": 2965.188259259262,
+        "afterNs": 2907.9076086956634,
+        "changePercent": -1.9317711239659308,
+        "processMediansNs": {
+          "before": [3151.387795275595, 2958.11040590406, 2965.188259259262],
+          "after": [2923.0322262773816, 2907.9076086956634, 2784.178229166672]
+        }
+      },
+      {
+        "transport": "fetch",
+        "depth": 0,
+        "beforeNs": 9799.928780487777,
+        "afterNs": 9734.216867469864,
+        "changePercent": -0.6705345976467547,
+        "processMediansNs": {
+          "before": [10054.427125000018, 9799.928780487777, 9722.675662650632],
+          "after": [10576.408947368409, 9734.216867469864, 9576.443452380929]
+        }
+      },
+      {
+        "transport": "inprocess",
+        "depth": 5,
+        "beforeNs": 3315.4545454545423,
+        "afterNs": 3189.5219123505894,
+        "changePercent": -3.7983519718768344,
+        "processMediansNs": {
+          "before": [3463.827532467532, 3315.4545454545423, 3293.1824279835514],
+          "after": [3219.7389558232717, 3189.5219123505894, 3109.3733720930168]
+        }
+      },
+      {
+        "transport": "fetch",
+        "depth": 5,
+        "beforeNs": 10373.547051282027,
+        "afterNs": 10108.92187500002,
+        "changePercent": -2.55096135366063,
+        "processMediansNs": {
+          "before": [10788.755466666651, 10373.547051282027, 10088.666625000002],
+          "after": [10444.074675324668, 9913.755185185257, 10108.92187500002]
+        }
+      }
+    ]
+  },
+  "sizes": {
+    "before": [
+      {
+        "comparison": "executable",
+        "imports": "@hulla/api + /client + /server + /fetch",
+        "runtime": "@hulla/api",
+        "minifiedBytes": 49887,
+        "gzipBytes": 15426
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api",
+        "runtime": "Contract declarations",
+        "minifiedBytes": 9062,
+        "gzipBytes": 3263
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api + /client",
+        "runtime": "Transport-neutral client",
+        "minifiedBytes": 25905,
+        "gzipBytes": 8588
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api + /server",
+        "runtime": "Transport-neutral server",
+        "minifiedBytes": 14598,
+        "gzipBytes": 5036
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api + /client + /server",
+        "runtime": "Transport-neutral client + server",
+        "minifiedBytes": 29934,
+        "gzipBytes": 9684
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api/fetch (fetchTransport)",
+        "runtime": "Fetch client transport",
+        "minifiedBytes": 3548,
+        "gzipBytes": 1596
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api/fetch (fetchAdapter)",
+        "runtime": "Fetch server adapter",
+        "minifiedBytes": 24171,
+        "gzipBytes": 7839
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api/adapters (createAdapterHandler)",
+        "runtime": "Core adapter dispatcher",
+        "minifiedBytes": 18706,
+        "gzipBytes": 6185
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api-express (expressAdapter)",
+        "runtime": "Express server adapter",
+        "minifiedBytes": 22213,
+        "gzipBytes": 7210
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api-node-http (nodeHttpAdapter)",
+        "runtime": "Node HTTP server adapter",
+        "minifiedBytes": 25107,
+        "gzipBytes": 8191
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api-fastify (fastifyAdapter)",
+        "runtime": "Fastify server adapter",
+        "minifiedBytes": 20554,
+        "gzipBytes": 6684
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api-hono (honoAdapter)",
+        "runtime": "Hono server adapter",
+        "minifiedBytes": 26414,
+        "gzipBytes": 8760
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api-h3 (h3Adapter)",
+        "runtime": "H3 server adapter",
+        "minifiedBytes": 21401,
+        "gzipBytes": 6973
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api-cloudflare (cloudflareAdapter)",
+        "runtime": "Cloudflare Workers adapter",
+        "minifiedBytes": 24490,
+        "gzipBytes": 7923
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api-cloudflare/pages (cloudflarePagesAdapter)",
+        "runtime": "Cloudflare Pages Functions adapter",
+        "minifiedBytes": 24397,
+        "gzipBytes": 7893
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api-google-cloud-functions (googleCloudFunctionsAdapter)",
+        "runtime": "Google Cloud Run functions adapter",
+        "minifiedBytes": 26525,
+        "gzipBytes": 8613
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api-netlify-functions (netlifyFunctionsAdapter)",
+        "runtime": "Netlify Functions adapter",
+        "minifiedBytes": 24435,
+        "gzipBytes": 7900
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api-next/server (nextAdapter)",
+        "runtime": "Next.js server adapter",
+        "minifiedBytes": 24897,
+        "gzipBytes": 8069
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api-tanstack-start (tanStackStartAdapter)",
+        "runtime": "TanStack Start server adapter",
+        "minifiedBytes": 25052,
+        "gzipBytes": 8138
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api-react-router (reactRouterAdapter)",
+        "runtime": "React Router v7 server adapter",
+        "minifiedBytes": 25193,
+        "gzipBytes": 8168
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api-solid-start (solidStartAdapter)",
+        "runtime": "SolidStart server adapter",
+        "minifiedBytes": 25056,
+        "gzipBytes": 8131
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api-sveltekit/server (svelteKitAdapter)",
+        "runtime": "SvelteKit server adapter",
+        "minifiedBytes": 25047,
+        "gzipBytes": 8130
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api-sveltekit/remote (svelteKitRemoteTransport)",
+        "runtime": "SvelteKit remote transport",
+        "minifiedBytes": 19596,
+        "gzipBytes": 6508
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api-nuxt/server (nuxtAdapter)",
+        "runtime": "Nuxt server adapter",
+        "minifiedBytes": 25044,
+        "gzipBytes": 8142
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api-nuxt/client (nuxtFetchTransport)",
+        "runtime": "Nuxt request-aware client transport",
+        "minifiedBytes": 2420,
+        "gzipBytes": 1140
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api-astro (astroAdapter)",
+        "runtime": "Astro server adapter",
+        "minifiedBytes": 24514,
+        "gzipBytes": 7941
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api-astro (astroInProcessTransport)",
+        "runtime": "Astro in-process transport",
+        "minifiedBytes": 19504,
+        "gzipBytes": 6458
+      },
+      {
+        "comparison": "executable",
+        "imports": "@trpc/client + @trpc/server",
+        "runtime": "tRPC",
+        "minifiedBytes": 66901,
+        "gzipBytes": 19810
+      },
+      {
+        "comparison": "executable",
+        "imports": "@orpc/client + @orpc/server",
+        "runtime": "oRPC",
+        "minifiedBytes": 37941,
+        "gzipBytes": 12158
+      },
+      {
+        "comparison": "executable",
+        "imports": "@ts-rest/core + @ts-rest/serverless/fetch",
+        "runtime": "ts-rest",
+        "minifiedBytes": 18004,
+        "gzipBytes": 6240
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@ts-rest/core@3.52.1",
+        "runtime": "ts-rest stable core",
+        "minifiedBytes": 5758,
+        "gzipBytes": 2243
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@ts-rest/core@3.53.0-rc.1",
+        "runtime": "ts-rest Zod 4 RC core",
+        "minifiedBytes": 62369,
+        "gzipBytes": 15363
+      },
+      {
+        "comparison": "executable",
+        "imports": "hono + hono/client",
+        "runtime": "Hono RPC",
+        "minifiedBytes": 23541,
+        "gzipBytes": 9457
+      }
+    ],
+    "after": [
+      {
+        "comparison": "executable",
+        "imports": "@hulla/api + /client + /server + /fetch",
+        "runtime": "@hulla/api",
+        "minifiedBytes": 50149,
+        "gzipBytes": 15503
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api",
+        "runtime": "Contract declarations",
+        "minifiedBytes": 9062,
+        "gzipBytes": 3263
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api + /client",
+        "runtime": "Transport-neutral client",
+        "minifiedBytes": 24978,
+        "gzipBytes": 8362
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api + /server",
+        "runtime": "Transport-neutral server",
+        "minifiedBytes": 14598,
+        "gzipBytes": 5036
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api + /client + /server",
+        "runtime": "Transport-neutral client + server",
+        "minifiedBytes": 29007,
+        "gzipBytes": 9458
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api/fetch (fetchTransport)",
+        "runtime": "Fetch client transport",
+        "minifiedBytes": 3553,
+        "gzipBytes": 1591
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api/fetch (fetchAdapter)",
+        "runtime": "Fetch server adapter",
+        "minifiedBytes": 22599,
+        "gzipBytes": 7443
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api/adapters (createAdapterHandler)",
+        "runtime": "Core adapter dispatcher",
+        "minifiedBytes": 17136,
+        "gzipBytes": 5800
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api-express (expressAdapter)",
+        "runtime": "Express server adapter",
+        "minifiedBytes": 20643,
+        "gzipBytes": 6824
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api-node-http (nodeHttpAdapter)",
+        "runtime": "Node HTTP server adapter",
+        "minifiedBytes": 23535,
+        "gzipBytes": 7797
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api-fastify (fastifyAdapter)",
+        "runtime": "Fastify server adapter",
+        "minifiedBytes": 18985,
+        "gzipBytes": 6294
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api-hono (honoAdapter)",
+        "runtime": "Hono server adapter",
+        "minifiedBytes": 24843,
+        "gzipBytes": 8365
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api-h3 (h3Adapter)",
+        "runtime": "H3 server adapter",
+        "minifiedBytes": 19827,
+        "gzipBytes": 6584
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api-cloudflare (cloudflareAdapter)",
+        "runtime": "Cloudflare Workers adapter",
+        "minifiedBytes": 22916,
+        "gzipBytes": 7544
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api-cloudflare/pages (cloudflarePagesAdapter)",
+        "runtime": "Cloudflare Pages Functions adapter",
+        "minifiedBytes": 22823,
+        "gzipBytes": 7507
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api-google-cloud-functions (googleCloudFunctionsAdapter)",
+        "runtime": "Google Cloud Run functions adapter",
+        "minifiedBytes": 24951,
+        "gzipBytes": 8227
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api-netlify-functions (netlifyFunctionsAdapter)",
+        "runtime": "Netlify Functions adapter",
+        "minifiedBytes": 22861,
+        "gzipBytes": 7516
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api-next/server (nextAdapter)",
+        "runtime": "Next.js server adapter",
+        "minifiedBytes": 23325,
+        "gzipBytes": 7669
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api-tanstack-start (tanStackStartAdapter)",
+        "runtime": "TanStack Start server adapter",
+        "minifiedBytes": 23480,
+        "gzipBytes": 7737
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api-react-router (reactRouterAdapter)",
+        "runtime": "React Router v7 server adapter",
+        "minifiedBytes": 23621,
+        "gzipBytes": 7765
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api-solid-start (solidStartAdapter)",
+        "runtime": "SolidStart server adapter",
+        "minifiedBytes": 23484,
+        "gzipBytes": 7730
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api-sveltekit/server (svelteKitAdapter)",
+        "runtime": "SvelteKit server adapter",
+        "minifiedBytes": 23475,
+        "gzipBytes": 7727
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api-sveltekit/remote (svelteKitRemoteTransport)",
+        "runtime": "SvelteKit remote transport",
+        "minifiedBytes": 18025,
+        "gzipBytes": 6127
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api-nuxt/server (nuxtAdapter)",
+        "runtime": "Nuxt server adapter",
+        "minifiedBytes": 23472,
+        "gzipBytes": 7743
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api-nuxt/client (nuxtFetchTransport)",
+        "runtime": "Nuxt request-aware client transport",
+        "minifiedBytes": 8114,
+        "gzipBytes": 3054
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api-astro (astroAdapter)",
+        "runtime": "Astro server adapter",
+        "minifiedBytes": 22940,
+        "gzipBytes": 7552
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@hulla/api-astro (astroInProcessTransport)",
+        "runtime": "Astro in-process transport",
+        "minifiedBytes": 17933,
+        "gzipBytes": 6079
+      },
+      {
+        "comparison": "executable",
+        "imports": "@trpc/client + @trpc/server",
+        "runtime": "tRPC",
+        "minifiedBytes": 66901,
+        "gzipBytes": 19810
+      },
+      {
+        "comparison": "executable",
+        "imports": "@orpc/client + @orpc/server",
+        "runtime": "oRPC",
+        "minifiedBytes": 37941,
+        "gzipBytes": 12158
+      },
+      {
+        "comparison": "executable",
+        "imports": "@ts-rest/core + @ts-rest/serverless/fetch",
+        "runtime": "ts-rest",
+        "minifiedBytes": 18004,
+        "gzipBytes": 6240
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@ts-rest/core@3.52.1",
+        "runtime": "ts-rest stable core",
+        "minifiedBytes": 5758,
+        "gzipBytes": 2243
+      },
+      {
+        "comparison": "breakdown",
+        "imports": "@ts-rest/core@3.53.0-rc.1",
+        "runtime": "ts-rest Zod 4 RC core",
+        "minifiedBytes": 62369,
+        "gzipBytes": 15363
+      },
+      {
+        "comparison": "executable",
+        "imports": "hono + hono/client",
+        "runtime": "Hono RPC",
+        "minifiedBytes": 23541,
+        "gzipBytes": 9457
+      }
+    ],
+    "browser": [
+      {
+        "version": "before",
+        "minifiedBytes": 29050,
+        "gzipBytes": 9591
+      },
+      {
+        "version": "after",
+        "minifiedBytes": 28055,
+        "gzipBytes": 9336
+      }
+    ]
+  },
+  "discardedReaderCandidates": {
+    "warning": "These are diagnostic experiments, NOT the retained implementation. The original bounded reader is retained. Large-payload gains did not justify repeatable tiny chunked-body regressions on Bun.",
+    "initialBun": [
+      {
+        "processId": 62855,
+        "results": [
+          {
+            "version": "before",
+            "scenario": "fetch-post",
+            "size": 256,
+            "samples": [
+              15314.795918367345, 11766.390448343056, 11393.073694029848, 12085.395573440677, 12254.4387755102,
+              25073.622448979557, 12490.97927565394, 24299.730364372397, 12061.560279441133
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "chunked-bounded-json",
+            "size": 256,
+            "samples": [
+              2180.8278127183794, 2525.846794150726, 1862.1199193298203, 2054.1120381406454, 1744.0170008718424,
+              1423.6941399762823, 1390.8275462962913, 1473.3744659955803, 1362.9655916420631
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "fetch-post",
+            "size": 16384,
+            "samples": [
+              22905.645801526716, 29852.093532338302, 22938.501908396996, 21379.526989619415, 26219.978165938788,
+              22121.714336917583, 37753.957232704444, 19814.273927392842, 34300.380571428315
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "chunked-bounded-json",
+            "size": 16384,
+            "samples": [
+              8157.8918478260775, 8811.725329428988, 9419.468174726968, 8473.294655414897, 8087.752695417788,
+              8254.951856946358, 8975.274140508254, 9003.192203898067, 9323.052484472113
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "fetch-post",
+            "size": 262144,
+            "samples": [
+              135232.22222222228, 119263.80588235286, 138423.95909090844, 107599.18214285692, 125944.09791666691,
+              105886.91578947411, 133561.6666666667, 305203.60000000027, 216479.16451612776
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "chunked-bounded-json",
+            "size": 262144,
+            "samples": [
+              86245.29714285716, 99231.42131147557, 119008.33333333334, 100270.695, 95340.80793650757,
+              123666.24285714352, 109413.25818181709, 111345.833333334, 100131.11166666629
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "fetch-post",
+            "size": 256,
+            "samples": [
+              11232.101858736065, 13680.86134831465, 9918.064505672599, 44363.630714285595, 14872.926829268246,
+              11724.731445312564, 13196.46084337357, 35839.901764705726, 15453.408294930836
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "chunked-bounded-json",
+            "size": 256,
+            "samples": [
+              2482.609309060816, 2084.3420632163934, 1563.00252669966, 1487.8264815273997, 1368.7148266423333,
+              2660.1894946808757, 1434.259464627148, 1374.0611403709677, 1425.861249703001
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "fetch-post",
+            "size": 16384,
+            "samples": [
+              19161.972468354426, 17304.262824207526, 65287.09239130421, 21386.584918032808, 133454.35111111126,
+              19445.779288026173, 80555.55512820576, 22878.522264150924, 69787.11279069757
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "chunked-bounded-json",
+            "size": 16384,
+            "samples": [
+              8197.734562841533, 7215.962994011975, 9201.964023494866, 8004.272266666643, 9727.01912479739,
+              7723.6540540539945, 8492.183195592328, 7880.457217847679, 7942.526281209013
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "fetch-post",
+            "size": 262144,
+            "samples": [
+              107224.70877192974, 106981.65263157862, 114580.26792452845, 107157.16315789426, 131471.98723404278,
+              116586.77884615301, 121694.81132075404, 170092.79189188985, 195013.17419354827
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "chunked-bounded-json",
+            "size": 262144,
+            "samples": [
+              80231.1106666666, 79554.71447368425, 87198.1884057969, 83166.43835616423, 72589.20602409643,
+              79299.17763157882, 86183.69142857124, 84633.33239436727, 110438.2581818192
+            ]
+          }
+        ]
+      },
+      {
+        "processId": 63174,
+        "results": [
+          {
+            "version": "before",
+            "scenario": "fetch-post",
+            "size": 256,
+            "samples": [
+              14497.6347826087, 11591.940154440174, 10788.561946902655, 12374.312577319532, 12478.658536585363,
+              29484.34523809521, 14208.916849015393, 32142.20297029735, 23090.1442307693
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "chunked-bounded-json",
+            "size": 256,
+            "samples": [
+              2040.3450564034517, 1820.107916287531, 1874.0708931917547, 2094.3969297064423, 1364.7818740050006,
+              2838.297351559195, 1486.2493808816314, 5133.60778443115, 2994.190818363276
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "fetch-post",
+            "size": 16384,
+            "samples": [
+              19424.584565916382, 16427.698087431716, 21378.13588850169, 20857.711111111144, 60700.400000000016,
+              19976.619601328763, 47272.703937007434, 128671.6385964913, 70619.01999999999
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "chunked-bounded-json",
+            "size": 16384,
+            "samples": [
+              7755.641731266148, 7876.922149410207, 8523.062972972983, 9350.038940809984, 9712.48755622187,
+              9182.74724770649, 9249.486440677918, 343503.0111111094, 12721.202531645544
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "fetch-post",
+            "size": 262144,
+            "samples": [
+              112018.59629629622, 108608.1857142858, 100504.79166666642, 112978.31851851848, 122905.18571428632,
+              143861.3095238084, 226360.9555555545, 760019.2749999906, 250915.97499999808
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "chunked-bounded-json",
+            "size": 262144,
+            "samples": [
+              76615.29620253168, 79585.1421052631, 94643.22968750025, 91453.47121212084, 84745.4816901409,
+              143050.00000000032, 128795.74468085225, 300992.437037035, 138432.86136363572
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "fetch-post",
+            "size": 256,
+            "samples": [
+              10230.380408858618, 14075.445581395343, 11387.895445920334, 19563.62903225806, 12650.981782178247,
+              34113.54147727262, 14097.455752212469, 117981.49038461536, 19367.714838709882
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "chunked-bounded-json",
+            "size": 256,
+            "samples": [
+              2073.5141672425725, 1876.2963727329586, 2416.4505247376405, 1828.139902528172, 1430.8993085359994,
+              2284.8635776680703, 1363.5906612133629, 4363.8078291815455, 2050.334540485157
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "fetch-post",
+            "size": 16384,
+            "samples": [
+              21301.41843971633, 17601.099706744848, 18883.529467084685, 19007.17278481021, 87343.17681159405,
+              31379.685167464042, 100124.02833333454, 92050.48076923084, 50354.70894308969
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "chunked-bounded-json",
+            "size": 16384,
+            "samples": [
+              7410.504197530863, 7089.738252656445, 8088.454582210246, 7402.2451294698, 8844.974226804105,
+              7798.360389610403, 13338.66666666654, 10462.304347826, 9860.426929392475
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "fetch-post",
+            "size": 262144,
+            "samples": [
+              105626.60877192966, 96083.00317460315, 125031.59791666671, 103699.71864406811, 134456.1625000002,
+              115685.65769230803, 361003.92352940724, 140140.21395348822, 272894.3869565188
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "chunked-bounded-json",
+            "size": 262144,
+            "samples": [
+              71962.5988095238, 68312.64204545446, 86497.14285714253, 81433.55810810848, 81415.6527027025,
+              80372.4358974361, 112972.12181818229, 146825.81219512274, 168871.44146341333
+            ]
+          }
+        ]
+      },
+      {
+        "processId": 63502,
+        "results": [
+          {
+            "version": "before",
+            "scenario": "fetch-post",
+            "size": 256,
+            "samples": [
+              20015.833333333347, 14084.127906976708, 11200.808582089532, 12033.016569200758, 12102.804863813197,
+              29165.318357487977, 12563.32824267793, 26216.375545851508, 12498.838269230839
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "chunked-bounded-json",
+            "size": 256,
+            "samples": [
+              2356.110129564194, 1905.0105714285678, 1831.3453325198307, 2259.9238984843078, 1459.0935476075456,
+              1446.0150602409562, 2124.3510088495464, 1410.244794359557, 1396.6449383290662
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "fetch-post",
+            "size": 16384,
+            "samples": [
+              26019.152360515036, 23351.049612403072, 71574.60238095236, 21855.454545454697, 38462.34472049693,
+              19326.536562499827, 24531.292244897784, 19996.956739811812, 38224.97388535015
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "chunked-bounded-json",
+            "size": 16384,
+            "samples": [
+              9887.204777594729, 7943.0665343915325, 20998.259246575395, 8221.729452054817, 9081.644024205718,
+              8720.412129380104, 8513.386524822674, 9554.77054140122, 9636.382985553702
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "fetch-post",
+            "size": 262144,
+            "samples": [
+              168844.5583333335, 106050.5122807016, 208145.97931034456, 120113.97058823587, 125361.11250000013,
+              107581.69642857151, 127963.7404255327, 163080.29189189305, 178569.52285714215
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "chunked-bounded-json",
+            "size": 262144,
+            "samples": [
+              86262.79714285715, 81179.2797297296, 1325254.160000004, 107941.74107142891, 90135.44776119407,
+              81101.3513513518, 107970.68571428586, 114268.5528301884, 112078.54999999856
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "fetch-post",
+            "size": 256,
+            "samples": [
+              11219.699074074091, 13247.341721854298, 304713.2952380967, 15629.513802083395, 12380.584123711365,
+              26115.471304347804, 13578.091397849548, 44517.104195803855, 14231.447682119067
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "chunked-bounded-json",
+            "size": 256,
+            "samples": [
+              2399.255297880851, 2006.8185618729058, 10424.435763888892, 2241.939073589839, 2451.642483660131,
+              1758.7533997655253, 1364.8965203547925, 1426.4469931067242, 1422.9517429452178
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "fetch-post",
+            "size": 16384,
+            "samples": [
+              21334.64475524474, 17435.00948275857, 95951.53846153851, 17722.750737463113, 21998.046520146476,
+              19073.17460317461, 97181.31562499935, 21429.828378378214, 77986.5805194808
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "chunked-bounded-json",
+            "size": 16384,
+            "samples": [
+              8148.133333333332, 7353.452053140093, 17320.821590909025, 10699.712586206888, 8725.45518672203,
+              9402.071428571422, 10474.52006980791, 8740.423435225515, 9392.246948356817
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "fetch-post",
+            "size": 262144,
+            "samples": [
+              116394.71153846159, 101297.84833333323, 224337.34444444376, 125787.9354166666, 121640.38461538404,
+              139292.89772727212, 114038.36415094427, 96171.03174603125, 113217.6094339624
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "chunked-bounded-json",
+            "size": 262144,
+            "samples": [
+              70584.35, 69041.95402298853, 148588.81951219545, 102571.6813559322, 78480.19480519452, 87315.88115942018,
+              76748.52941176461, 74450.80454545467, 88788.23529411794
+            ]
+          }
+        ]
+      }
+    ],
+    "initialNode": [
+      {
+        "processId": 64933,
+        "results": [
+          {
+            "version": "before",
+            "scenario": "fetch-post",
+            "size": 256,
+            "samples": [
+              17027.01841359773, 13163.377192982376, 11973.348406374509, 11398.537191650854, 12052.719277108465,
+              11434.714285714324, 11392.449335863366, 11683.130544747035, 11536.92638623331
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "chunked-bounded-json",
+            "size": 256,
+            "samples": [
+              3175.1477248677274, 3038.5653670886245, 3033.647219413543, 2965.396492094857, 2961.545755182618,
+              2942.690485532127, 2938.0791972589313, 3064.6684371808324, 3047.678618588097
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "fetch-post",
+            "size": 16384,
+            "samples": [
+              52442.717391304344, 52376.88434782602, 490423.04117647023, 52236.63043478273, 52369.456521739026,
+              52510.43478260924, 52788.66929824641, 52899.743859649, 50880.40254237227
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "chunked-bounded-json",
+            "size": 16384,
+            "samples": [
+              14903.360297766762, 15172.159090909163, 39344.390196078566, 15314.551275510124, 14841.039012345604,
+              14986.52319201992, 14984.424438902795, 15770.002099737561, 15339.317602040735
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "fetch-post",
+            "size": 262144,
+            "samples": [
+              723094.4444444453, 725893.0555555555, 752566.2000000011, 724317.5999999999, 738419.9111111128,
+              732677.7777777757, 729203.6999999962, 980333.9285714303, 762806.7750000014
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "chunked-bounded-json",
+            "size": 262144,
+            "samples": [
+              229373.9185185182, 233616.18461538438, 241809.50000000122, 232499.20000000132, 228661.88518518425,
+              225674.84814814667, 224612.34444444592, 321228.72631578887, 240395.00000000044
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "fetch-post",
+            "size": 256,
+            "samples": [
+              14187.98274231679, 11447.523809523773, 11728.857421875016, 11210.486567164202, 11659.182718446653,
+              11574.245279383365, 11609.35686653773, 11421.633460076055, 11272.326454033815
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "chunked-bounded-json",
+            "size": 256,
+            "samples": [
+              2975.535052057515, 2857.3948095238065, 2856.6555925749794, 2812.142689784442, 2934.2563325183314,
+              2857.8352857143077, 2830.6878773585013, 2896.927316602347, 2846.249408424026
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "fetch-post",
+            "size": 16384,
+            "samples": [
+              52827.4859649123, 51778.12500000002, 50857.98050847489, 51907.14827586221, 50916.34830508433,
+              50959.21610169495, 71265.14705882395, 66471.24505494544, 50545.37815126079
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "chunked-bounded-json",
+            "size": 16384,
+            "samples": [
+              13860.277136258632, 14426.822836538486, 13834.062903225868, 14167.511792452773, 13895.640509259187,
+              13444.351230424965, 20714.626551723934, 18756.041562500057, 13986.188811188847
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "fetch-post",
+            "size": 262144,
+            "samples": [
+              723508.3333333326, 714173.611111111, 732590.7333333362, 750269.2749999994, 727913.8888888863,
+              731543.5222222226, 1529365.6249999912, 1160427.7833333376, 784622.9125000036
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "chunked-bounded-json",
+            "size": 262144,
+            "samples": [
+              220479.4642857142, 221780.35714285652, 221280.50357142847, 235827.08076923015, 217261.31071428815,
+              211975.14482758474, 709375.9222222212, 384394.85294117784, 337324.9999999997
+            ]
+          }
+        ]
+      },
+      {
+        "processId": 65263,
+        "results": [
+          {
+            "version": "before",
+            "scenario": "fetch-post",
+            "size": 256,
+            "samples": [
+              17213.013467048728, 11340.259433962205, 11126.57407407411, 11225.981308411167, 10990.430402930358,
+              11546.089615384728, 11245.380711610513, 10994.047619047646, 11114.066296296289
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "chunked-bounded-json",
+            "size": 256,
+            "samples": [
+              3032.8806467913096, 2910.9945683802093, 2890.4604527938377, 2906.448716707014, 2863.0944179389353,
+              2921.500730282385, 2877.5686960690196, 2831.0023584905603, 2862.0112064854193
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "fetch-post",
+            "size": 16384,
+            "samples": [
+              51813.07413793102, 52294.782608695765, 53652.566964286, 51671.296581196686, 50601.085714285604,
+              51510.57692307723, 50643.03193277371, 51480.590598290044, 51228.24830508438
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "chunked-bounded-json",
+            "size": 16384,
+            "samples": [
+              15328.985969387744, 14953.596766169192, 15269.370229007618, 14882.941336633741, 15511.154005167971,
+              15042.543859648991, 14512.821980676435, 15763.856167979035, 15056.161152882312
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "fetch-post",
+            "size": 262144,
+            "samples": [
+              753214.0624999983, 739692.5888888898, 727257.4111111073, 746476.3888888885, 743714.8111111128,
+              723084.7222222211, 724666.2000000066, 723264.3444444471, 729563.4222222159
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "chunked-bounded-json",
+            "size": 262144,
+            "samples": [
+              242696.66799999957, 239355.93076923065, 244806.83599999975, 241528.6640000013, 239016.98846153836,
+              241211.99999999953, 231857.69230769368, 241096.49999999965, 235359.93461538196
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "fetch-post",
+            "size": 256,
+            "samples": [
+              14262.846555819464, 11289.802631578961, 11111.126666666629, 11062.08563535912, 11495.242720306562,
+              11055.187292817809, 11383.759469696935, 11032.483088235313, 11104.574861367832
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "chunked-bounded-json",
+            "size": 256,
+            "samples": [
+              2840.2567439659265, 2951.079547689281, 2766.459197786999, 2733.6104783599135, 2755.8195592286447,
+              3323.472702104099, 2798.2353324035416, 2814.7338180112474, 2752.8535779816143
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "fetch-post",
+            "size": 16384,
+            "samples": [
+              51699.14529914535, 52233.36956521744, 50123.541666666446, 49862.0867768596, 50778.25630252097,
+              49921.314876033, 50553.781512605514, 49888.84297520651, 51471.90170940191
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "chunked-bounded-json",
+            "size": 16384,
+            "samples": [
+              14107.188967136128, 14502.606763285026, 13441.014093959751, 14299.255952380896, 14246.623222748825,
+              13798.055402298865, 13926.604872389671, 13838.237471264338, 13684.320273348389
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "fetch-post",
+            "size": 262144,
+            "samples": [
+              722900.4555555548, 719935.6555555545, 757442.1333333298, 727605.5555555507, 747503.7000000057,
+              728744.4444444494, 737828.7000000051, 747047.222222227, 735438.8888888934
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "chunked-bounded-json",
+            "size": 262144,
+            "samples": [
+              215396.72500000018, 214457.5892857144, 226672.99259259278, 224078.8555555557, 224992.7481481488,
+              238876.60384615138, 219297.61785714357, 220147.0250000024, 219405.20714285865
+            ]
+          }
+        ]
+      },
+      {
+        "processId": 65617,
+        "results": [
+          {
+            "version": "before",
+            "scenario": "fetch-post",
+            "size": 256,
+            "samples": [
+              17356.575144508683, 11438.08723809525, 11019.785871559689, 11196.579477611993, 10863.803616636522,
+              11752.813111546031, 11774.844705882346, 10942.615482695901, 11055.716758747683
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "chunked-bounded-json",
+            "size": 256,
+            "samples": [
+              3080.227566735113, 2907.699467054262, 2898.096764847883, 2914.311121903838, 2875.752707235268,
+              2931.804689789926, 2945.7474226803943, 2856.7408376963353, 2872.4708951651705
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "fetch-post",
+            "size": 16384,
+            "samples": [
+              52470.61565217386, 52075.61120689661, 52598.15217391287, 51741.667241379546, 50396.87500000014,
+              50764.56554621824, 52434.60086956553, 53064.76666666656, 50759.698319327545
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "chunked-bounded-json",
+            "size": 16384,
+            "samples": [
+              15739.943193717274, 15532.568992248001, 15081.323115577901, 15630.262499999977, 14948.694029850747,
+              14892.307692307599, 15506.71834625334, 15410.630512820624, 14891.966501240644
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "fetch-post",
+            "size": 262144,
+            "samples": [
+              733721.7666666675, 746186.566666668, 725611.5777777773, 765826.0499999983, 744981.9444444427,
+              738190.7444444449, 722631.944444442, 727768.0555555586, 738765.2777777779
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "chunked-bounded-json",
+            "size": 262144,
+            "samples": [
+              242762.00000000064, 231776.442307692, 240003.50000000073, 253763.88749999893, 244170.8319999998,
+              235588.7846153879, 254448.7833333316, 267023.91304347856, 242576.33200000055
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "fetch-post",
+            "size": 256,
+            "samples": [
+              13930.28816705336, 11232.827102803725, 11290.2881578947, 28511.19668246447, 11137.045656192227,
+              11067.879005524856, 11533.525143953906, 11087.038745387546, 10970.505850091418
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "chunked-bounded-json",
+            "size": 256,
+            "samples": [
+              2810.295837231061, 2959.058579881659, 2825.2412900188247, 3082.3482897384447, 2776.6851920407244,
+              2815.8278273110973, 2881.319011041789, 2842.5213169114063, 2812.3594189316063
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "fetch-post",
+            "size": 16384,
+            "samples": [
+              51238.52372881375, 51988.86465517234, 51381.69487179487, 52166.84655172426, 50829.02605042035,
+              51749.35344827629, 52524.601739130405, 51195.727118644405, 51159.14576271187
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "chunked-bounded-json",
+            "size": 16384,
+            "samples": [
+              14470.060240963827, 14676.788536585374, 14103.716666666603, 14124.843058823579, 14218.364928910025,
+              13836.71267281114, 14095.432394366208, 14612.581021897877, 14390.387769784149
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "fetch-post",
+            "size": 262144,
+            "samples": [
+              747506.0222222232, 736684.7222222228, 721389.344444444, 762065.1124999995, 744907.8666666639,
+              735553.7111111112, 727079.6333333339, 735587.4999999994, 734972.6888888855
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "chunked-bounded-json",
+            "size": 262144,
+            "samples": [
+              223523.6607142854, 225832.87037036993, 219121.2785714291, 224941.97407407363, 253875.69166666706,
+              235420.51538461237, 226815.5851851858, 231836.0576923064, 226217.7444444441
+            ]
+          }
+        ]
+      }
+    ],
+    "extendedSmallBun": [
+      {
+        "processId": 70460,
+        "results": [
+          {
+            "version": "before",
+            "scenario": "fetch-post",
+            "size": 256,
+            "samples": [
+              18776.63551401869, 20040.05976627712, 10386.040224913497, 20283.78378378381, 15418.180813214713,
+              25379.633403805492, 20292.004560810805, 25342.06604166665, 13583.810917030585, 30703.595685279393,
+              15472.747690386968, 20797.941941074434, 18282.65577507608, 48784.81818181833, 18212.999544764716
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "chunked-bounded-json",
+            "size": 256,
+            "samples": [
+              2288.432484917044, 2291.1193776250475, 2034.6176670057669, 1868.993298087388, 2193.009933672682,
+              2131.517158081709, 1991.2753774680648, 1520.203635672664, 1439.056445616978, 1481.2001234263118,
+              1469.7780159216072, 2119.0255518276567, 1475.0583824975463, 1467.4930667644842, 2575.7056235243613
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "fetch-post",
+            "size": 256,
+            "samples": [
+              12933.65525751073, 19241.852631578935, 14539.34512635379, 14427.054098360655, 17507.87041847041,
+              19348.828594249248, 17069.328913963385, 12729.365429480356, 25212.613865546282, 308608.1317073167,
+              31762.859644669996, 15451.260231660259, 33262.564766839176, 19621.457122092957, 22049.11288014299
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "chunked-bounded-json",
+            "size": 256,
+            "samples": [
+              2397.2682780663204, 3659.6824686940945, 2155.748913238728, 2927.5183601045946, 2247.0144542220564,
+              2854.33291770574, 1443.5427523156516, 4940.812365107917, 2478.5384758364366, 1357.7082701663085,
+              1423.4600521883501, 5126.134697674431, 1803.7677288441328, 3911.179930624384, 1423.663839126831
+            ]
+          }
+        ]
+      },
+      {
+        "processId": 70818,
+        "results": [
+          {
+            "version": "after",
+            "scenario": "fetch-post",
+            "size": 256,
+            "samples": [
+              16152.637768817205, 11731.83440860216, 12650.061433087449, 20945.164397905744, 16761.136061026373,
+              15038.246741854628, 11990.44625246545, 13931.834836527609, 13517.534684684722, 15855.052577319619,
+              16198.5519379845, 81426.90125000002, 18243.746766917382, 79886.9304347825, 20157.51628959279
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "chunked-bounded-json",
+            "size": 256,
+            "samples": [
+              2465.4467372473537, 2520.4001361238707, 2720.689430753212, 2057.090623928694, 2129.050612027677,
+              2626.5530531845016, 1314.8392133231093, 2478.7193651300004, 1364.9615218380325, 2484.8670533642767,
+              1428.9811689084663, 1378.6061573808101, 1389.2644940958573, 1444.3984713529198, 1447.583437876962
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "fetch-post",
+            "size": 256,
+            "samples": [
+              12795.625000000004, 16820.50250696379, 11991.491808191802, 17125.68180535967, 22248.95442804426,
+              26369.320652173905, 78456.26405228744, 12810.267769477052, 78530.79689441007, 14656.140659340681,
+              240607.58400000122, 18438.825942684853, 82325.33875000002, 21815.25009041589, 79431.97037037031
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "chunked-bounded-json",
+            "size": 256,
+            "samples": [
+              1972.159464344396, 2131.6955239786853, 1815.4847503782137, 2249.958605174357, 2162.3605975723644,
+              1862.059736229638, 1396.2613961605591, 4896.360301917583, 1351.291611305025, 7187.201374570445,
+              2254.919034197666, 3516.5127970749563, 1405.8614573570783, 5554.211144321106, 1389.2035189257974
+            ]
+          }
+        ]
+      },
+      {
+        "processId": 71141,
+        "results": [
+          {
+            "version": "before",
+            "scenario": "fetch-post",
+            "size": 256,
+            "samples": [
+              18068.276992481202, 13112.942841648593, 10301.263429054052, 20968.546312178387, 15719.94115384614,
+              25534.969008264463, 21798.244041450747, 22674.010841121566, 12723.152965660758, 30665.89610705599,
+              15289.36305732482, 20849.25034602077, 16749.1133518776, 32964.482038834954, 18198.93527777784
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "chunked-bounded-json",
+            "size": 256,
+            "samples": [
+              2023.3195582532462, 1896.8119487908966, 2089.294330518699, 1885.9722929435782, 1914.3703142446984,
+              1918.7986408698432, 1909.3993635640456, 1627.7887004883341, 1478.8843026121285, 1500.8259379689844,
+              2349.775559599637, 4617.606117737608, 1486.1790464396327, 1482.1940224774605, 1463.2137527432387
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "fetch-post",
+            "size": 256,
+            "samples": [
+              12623.88079748164, 16261.608344549128, 12268.512906504078, 23677.671755725172, 23083.19711538458,
+              29059.24821002394, 17049.437784090896, 205936.7714285715, 23818.12162698405, 226421.383018869,
+              15629.568098958302, 35388.98480662976, 30703.410230178917, 397506.9444444444, 32706.58501362387
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "chunked-bounded-json",
+            "size": 256,
+            "samples": [
+              2486.4758854267466, 2346.6806804849425, 2353.1928039215686, 2357.7668762278945, 2263.807923033388,
+              2196.6715540911596, 2652.1675801104925, 1451.4705249153371, 2599.828509532064, 1436.356481149012,
+              1742.4271526063676, 10326.618238993688, 2375.51051068883, 1379.8067264573956, 2991.045102880646
+            ]
+          }
+        ]
+      },
+      {
+        "processId": 71499,
+        "results": [
+          {
+            "version": "after",
+            "scenario": "fetch-post",
+            "size": 256,
+            "samples": [
+              16834.659887798036, 23033.181381957755, 23564.80763209395, 22649.001509433965, 15916.202519893865,
+              24293.876518218647, 20899.205545927216, 12053.175200803224, 12244.239572736506, 65456.43152173951,
+              16528.409555854574, 82157.86437499958, 16533.23002754821, 52639.83903508736, 17272.24820143884
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "chunked-bounded-json",
+            "size": 256,
+            "samples": [
+              2252.398498498499, 2014.2126888217524, 4503.096361185978, 2036.1094672548352, 2592.1500261278525,
+              2185.57867419414, 2175.5219724438, 2710.609748158303, 1530.1346168557982, 1421.8388461082814,
+              1446.0582600313332, 1386.1942127757832, 2306.9340445982184, 1794.169532067583, 4480.571161048678
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "fetch-post",
+            "size": 256,
+            "samples": [
+              13549.463882618511, 15944.334259259262, 17950.22222222222, 13579.029977375581, 16913.345070422532,
+              21404.47015985794, 28547.517523364502, 15487.639741935474, 38971.07662337682, 14201.49016203709,
+              67358.60106951844, 15687.941176470571, 27560.70936170216, 49656.595951417235, 21570.110696920656
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "chunked-bounded-json",
+            "size": 256,
+            "samples": [
+              2022.2938490057302, 2170.633640803038, 2458.708092603975, 2300.4639517056353, 1819.2547751541592,
+              2472.302039555006, 1871.306985810076, 2257.970366886171, 1651.9034240924148, 3149.552884426079,
+              1465.4811332274987, 3698.5905185185047, 1504.562650451354, 3047.2310466761023, 1610.6764192725757
+            ]
+          }
+        ]
+      },
+      {
+        "processId": 70458,
+        "results": [
+          {
+            "version": "before",
+            "scenario": "fetch-post",
+            "size": 256,
+            "samples": [
+              18261.81077389985, 11529.611720226843, 9824.571231766608, 16948.74370677731, 15291.83561470216,
+              23461.608143939353, 20682.94030874784, 23471.84990689014, 12538.683677685927, 14508.407083825254,
+              14518.300942285128, 31630.126582278328, 14890.405210918057, 30625.934606205257, 17787.419807427796
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "chunked-bounded-json",
+            "size": 256,
+            "samples": [
+              2152.195408895265, 2203.9064830119373, 1850.0314783412975, 4122.557078215898, 2048.330209933439,
+              1986.2442072161534, 2167.166991693758, 1537.4754419677208, 1522.0122637920044, 2495.499750467869,
+              1586.8905845014535, 1485.959943041108, 3280.196451612906, 1498.288077403239, 1492.6512000994933
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "fetch-post",
+            "size": 256,
+            "samples": [
+              13189.771098901103, 17572.880320699718, 18183.121720733438, 28246.647058823542, 20478.860921501688,
+              21011.16575342471, 23491.144814090003, 31423.3856020943, 22661.460258780047, 12974.55848648649,
+              27151.46108597295, 15985.696804260944, 16527.149243466254, 17405.315500685894, 29777.605459057035
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "chunked-bounded-json",
+            "size": 256,
+            "samples": [
+              2531.139304760024, 2342.048028883684, 3522.3569317571164, 3642.1637188796703, 2871.058690966103,
+              2711.9849265536736, 2050.8494190020565, 2772.2713097713117, 1453.412764926723, 4706.901386214865,
+              1462.0522660818733, 6816.536537127004, 1437.668719300346, 4418.314973679086, 2310.887252070085
+            ]
+          }
+        ]
+      }
+    ],
+    "lazyChunkArraySmallBun": [
+      {
+        "processId": 76457,
+        "results": [
+          {
+            "version": "before",
+            "scenario": "fetch-post",
+            "size": 256,
+            "samples": [
+              19057.62678288431, 12042.341112214503, 9976.135132890375, 16153.257818659673, 15836.411609498677,
+              25242.135341365436, 21035.193015332217, 13450.0854368932, 13146.566019417545, 31706.843749999964,
+              14958.0357142857, 32666.274752475398, 18882.656752873572, 30696.856265984636, 56454.9860655737
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "chunked-bounded-json",
+            "size": 256,
+            "samples": [
+              2172.106334841629, 2233.2108299218457, 1783.9693519619511, 2207.9931599684796, 2057.1805965032618,
+              2132.118653402018, 2137.8154257214055, 2779.0751149718917, 1794.8318576129216, 1472.7811487481576,
+              1495.5669491525377, 1508.9635986420135, 1496.8286141948379, 1576.6147792958461, 4568.547378419446
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "fetch-post",
+            "size": 256,
+            "samples": [
+              14573.204116222758, 18348.376560121775, 15447.946074646055, 15835.229683377303, 20261.13183333329,
+              24540.346534653472, 17112.230536451192, 15902.036423841062, 24632.658959537563, 15267.57776412767,
+              30912.77142857142, 17597.067238912703, 32765.736228287933, 21417.382646048194, 202165.51489361725
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "chunked-bounded-json",
+            "size": 256,
+            "samples": [
+              2302.349894494532, 2664.0968154246093, 2508.764744429882, 2287.237945492659, 2431.344529983788,
+              2369.3073247778957, 1488.1877232142806, 5042.8035528942155, 1475.9002582390588, 5052.115305913638,
+              1453.4753300230152, 4425.947048974479, 1503.952036596064, 4398.621238414514, 3657.5602763892884
+            ]
+          }
+        ]
+      },
+      {
+        "processId": 76869,
+        "results": [
+          {
+            "version": "after",
+            "scenario": "fetch-post",
+            "size": 256,
+            "samples": [
+              17941.915373134332, 10539.64003511853, 10169.450250836111, 19658.851696284335, 16622.812742382255,
+              29083.964801864862, 20363.19211409391, 46299.141947565484, 12932.4697649573, 54316.94977375599,
+              16336.022727272712, 72351.95952380958, 18455.72763532759, 69777.97600000018, 18323.33343511454
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "chunked-bounded-json",
+            "size": 256,
+            "samples": [
+              2401.4847539015614, 2497.0219517270084, 2073.3284381478916, 2213.2684802655826, 2443.0201440249125,
+              1888.306451612902, 2089.2569115598913, 1395.506779069772, 1330.7893435351493, 1371.2065813528418,
+              1359.337245129136, 1377.0520137693645, 1350.3492854731578, 1405.1267415993461, 2915.978218210361
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "fetch-post",
+            "size": 256,
+            "samples": [
+              13401.178507795104, 18900.56425196849, 14723.028102189777, 15525.790139064471, 17998.46956521736,
+              20140.247483221483, 16415.436462585065, 12598.513431269692, 45304.692982456145, 37263.285714285565,
+              43182.149280575504, 17567.196428571413, 69617.57977528118, 19143.761857142894, 18471.198769230865
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "chunked-bounded-json",
+            "size": 256,
+            "samples": [
+              2107.816701791359, 2095.919926650367, 1757.1737117903901, 2397.282421094689, 1911.179471253383,
+              2598.36453777874, 1448.948514851487, 4439.824176507142, 1396.281268179172, 4096.008966209453,
+              1674.9587020237223, 3212.3343180973743, 1446.3229721586054, 3883.95089175893, 2766.0766207455454
+            ]
+          }
+        ]
+      },
+      {
+        "processId": 76285,
+        "results": [
+          {
+            "version": "before",
+            "scenario": "fetch-post",
+            "size": 256,
+            "samples": [
+              16609.881491712706, 11389.444971537003, 11396.247328959695, 16140.460625814861, 15098.191823899355,
+              15603.113087674705, 10501.89195100614, 25094.998329853777, 14132.847225368052, 15714.489003880977,
+              14836.444128553758, 29307.755058823688, 18483.352187028726, 37839.50353982299, 20092.692598187386
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "chunked-bounded-json",
+            "size": 256,
+            "samples": [
+              2091.946640316206, 2182.6025033156498, 2138.2417755391148, 2035.0396981516012, 1952.5531402538181,
+              1827.548104157151, 2158.250296028883, 1395.0462101836774, 1369.5840903903222, 2322.1562550313934,
+              1651.6193570451533, 1998.7667888074573, 1499.4486442583996, 1645.894486353033, 1588.6153031506474
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "fetch-post",
+            "size": 256,
+            "samples": [
+              12493.05848074922, 15651.72386511025, 12057.9610441767, 14655.443711843689, 20444.63682432436,
+              19614.23447154467, 11751.488062622338, 12710.132228915656, 26279.27098121085, 14601.885644768874,
+              27495.91779279276, 19538.57142857138, 35289.43850267382, 20339.7386440677, 37863.117665615064
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "chunked-bounded-json",
+            "size": 256,
+            "samples": [
+              2252.2936936936935, 2535.064596535699, 1872.4267904509281, 2924.2085077650217, 2042.2835942818288,
+              2906.5679670219142, 1447.5098540586184, 8114.56497633536, 1359.5389146935483, 4790.153417015337,
+              1380.637367694433, 4702.153289653295, 1429.256484458729, 4760.044677698202, 2780.850811188811
+            ]
+          }
+        ]
+      }
+    ],
+    "firstChunkSpecializedSmallBun": [
+      {
+        "processId": 84018,
+        "results": [
+          {
+            "version": "before",
+            "scenario": "fetch-post",
+            "size": 256,
+            "samples": [
+              18430.927718223582, 10883.008431550317, 9771.674035369782, 17257.512000000002, 16265.379403794053,
+              13735.615005599078, 11154.62360594794, 13517.900675675737, 13321.073806881204, 28574.771904761856,
+              15591.16883116879, 34961.94504249289, 18356.957186544372, 28691.892688679443, 20556.67728706625
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "chunked-bounded-json",
+            "size": 256,
+            "samples": [
+              2178.5244115082824, 2877.8786810551546, 2233.619977444823, 2231.283447288919, 2220.8594623655886,
+              2245.674513556621, 1502.7741297270247, 2398.8416910094115, 1708.3493380782897, 1499.3019115442328,
+              7229.5833132530315, 1444.3331287605324, 1784.5805501858808, 3534.8889443473927, 1722.523453423276
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "fetch-post",
+            "size": 256,
+            "samples": [
+              12850.000000000002, 19648.363338788877, 12400.512293388432, 17474.450434782626, 17093.62571022727,
+              20376.53503289475, 23909.985059760922, 38837.634951456304, 21353.380782918044, 1176573.7153846133,
+              16968.267929634592, 17092.569448183134, 30943.878865979368, 112198.55887850479, 34695.85582655817
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "chunked-bounded-json",
+            "size": 256,
+            "samples": [
+              2539.755479585857, 3065.50790754258, 2491.809449636553, 2293.209764953185, 2236.790941286107,
+              2939.905359095886, 2955.38860045147, 1730.257598039216, 2076.5746668973898, 1601.5647938075558,
+              1482.2260558162468, 6054.0751532175755, 2755.555009980036, 1363.5481763435955, 1403.8279330915893
+            ]
+          }
+        ]
+      },
+      {
+        "processId": 84404,
+        "results": [
+          {
+            "version": "after",
+            "scenario": "fetch-post",
+            "size": 256,
+            "samples": [
+              16476.415479452055, 14354.057619047615, 10695.929857397505, 20108.05410385259, 16523.025100133487,
+              32912.97110552766, 22558.262781954905, 16167.124289405689, 14236.284409799537, 85511.09363057306,
+              15752.187270341234, 73213.06352941172, 16327.443265306109, 63156.53300970888, 18117.458521870234
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "chunked-bounded-json",
+            "size": 256,
+            "samples": [
+              2906.885584536563, 2089.18219011142, 2057.30274254371, 2408.2003812964103, 2202.371994861445,
+              2697.747415066464, 2087.4760827970085, 2480.7324100868077, 2146.484671793948, 1340.7342754999395,
+              2408.290688340351, 1464.9556518554707, 2665.5190921455273, 4387.575562001462, 3049.120523241054
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "fetch-post",
+            "size": 256,
+            "samples": [
+              12554.523719958202, 15767.448891786178, 16403.885983827502, 16653.64875690609, 22141.535977859796,
+              19607.917973856205, 20039.252921535874, 12249.256020408147, 44198.98305084736, 15304.437324840672,
+              19768.089226100186, 108027.04642857179, 16711.9214012739, 22203.059605027083, 29179.050232558144
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "chunked-bounded-json",
+            "size": 256,
+            "samples": [
+              2014.085836549756, 2108.6810435699226, 2272.3482105661824, 2506.96505118028, 2138.1131658649547,
+              2501.197540641935, 1838.242839638532, 2727.773370089593, 1734.4937852290748, 4164.9348717948715,
+              1486.0038013868173, 4196.074999999989, 1357.166210562022, 4686.2488481062155, 1773.7636175557868
+            ]
+          }
+        ]
+      },
+      {
+        "processId": 83955,
+        "results": [
+          {
+            "version": "before",
+            "scenario": "fetch-post",
+            "size": 256,
+            "samples": [
+              17273.78477011494, 11858.271822660095, 10994.95961538462, 18785.778560250386, 21005.290721649453,
+              12892.512567132086, 10880.33771532183, 15894.630198675542, 13275.36810344828, 26258.9673427992,
+              14634.547682926828, 21289.68474025985, 17318.716487935628, 36104.53601108035, 19981.061093750013
+            ]
+          },
+          {
+            "version": "before",
+            "scenario": "chunked-bounded-json",
+            "size": 256,
+            "samples": [
+              2120.864969801553, 2213.5356706785265, 2047.5338338167544, 2232.5829395348824, 2263.667904210865,
+              2230.6158819628627, 1850.8784546576214, 2426.2956530529705, 1680.249467936151, 2075.975177304968,
+              3979.78778940691, 2774.7553063583805, 1488.1019469246073, 1515.563702955289, 1490.7116894410026
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "fetch-post",
+            "size": 256,
+            "samples": [
+              12653.299372384934, 17247.587356321845, 12901.011770943802, 14736.356348246667, 17779.75925925926,
+              19705.275041050925, 12849.870663811575, 12739.481634819529, 25659.00106837594, 14203.663668639061,
+              21475.27584973168, 16376.574624829425, 34642.07298050149, 19491.237753510217, 35412.15083798875
+            ]
+          },
+          {
+            "version": "after",
+            "scenario": "chunked-bounded-json",
+            "size": 256,
+            "samples": [
+              2509.872327535665, 2371.395653032998, 1981.329453524848, 3095.3361733305433, 2016.5952444967168,
+              3644.1368205868193, 1446.7781796262786, 4626.115493289381, 1410.4803361542072, 5396.423765945635,
+              1503.2746586496214, 9914.4052593134, 1464.8707031249985, 5977.247472414686, 1483.9938666996372
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "unsafeAblations": {
+    "warning": "Temporary copies only, never production changes. Disabling signals or cleanup weakens guarantees; these are cost-isolation diagnostics, not equivalent-policy contenders. Same 1,000-call warmup, 9 alternating-order 60 ms batches, three processes.",
+    "processes": [
+      {
+        "processId": 40296,
+        "results": [
+          {
+            "version": "control",
+            "depth": 0,
+            "transport": "fetch",
+            "samples": [
+              4179.732758620691, 3312.623626373628, 3304.34065934066, 3372.404044943824, 3313.1226923076956,
+              3412.208806818197, 3341.898166666649, 3429.4475999999904, 3509.802631578945
+            ]
+          },
+          {
+            "version": "control",
+            "depth": 5,
+            "transport": "fetch",
+            "samples": [
+              3896.7992207792204, 3724.790368098164, 3687.6626219512195, 3756.4713749999896, 3732.103950617287,
+              3793.3569182390174, 3713.4310493826974, 3839.5992356687884, 3786.750566037715
+            ]
+          },
+          {
+            "version": "without-native-signal",
+            "depth": 0,
+            "transport": "fetch",
+            "samples": [
+              3929.109477124181, 3182.674179894176, 3674.888231707314, 3238.7477419354736, 3264.234619565217,
+              3362.1671508379923, 3252.840054054055, 3222.0432085561433, 3335.2129444444417
+            ]
+          },
+          {
+            "version": "without-native-signal",
+            "depth": 5,
+            "transport": "fetch",
+            "samples": [
+              3879.6209677419347, 3573.09773809524, 3811.1207594936677, 3667.787073170724, 3716.5097530864255,
+              3617.5948502993983, 3576.5848214285934, 3686.5260736196456, 3763.190993788824
+            ]
+          },
+          {
+            "version": "without-dispose-guard",
+            "depth": 0,
+            "transport": "fetch",
+            "samples": [
+              4029.89794701987, 3411.576704545451, 3828.728789808917, 3676.011219512192, 3600.611317365265,
+              3594.4735928143687, 3575.627499999996, 3731.386358024675, 3577.2247023809423
+            ]
+          },
+          {
+            "version": "without-dispose-guard",
+            "depth": 5,
+            "transport": "fetch",
+            "samples": [
+              4091.7659183673463, 3791.307672955978, 4148.537379310349, 4097.19387755102, 4037.312617449653,
+              3981.1727152317903, 4060.931891891918, 4177.777777777767, 4169.010416666671
+            ]
+          }
+        ]
+      },
+      {
+        "processId": 40469,
+        "results": [
+          {
+            "version": "control",
+            "depth": 0,
+            "transport": "fetch",
+            "samples": [
+              4048.9988590604016, 3252.646378378377, 3937.323006535947, 3435.692857142853, 3390.852203389833,
+              3857.0058974359004, 3509.9171345029113, 3422.573352272748, 3368.3077094972036
+            ]
+          },
+          {
+            "version": "control",
+            "depth": 5,
+            "transport": "fetch",
+            "samples": [
+              3913.311688311688, 3697.893619631902, 4095.50741496599, 3966.853026315795, 3729.107142857137,
+              4028.9010067114314, 3808.908227848101, 4039.533333333323, 3961.5467973856066
+            ]
+          },
+          {
+            "version": "without-native-signal",
+            "depth": 0,
+            "transport": "fetch",
+            "samples": [
+              3704.6553086419763, 3318.5888397790063, 3398.4251412429353, 3516.905497076018, 3312.9761538461585,
+              3331.300662983428, 3376.200842696634, 3363.219273743025, 3354.976703910614
+            ]
+          },
+          {
+            "version": "without-native-signal",
+            "depth": 5,
+            "transport": "fetch",
+            "samples": [
+              3602.01101796407, 3620.6977710843416, 3639.560606060603, 3719.621913580248, 3547.397058823529,
+              3729.3981481481615, 3780.4192499999945, 3705.7741358024837, 3633.042168674677
+            ]
+          },
+          {
+            "version": "without-dispose-guard",
+            "depth": 0,
+            "transport": "fetch",
+            "samples": [
+              3863.9503205128203, 3715.583827160493, 3609.7979041916187, 3615.503452380952, 3579.5064285714298,
+              3400.202429378531, 3564.4871597633187, 3487.1743103448266, 3516.5423976608063
+            ]
+          },
+          {
+            "version": "without-dispose-guard",
+            "depth": 5,
+            "transport": "fetch",
+            "samples": [
+              3922.2549019607827, 3754.2838749999987, 3930.958627450984, 4003.0193999999938, 3951.1787499999905,
+              3882.8306451612866, 3838.16082802548, 3858.1998076923205, 3933.1916993463883
+            ]
+          }
+        ]
+      },
+      {
+        "processId": 40293,
+        "results": [
+          {
+            "version": "control",
+            "depth": 0,
+            "transport": "fetch",
+            "samples": [
+              4050.514563758389, 3357.658268156424, 3433.4237714285728, 3559.8668639053244, 3378.4339887640444,
+              3555.9023668639175, 3429.088114285722, 3509.5565497076095, 3668.8237195121974
+            ]
+          },
+          {
+            "version": "control",
+            "depth": 5,
+            "transport": "fetch",
+            "samples": [
+              3882.833354838709, 3681.935092024539, 3785.455974842769, 3923.2979084967205, 3729.3287037037035,
+              3853.3226923076804, 3914.8160389610493, 3788.865283018885, 3947.2494117646916
+            ]
+          },
+          {
+            "version": "without-native-signal",
+            "depth": 0,
+            "transport": "fetch",
+            "samples": [
+              3858.6405128205115, 3268.4465760869616, 3339.3565000000017, 3225.9386559139684, 3212.7428342246008,
+              3232.7867204301056, 3287.424863387969, 3340.057888888901, 3379.3188202247197
+            ]
+          },
+          {
+            "version": "without-native-signal",
+            "depth": 5,
+            "transport": "fetch",
+            "samples": [
+              3598.6102395209577, 3576.785714285709, 3597.509940119751, 3675.215914634148, 3715.3163580246855,
+              3571.937023809512, 3569.474852070985, 3764.492187500025, 3900.1298701298633
+            ]
+          },
+          {
+            "version": "without-dispose-guard",
+            "depth": 0,
+            "transport": "fetch",
+            "samples": [
+              4079.0202702702677, 3312.8937912087918, 3586.573017751484, 3494.927325581396, 3514.841637426894,
+              3559.9556213017786, 3678.2647560975665, 3592.5050000000037, 3646.9974545454643
+            ]
+          },
+          {
+            "version": "without-dispose-guard",
+            "depth": 5,
+            "transport": "fetch",
+            "samples": [
+              3990.852649006621, 3806.368670886076, 3833.585477707011, 3827.8396815286546, 4020.516666666663,
+              3904.502207792206, 4012.277800000023, 3977.8338410596252, 4119.012534246556
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "finalPipelineIdentity": {
+    "runId": "4ec4eac3-d0d8-4186-9919-4eb889a9fa75",
+    "methodologyVersion": 3,
+    "productFingerprint": "8485e80c8a4894cd5c9b0a7a2cc027b19596ce128abd37a9e48204b3c000acf9",
+    "workloadFingerprint": "cc5d77efb500bca2e503423b585017a9d81806d1fb475e9cb86b78c7daaa3c77",
+    "environment": {
+      "architecture": "arm64",
+      "cpu": "Apple M4 Pro",
+      "host": "Samuels-Macbook-M4-Pro.local",
+      "osRelease": "25.5.0",
+      "platform": "darwin",
+      "runtime": "Bun 1.4.0"
+    }
+  },
+  "finalPipelineCounts": {
+    "mainOperations": 89,
+    "adapterCohorts": 34,
+    "diagnosticProcesses": 12,
+    "diagnosticRows": 147
+  }
+}

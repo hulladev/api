@@ -1,110 +1,65 @@
-# Runtime benchmark matrix
+# Benchmark methodology
 
-This private workspace measures complete in-memory client-to-server calls without adding benchmark dependencies or code to the core package. It reports deliberately separate profiles for Direct Fetch, @hulla/api, tRPC, oRPC, ts-rest, and Hono RPC.
+Run `bun run bench` from the repository root to build public exports and run the complete measurement pipeline. The suite leads with each package's recommended everyday configuration. An extra validation pass, protocol envelope, batching behavior or roundtrip imposed by that API is part of its measured cost. We do not manually add redundant outgoing validation to competitors to make them perform like this package.
 
-The first profile is a representative application matrix rather than an idealized static route. It measures:
+## Profiles and guarantees
 
-- a resource read with two path parameters;
-- a collection read with a path parameter, scalar and repeated query values, and a request header;
-- a JSON update with two path parameters, query, headers, a body, and a validated response.
+| Profile | Input policy | Output policy | Interpretation |
+|---|---|---|---|
+| Recommended everyday setup (`native`) | Idiomatic server-side validation where declared | Each package's practical default; client/output guarantees differ | Primary comparison, with differences retained |
+| Representative application requests | Paths, query, headers and JSON body through the native API | Server output and client output validation | REST and RPC retain their own protocol representation |
+| Equivalent validation policy (`strict-parity`) | Server input validation, no manually added client input validation | Server and client output validation | Separate comparison for applications requiring these checks |
+| Focused diagnostics | Explicit fixture-specific policy | Explicit fixture-specific policy | Explains costs; not a cross-package league table |
 
-REST-oriented packages use those values as path/query/header/body fields. tRPC and oRPC carry the equivalent structured values through their native RPC protocols, so their rows measure idiomatic application cost rather than identical URL shapes. The application-mix summary uses a geometric mean of per-scenario ratios so no single high-latency scenario dominates the aggregate.
+In the native fixtures, @hulla/api validates output on both server and client, tRPC/oRPC on the server, and direct Fetch/ts-rest on the client. The minimal Hono fixture has no output schema validation.
 
-The historical strict-parity profile is reported first as the closest validation comparison. Each implementation follows its public boundary model:
+The native fixture output validation count is two for @hulla/api, one for direct Fetch/tRPC/oRPC/ts-rest, and zero for the minimal Hono fixture. Equivalent-policy output validation is two. Input-bearing primary scenarios validate server input once. The preflight enforces these observed counts rather than relying only on table labels. Ordinary @hulla/api schemas expose outbound input types; explicit codecs additionally encode application values. Fetch-owned request readers now enforce a default 1 MiB limit. Host-native parsers retain their own limits. This behavior and its real cost remain in the default measurements.
 
-- static JSON GET with server and client output validation;
-- small JSON POST with request and response validation;
-- large JSON POST with the same boundary behavior.
+`bun run --cwd benchmarks preflight` runs actual operations in a separate, untimed process. It verifies validation counts, deliberately rejects each configured boundary to detect validators that are called but ignored, and executes the focused fixtures' semantic assertions. The instrumentation wrapper is absent during timed execution. Native adapters also execute their own payload/status assertions in every measured operation. Timings include the fixture's client consumption and assertions; they are not raw handler-only timings unless explicitly labeled.
 
-The native validated profile uses each package's simplest practical path while retaining its normally supported validation. The guarantees therefore differ and are reported as behavior, not as an equal-capability ranking:
+## Measurement units and provenance
 
-| Runtime | Native request validation | Native response validation |
-|---|---|---|
-| Direct Fetch | Server receive | Client receive |
-| @hulla/api | Server receive | Server send input validation + client receive |
-| tRPC | Server receive | Server output |
-| oRPC | Server receive | Server output |
-| ts-rest + Zod 4 bridge | Server receive | Client receive |
-| Hono RPC | Server receive through `zValidator` | Type-only |
+Main and native adapter suites launch a fresh process for each repeated run. Batches within that process share warmup, clients and handlers. Raw batches, per-run groups and process identities are retained. The main table reports the median **batch-average cost per operation**, not individual-request p50/p95/p99. Its sequential operations/sec is reciprocal average cost, not maximum server throughput. Confidence intervals and change comparisons use run-level samples; fewer than three samples cannot produce a clear regression verdict.
 
-Schemas use ordinary forward validation at inbound boundaries. A separate transformed-Date scenario measures an explicit core codec that preserves `Date` application values while encoding ISO strings at both HTTP send boundaries.
+Reports show raw changes alongside direct-normalized changes. Normalization can compensate for machine drift but can also hide changes affecting both the direct and library paths. It is supporting evidence, never a reason to suppress raw regressions.
 
-The separately labeled focused diagnostics compare @hulla/api with equivalent direct implementations for host-parsed adapter dispatch, static and parameterized dispatch through 256-route tables, server implementation construction and dispatch, dynamic path/query/header transport, client and server middleware/context, invalid-input serialization, codecs, and ten-chunk NDJSON streaming. They isolate @hulla/api feature costs and are not cross-package rankings. Those Fetch diagnostics exclude network and socket costs; `Direct Fetch` is the lower-level baseline rather than a competing contract library.
+Snapshots carry a run ID, runtime/OS/CPU/host, methodology version, product fingerprint and workload/dependency fingerprint. Product changes can be compared historically only when workloads and environment remain compatible. Per-scenario iteration/warmup settings participate in history keys. Report assembly requires matching product/workload/environment provenance, and appending an adapter report additionally requires the same run ID. Bundle snapshots have their own provenance. Changed fixtures or lockfiles intentionally start a fresh baseline.
 
-Adapter comparisons are split by integration shape. The native Express workloads cover direct Express, @hulla/api Express, ts-rest Express, tRPC's Express middleware, and oRPC's documented Node HTTP handler mounted as Express middleware. Registration is measured only for direct Express, @hulla/api, and ts-rest because those integrations register every REST route; tRPC and oRPC register one catch-all middleware and therefore do not perform comparable work. Adapter-isolated dispatch invokes the captured registered handlers for 256 static routes or procedures plus one validated dynamic operation. A separate real in-process HTTP tier traverses an actual Express router and loopback socket; it uses smaller 100-iteration batches and 25 warmup requests because the harness already repeats every batch to the same minimum sample duration. Fastify cohorts use native Fastify injection for direct Fastify, @hulla/api, tRPC, and oRPC. ts-rest is omitted there because its current adapter supports Fastify 4 while @hulla/api targets Fastify 5, leaving no mutually supported host major. H3 and Hono cohorts compare direct and @hulla/api native routes with tRPC and oRPC HTTP handlers mounted through the host router. Cloudflare Workers cohorts cover direct Workers, @hulla/api, tRPC and oRPC Fetch handlers, and Hono's Workers entry point. Fetch workloads use each package's public server adapter and native protocol. Next.js Route Handler cohorts cover direct Next.js, @hulla/api, ts-rest's App Router handler, tRPC's documented Fetch-based App Router handler, oRPC's Fetch handler, and Hono's Vercel/Next.js handler. TanStack Start, SolidStart, and SvelteKit cohorts cover their native server-route or request-event boundary for direct and @hulla/api handlers, plus the documented Fetch-based tRPC and oRPC HTTP handlers. These are native-path comparisons, not claims of identical protocol semantics.
+## Load, lifecycle and scale
 
-Benchmark code is organized by responsibility: `harness/` contains framework-neutral measurement, statistics, history, and reporting; `fixtures/` contains shared schemas, values, requests, and assertions; `adapters/` contains host integrations; `suites/` contains non-host-specific diagnostics; and `runners/` contains executable entry points.
+`bun run --cwd benchmarks bench:diagnostics` measures:
 
-Every adapter competitor runs in an independent process. A cohort contains its own direct host baseline, @hulla/api through that host adapter, and exactly one competitor through its documented adapter. `@hulla/api` samples are not reused or averaged across competitor cohorts. Results retain explicit `suite`, `adapter`, `phase`, `functionality`, `implementation`, and `protocol` dimensions.
+- Route tables with 1/32/256/2,048 routes, deterministic broad hits, 404s, method misses and middleware depths 0/1/5.
+- In-process JSON values of approximately 1 KiB, 16 KiB, 256 KiB and 1 MiB, with serialized byte counts recorded.
+- Actual localhost Node HTTP at concurrency 1/16/64, plus independently scheduled 100/1,000/5,000 requests/sec sweeps. Scheduled, dispatched and completed timestamps expose scheduling and queue delay. Timeouts count as failures.
+- MessagePort roundtrips with small/64 KiB messages and concurrency 1/16, including endpoint teardown.
+- Delayed streams with slow consumers, first-chunk/cancellation timing, completion, invalid input, handler failure and abort paths. Producer finalization is checked.
+- Fresh-process imports, construction and first response, separately from the existing loaded-module setup diagnostic.
+- Real 10/100/1,000-route TypeScript consumers: compiler time, memory, instantiations and declaration emit size.
+- A browser-target executable Fetch client, alongside existing retained-size measurements. The browser fixture is schema-free and includes all imported core/transport code. Existing package-comparison bundles externalize Zod; do not compare those numbers as total application sizes.
 
-Run the isolated adapter matrix with three repeated runs per fresh-process cohort (seven samples per run by default) using:
+Raw individual-request distributions, failures, RSS, heap deltas, event-loop utilization and event-loop delay are preserved. Heap delta is not allocated-byte count or proof of a leak. Event-loop histograms have 10 ms resolution; very short measurements are not informative. Localhost offered-load sweeps are useful regression diagnostics, not production capacity predictions.
 
-```sh
-bun run --cwd benchmarks bench:adapters
-```
+## Running and reviewing results
 
-Set `BENCH_RUNS` to override the repeated-run count. The command writes `benchmarks/results/adapters-latest.md` and `adapters-latest.json`. The JSON keeps cohort identity explicit; medians are never compared across cohorts.
+Useful controls are `BENCH_RUNS`, `BENCH_SAMPLES`, `BENCH_ITERATIONS`, `BENCH_WARMUP`, `BENCH_MIN_SAMPLE_MS`, `BENCH_DIAGNOSTIC_REQUESTS` and `BENCH_LOAD_DURATION_MS`. `BENCH_REPORT`, `BENCH_JSON` and `BENCH_HISTORY` choose the main artifact paths. Use a complete invocation to assemble related reports; standalone adapter runs keep their results separate.
 
-The server implementation diagnostics use one four-route contract and compare an all-at-once root implementation, a single exhaustive route fragment passed directly to `adapter.mount`, four independently deployable route fragments, and four fragments assembled through `server.implement(...fragments)`. Setup measurements include implementation and Fetch handler creation; route plans are warm after benchmark warmup. Dispatch measurements reuse the prebuilt handlers and the same target request. The raw route handler is a lower-bound reference and intentionally performs no routing or Fetch adaptation.
+Artifacts are written to `results/latest.md`, `latest.json`, `history.ndjson`, `adapters-latest.*`, `diagnostics-latest.*` and `package-size.*`. Generated measurements are ignored by Git; preserve the full artifacts with provenance when publishing a claim.
 
-Run only these server implementation diagnostics with:
+Every PR runs semantic preflight, behavior/type checks, built imports and bundle measurements. The performance workflow is manual and weekly. It can target a dedicated runner label; shared hosted runners are report-only evidence. Make a regression decision only after reproducing a material change on the same controlled machine, checking uncertainty and an absolute latency/memory budget. Never let an aggregate win conceal failed cleanup or a tail-latency regression. The suite does not claim unmeasured feature parity or universal leadership.
 
-```sh
-bun run --cwd benchmarks bench:implementations
-```
+## Bundle measurements during development
 
-A loaded-module first-call scenario reconstructs each framework's one-route contract/router, server adapter, and client before issuing its first validated request. It measures application construction after imports have loaded; it does not claim to measure process/module cold start.
+`check:size` builds the consumer fixtures and records minified and gzip sizes, including provenance. It fails on broken builds, but does not enforce fixed size caps while the architecture is evolving. Review size changes alongside functionality, runtime performance, and the actual entrypoints a consumer imports. Small increases are acceptable when their architectural or performance benefit is demonstrated.
 
-The latest stable ts-rest release declares Zod 3 as a peer dependency, while this package uses Zod 4. Its benchmark therefore uses a plain ts-rest typed contract with explicit Zod 4 validation at the same four boundaries. The measured runtime path remains ts-rest's client and Fetch handler.
+The original built executable Fetch fixture measured 45,895 minified / 14,202 gzip bytes; transport-neutral client+server measured 28,934 / 9,327. Lifecycle, repeated-header and bounded-reader behavior added code. Subsequent directional compilation reduces client-only and adapter-only bundles while the combined client+server fixture retains both directions. See `../audits/fetch-optimization-results.md` for paired measurements and tradeoffs.
 
-The benchmark is a separate private workspace and consumes the built `@hulla/api` package through its public exports. No benchmark code or competitor dependency is part of the core package.
+The scaling diagnostics now include chunked JSON request reading at 256-byte, 16 KiB and 256 KiB payload sizes, with 1 KiB and 64 KiB chunks. Bounded (1 MiB) and native unbounded readers are labeled separately because their guarantees differ. Each operation consumes a fresh stream and checks the parsed value; request construction and stream delivery are included in timing.
 
-Run the default benchmark from the repository root with:
 
-```sh
-bun run bench
-```
+## Consumer dependency boundaries
 
-Every invocation runs the application and diagnostic matrix three repeated times by default and appends its raw samples, package version, Git revision, and source fingerprint to `benchmarks/results/history.ndjson`, then runs the adapter cohorts independently. The fingerprint covers every package source file used by the workspace, the benchmark implementation, manifests, and the lockfile. Scenario/runtime order is independently shuffled for every sample. Each timed sample repeats batches until it lasts at least 20 ms, preventing sub-microsecond operations from being inferred from a 2–5 ms timing window.
+`bun run check:exports` includes `check-boundaries.ts`. It builds seven realistic source and public-package consumers for browser/Node targets, inspects retained module contributions, and executes the client/server call fixtures. These checks prevent Fetch/HTTP implementation leakage into non-Fetch consumers and Node helper leakage into browser bundles, without fixed byte caps. Source checks identify individual implementations; public-build checks exercise the distributed entrypoints and reject external package dependencies (Node builtins are allowed only in the Node consumer). Positive fixtures verify that the expected Fetch and Node implementations are actually retained when selected.
 
-The terminal remains the detailed live view. `benchmarks/results/latest.md` is the aggregated entry point: it includes the application and diagnostic report plus a compact summary of every independent framework-adapter cohort. Each summary row links to the corresponding section of `adapters-latest.md`, which remains the detailed independent adapter report. The framework overview places the signed comparison-latency difference relative to @hulla/api immediately after the adapter and comparison names. Its aggregate latencies and ratios are geometric means across each row's per-operation medians; the detailed adapter tables report per-operation medians. The main report opens with cross-package aggregate ratios for meaningful comparable cohorts, followed by every measured application or diagnostic operation. Each operation includes a concrete request or call-flow example, package or implementation medians with 95% confidence intervals, min–max ranges, direct and @hulla/api ratios, and exact changes from the previous compatible revision.
 
-`benchmarks/results/latest.json` is the deterministic, schema-versioned snapshot for agents and other tools. Its flat result rows include every explicit query dimension, statistical summary, confidence interval, comparison, runtime identity, and sample count. Raw samples remain in `benchmarks/results/history.ndjson`, avoiding an ever-growing latest snapshot while preserving enough information for new statistical comparisons. Set `BENCH_JSON` to choose a different snapshot path.
-
-Medians use deterministic non-parametric 95% bootstrap intervals. Prior-revision changes also include a 95% bootstrap interval. Package rows are compared as a ratio-of-ratios against the matching direct result in the same scenario, which compensates for machine-wide CPU drift between invocations. A result is only labeled faster or slower when its entire interval lies beyond the ±2% practical threshold; otherwise it is labeled negligible or inconclusive.
-
-Compatibility requires the same runtime, host, OS, platform, architecture, CPU, iteration batch, minimum sample duration, and warmup count. Unrelated environments and old harness methodologies are never averaged together. Set `BENCH_HISTORY` or `BENCH_REPORT` to choose different output paths.
-
-NDJSON is an append-only measurement log rather than a report cache. Each main-matrix invocation is one schema- and methodology-versioned record containing environment, source, configuration, explicit benchmark dimensions, and raw samples. Independent adapter cohorts stay in their dedicated snapshot so a repeated `@hulla/api` baseline cannot be mistaken for one shared cross-competitor sample. At the expected scale the history can be scanned in a few milliseconds and remains inspectable and recoverable without tooling.
-
-The same run reports minified and gzip footprint in two separate tables:
-
-- **Executable package comparisons** include each library's contract, validated client, server execution path, and in-memory Fetch transport. The `@hulla/api` row uses its root, client, server, and Fetch subpath exports; there is no separate Fetch package.
-- **Tree-shaking checks** independently bundle contract-only, transport-neutral client-only, server-only and combined use, the Fetch client transport, the Fetch server adapter, the core adapter dispatcher, and the Node HTTP, Express, Fastify, H3, Hono, Cloudflare Workers, Cloudflare Pages Functions, Next.js, TanStack Start, React Router v7, SolidStart, SvelteKit, Nuxt, and Astro server/client adapters. They verify what each public import retains and are not additive component sizes or cross-package comparisons.
-
-These are Bun-target production bundles with Zod externalized because it is shared, user-supplied validation code. They measure runtime code retained by representative imports rather than the size of the installed package directory. The complete @hulla/api Fetch scenario appears in both contexts: as the fair executable package comparison and as the 100% reference for tree-shaking percentages.
-
-Generate a module-level report for that representative @hulla/api bundle with:
-
-```sh
-bun run analyze:size
-```
-
-The command writes two views in both Markdown and JSON:
-
-- `benchmarks/results/bundle-analysis.*` is the authoritative public-package consumer build whose contributions add up to the measured artifact.
-- `benchmarks/results/bundle-source-analysis.*` temporarily rewrites only the three @hulla/api imports to their source entry points, exposing contributions by `src/*.ts` file without maintaining a duplicate scenario.
-
-Both views use the same minified, Zod-externalized scenario as the package-size benchmark. The source view is diagnostic; use the public-package view for size totals.
-
-The repository check enforces a 48,000-byte minified and 14,600-byte gzip ceiling for the executable @hulla/api Fetch scenario, plus separate tighter ceilings for transport-neutral client/server use and the Fetch client transport. When an intentional feature needs more room, review the generated reports before raising a budget.
-
-The defaults are three repeated runs, seven samples per run, batches of 5,000 measured iterations repeated to at least 20 ms per sample, and 1,000 warmup iterations. Comparatively expensive real-HTTP scenarios declare smaller batches and warmups, which are recorded per result in both JSON artifacts; the minimum sample duration remains unchanged. Override the defaults with `BENCH_RUNS`, `BENCH_SAMPLES`, `BENCH_ITERATIONS`, `BENCH_MIN_SAMPLE_MS`, and `BENCH_WARMUP`. Package versions are printed in the result table and locked by `bun.lock`.
-
-Run the same bundled matrix on Node with:
-
-```sh
-bun run --cwd benchmarks bench:node
-```
-
-Bun performs only the TypeScript bundling step for that command; Node executes and is identified in the generated report. No benchmark accesses the internet. Most runtime calls are in-memory; the explicitly labeled Express HTTP tier uses only loopback sockets. Results should still be compared on the same machine and runtime, and the reported uncertainty should be used instead of treating a single percentage as exact.
+MessagePort diagnostics and size fixtures consume the separate `@hulla/api-message-port` package. The boundary checks reject a core dependency on that package and verify that other consumers do not retain its implementation. Built-package smoke tests exercise a real MessageChannel roundtrip and downstream declaration emission.

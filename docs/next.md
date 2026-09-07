@@ -124,7 +124,7 @@ export const client = defineClient(contract, {
   transport: cache.fetchTransport({
     baseUrl: 'https://api.example.com',
   }),
-}).create()
+})
 ```
 
 Call that client directly from a Server Component and narrow the declared response before rendering its body:
@@ -221,7 +221,7 @@ import { contract } from './contract'
 
 export const api = defineClient(contract, {
   transport: fetchTransport(),
-}).create()
+})
 
 export const apiSWR = createSWR(api)
 ```

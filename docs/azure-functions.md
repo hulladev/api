@@ -66,7 +66,7 @@ import { contract } from './api/contract'
 
 export const api = defineClient(contract, {
   transport: fetchTransport({ baseUrl: 'https://example.azurewebsites.net' }),
-}).create()
+})
 
 export async function getUser(id: string) {
   const result = await api.users.byId({ params: { id } })

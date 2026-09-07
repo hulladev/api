@@ -104,11 +104,11 @@ export function useApi() {
 
   return defineClient(contract, {
     transport: nuxtFetchTransport(requestFetch),
-  }).create()
+  })
 }
 ```
 
-`nuxtFetchTransport()` uses the raw-response side of Nuxt's `$fetch`. This matters because Hulla must retain the status,
+`nuxtFetchTransport()` uses the raw-response side of Nuxt's `$fetch`. This matters because @hulla/api must retain the status,
 headers, streaming body, and declared non-success responses rather than letting ofetch throw or eagerly decode them. A
 relative URL also preserves Nitro's direct in-process dispatch during SSR. `useRequestFetch()` forwards the safe incoming
 headers and cookies on the server and behaves like ordinary `$fetch` in the browser.
@@ -119,7 +119,7 @@ Nuxt context is safe.
 
 ## Initial and navigation data: `useAsyncData`
 
-Nuxt recommends `useAsyncData` when an application has its own query layer. Wrap the typed Hulla call so Nuxt controls
+Nuxt recommends `useAsyncData` when an application has its own query layer. Wrap the typed @hulla/api call so Nuxt controls
 SSR payload transfer, hydration deduplication, navigation blocking or laziness, refreshes, and shared keyed state:
 
 ```vue
@@ -143,10 +143,10 @@ const { data: user, error, refresh, status } = await useAsyncData(
 ```
 
 Use explicit stable keys in reusable composables so separate calls share only the intended Nuxt state. Pass
-`useAsyncData`'s abort signal into the Hulla call so cancelled refreshes and navigations cancel the underlying request.
+`useAsyncData`'s abort signal into the @hulla/api call so cancelled refreshes and navigations cancel the underlying request.
 Options such as `lazy`, `server`, `dedupe`, `getCachedData`, and `watch` remain ordinary Nuxt decisions.
 
-`useFetch` is the concise choice when a URL itself is the query layer. A Hulla client is already a typed query layer and
+`useFetch` is the concise choice when a URL itself is the query layer. A @hulla/api client is already a typed query layer and
 returns a status-discriminated union, so `useAsyncData` is the cleaner fit. Do not create a custom composable named
 `useFetch`; Nuxt reserves and compiler-transforms that name.
 
@@ -180,7 +180,7 @@ async function submit() {
 </template>
 ```
 
-Nuxt's plain `$fetch` is likewise intended for interaction-driven requests. The Hulla transport retains that request
+Nuxt's plain `$fetch` is likewise intended for interaction-driven requests. The @hulla/api transport retains that request
 behavior while adding the contract's input encoding and typed response union. Optimistic state, invalidation, navigation,
 notifications, and error presentation remain explicit application concerns.
 
@@ -198,7 +198,7 @@ import { contract } from '~~/shared/api/contract'
 export default defineEventHandler(async (event) => {
   const api = defineClient(contract, {
     transport: nuxtFetchTransport(event.$fetch),
-  }).create()
+  })
   return api.users.byId({ params: { id: 'user-1' } })
 })
 ```
@@ -230,10 +230,10 @@ export const implementation = defineServer(contract, {
 ```
 
 `nuxtEvent` is the complete H3 event used by Nitro, including `context`, `$fetch`, `waitUntil`, route parameters, and the
-native request/response bridge. `request` is the corresponding Web `Request`. The `route` field remains Hulla's
+native request/response bridge. `request` is the corresponding Web `Request`. The `route` field remains @hulla/api
 contract-derived operation metadata and is separate from Nitro's host-route parameters.
 
-Nuxt server middleware can authenticate first and place trusted state on `event.context`. The Hulla context factory then
+Nuxt server middleware can authenticate first and place trusted state on `event.context`. The @hulla/api context factory then
 translates that framework state into the smaller application context used by handlers. A factory wrapped by
 `adapter.context()` is bound to `nuxt`; mounting it through another adapter or the in-process transport fails early.
 

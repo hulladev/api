@@ -75,7 +75,7 @@ import type { PageLoad } from './$types'
 export const load: PageLoad = async ({ fetch, params, url }) => {
   const api = defineClient(contract, {
     transport: fetchTransport({ baseUrl: url.origin, fetch }),
-  }).create()
+  })
   const result = await api.users.byId({ params: { id: params.id } })
 
   if (result.status !== 200) throw new Error(`Could not load user: ${result.status}`)
@@ -92,7 +92,7 @@ Remote functions require SvelteKit 2.27 or newer and are still experimental. Ena
 `svelte.config.js` before importing this package's `/remote` entrypoint.
 
 Use the `/remote` entrypoint when a SvelteKit `query`, `form`, or `command` should execute the same contract implementation
-without an internal HTTP request. `svelteKitRemoteTransport()` preserves the normal Hulla client/server validation and
+without an internal HTTP request. `svelteKitRemoteTransport()` preserves the normal @hulla/api client/server validation and
 codec boundary, but dispatches directly inside the current server process:
 
 ```ts
@@ -106,7 +106,7 @@ import { implementation } from '$lib/api/server'
 
 const api = defineClient(contract, {
   transport: svelteKitRemoteTransport(implementation),
-}).create()
+})
 
 export const getUser = query(userId, async (id) => {
   const result = await api.users.byId({ params: { id } })
@@ -122,12 +122,12 @@ export const renameUser = command(renameUserInput, async ({ id, name }) => {
 ```
 
 SvelteKit still owns the remote-function protocol, query deduplication, forms, refreshes, single-flight mutations, live
-connections, and `devalue` serialization. Hulla owns only the contract call inside the server callback. Share the same
+connections, and `devalue` serialization. @hulla/api owns only the contract call inside the server callback. Share the same
 Standard Schema values between the contract and remote declaration where their input shapes match. SvelteKit must validate
-the generated remote endpoint argument even though Hulla independently validates the contract boundary.
+the generated remote endpoint argument even though @hulla/api independently validates the contract boundary.
 
 The transport accepts complete implementations and fragments. It does not call global `fetch`, construct Fetch requests,
-or route through the catch-all `+server.ts` endpoint. The result remains Hulla's status-discriminated union, so the remote
+or route through the catch-all `+server.ts` endpoint. The result remains @hulla/api status-discriminated union, so the remote
 callback must deliberately map non-success statuses into a returned value or thrown SvelteKit error.
 
 When the implementation uses `svelteKitAdapter().context(...)`, the remote transport synchronously reads SvelteKit's
@@ -150,7 +150,7 @@ export const implementation = defineServer(contract, {
 ```
 
 That implementation can be mounted by both `svelteKitAdapter().mount()` and `svelteKitRemoteTransport()`. During a remote
-call, `request` and `svelteKitEvent.request` describe SvelteKit's generated remote-function request, while the Hulla `route`
+call, `request` and `svelteKitEvent.request` describe SvelteKit's generated remote-function request, while the @hulla/api `route`
 describes the contract operation being executed. SvelteKit's page route, params, and URL are client-influenced and must not
 be used for authorization; authenticated identity should come from trusted locals or cookies.
 

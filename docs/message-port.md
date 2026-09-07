@@ -1,9 +1,17 @@
 # Message-port transport
 
-`@hulla/api/message-port` carries the transport-neutral client invocation over an ordered, bidirectional message
+`@hulla/api-message-port` carries the transport-neutral client invocation over an ordered, bidirectional message
 channel. It works directly with browser and worker `MessagePort`, Node.js `worker_threads.MessagePort`, and Electron's
 EventEmitter-style `MessagePortMain`. A small async endpoint interface supports other IPC bridges without making the core
 package depend on a desktop runtime.
+
+## Installation
+
+```sh
+bun add @hulla/api @hulla/api-message-port
+```
+
+MessagePort and custom IPC endpoints share this package. Core's Fetch and in-process transports remain available without it.
 
 ## MessagePort setup
 
@@ -11,14 +19,14 @@ Give one end of a channel to the server and the other to the client:
 
 ```ts
 import { defineClient } from '@hulla/api/client'
-import { messagePortAdapter, messagePortTransport } from '@hulla/api/message-port'
+import { messagePortAdapter, messagePortTransport } from '@hulla/api-message-port'
 
 const server = messagePortAdapter(serverPort).mount(implementation)
 const transport = messagePortTransport(clientPort)
 
 await Promise.all([server.ready, transport.ready])
 
-const client = defineClient(contract, { transport }).create()
+const client = defineClient(contract, { transport })
 const result = await client.users.byId({ params: { id: 'user-1' } })
 ```
 
@@ -72,7 +80,7 @@ serialization and lifecycle are host-defined. Use the exported `MessageEndpoint`
 an ordered, bidirectional bridge:
 
 ```ts
-import type { MessageEndpoint } from '@hulla/api/message-port'
+import type { MessageEndpoint } from '@hulla/api-message-port'
 
 const endpoint: MessageEndpoint = {
   send: (message) => desktopIpc.send(message),

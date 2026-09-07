@@ -1,6 +1,6 @@
 # Server authoring
 
-`defineServer()` binds a contract to context, middleware, and handler implementations. `implement(handlers)` implements the root contract, while `implement(node, handlers)` exhaustively implements one route or recursive router fragment. Implementations and fragments remain portable unless their server definition declares a native adapter requirement. `implement(...fragments)` composes enough smaller fragments to cover the root contract.
+`defineServer()` binds a contract to context, middleware, and handler implementations. `implement(handlers)` implements the root contract, while `implement(node, handlers)` exhaustively implements one route or recursive router fragment. Implementations and fragments remain portable unless their server definition declares a native adapter requirement. `compose(...fragments)` composes enough smaller fragments to cover the root contract.
 
 Start with a shared contract. The examples below use the `health`, `users.byId`, and `users.rename` routes from
 [contract authoring](./contract-authoring.md):
@@ -108,7 +108,7 @@ const protectedRoutes = observed.use(requireUser).implement(contract.routes.orga
   listUsers,
 })
 
-const implementation = observed.implement(publicRoutes, protectedRoutes)
+const implementation = observed.compose(publicRoutes, protectedRoutes)
 ```
 
 Here every route uses `logRequests`, while only `protectedRoutes` uses `requireUser`. The context factory still belongs to the original `defineServer()` scope and runs once for the matched route. Fragments from separate server definitions cannot be composed, and a composition scope can accept only its own fragments or descendants. Middleware can also branch on `input.route` when one cross-cutting policy intentionally covers selected routes.
@@ -158,7 +158,7 @@ Portable handlers and middleware intentionally do not receive a transport reques
 
 The status discriminates the complete response envelope. An empty response forbids `body`; a raw response carries an adapter-native value and forbids separate headers; schema-backed response headers are required and typed when declared.
 
-Handlers must cover every status declared by their route. Runtime execution also rejects undeclared statuses, validates ordinary response inputs, and encodes codec application values before serializing the selected body and headers.
+Handlers may return a subset of the statuses declared by their route. Runtime execution also rejects undeclared statuses, validates ordinary response inputs, and encodes codec application values before serializing the selected body and headers.
 
 ## Organizing handler values across modules
 
@@ -213,10 +213,10 @@ export const GET = fetchAdapter().mount(health)
 Fragments can compose a complete implementation. TypeScript and runtime validation require complete root coverage, and runtime validation rejects duplicate implementations:
 
 ```ts
-const implementation = server.implement(health, organizations)
+const implementation = server.compose(health, organizations)
 ```
 
-`implement(...fragments)` composes fragments, while `implement(handlers)` accepts a complete raw handler tree. Composition merges handler descriptors into one runtime rather than chaining Fetch handlers or route dispatchers, so a fragment behaves the same alone and after composition.
+`compose(...fragments)` composes fragments, while `implement(handlers)` accepts a complete raw handler tree. Composition merges handler descriptors into one runtime rather than chaining Fetch handlers or route dispatchers, so a fragment behaves the same alone and after composition.
 
 ## Declared errors sharing a status
 
@@ -297,3 +297,17 @@ should remain portable across adapters.
 The adapter runtime's immutable `routes` property lists the method, full path, structural key, and preselected route executor for that implementation or fragment. Framework integrations register those routes natively and invoke `route.execute()` without repeating `@hulla/api` route matching.
 
 Standalone fragments compile execution data only for their selected routes. The shared canonical route plan caches compilation only; requests, responses, handler results, and application data are never cached.
+
+## Response status coverage
+
+A handler can return any subset of its declared statuses. The contract still defines the complete client response union. Undeclared statuses and incompatible bodies remain type errors, and every route still needs an implementation. This allows a deployment or mock to return only `200` without pretending that it emits every declared failure.
+
+## Request lifetime and body ownership
+
+Handlers, server middleware and context factories receive a portable `signal`. Pass it to cancellable downstream work. Fetch-native adapters forward the native Request signal; Node HTTP, Express and Fastify abort it when the client disconnects. In-process calls forward the caller's signal and MessagePort propagates cancellation to the server. Cancellation is cooperative: an arbitrary pending promise cannot be forcibly terminated.
+
+Fetch, H3, Hono and Elysia accept `preserveRequestBody: true` when native context needs to read the original body after contract decoding. Native context alone no longer creates an implicit clone. These adapters and Node HTTP default owned reads to `maxBodyBytes: 1_048_576`; use an explicit byte budget or `Infinity` to disable it. The count uses actual bytes, including chunked requests. Host-parsed bodies use the host's limits instead (for example Express body-parser or Fastify `bodyLimit`). See [adapter conformance](./adapter-conformance.md).
+
+Response headers accept strings or arrays of strings. Names are normalized to lowercase and repeated `set-cookie` values remain separate. Use `response` from the core package for portable declarations; raw native responses remain the adapter-specific escape hatch.
+
+A native serialization failure reaches `onError` with phase `transport` in the shared Fetch and Node writers. Before headers are committed, the hook can replace the response. After commitment it only observes the failure; the stream is closed. If the hook throws, the original fallback is retained without recursively calling the hook.

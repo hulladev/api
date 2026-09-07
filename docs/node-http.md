@@ -71,7 +71,7 @@ import { contract } from './api/contract'
 
 export const api = defineClient(contract, {
   transport: fetchTransport({ baseUrl: 'http://127.0.0.1:3000' }),
-}).create()
+})
 ```
 
 The result remains a status-discriminated union of the contract's responses. See

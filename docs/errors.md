@@ -64,7 +64,7 @@ Clients return declared errors as typed response values by default. Applications
 const client = defineClient(contract, {
   transport,
   errorMode: 'throw',
-}).create()
+})
 ```
 
 In `throw` mode, a declared failure is reconstructed as a `DeclaredError`; successful route return types no longer include the declared error response union.
