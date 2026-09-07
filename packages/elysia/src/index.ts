@@ -1,9 +1,9 @@
 import type { Contract } from '@hulla/api'
+import { bodyLimit, readFetchBody, toFetchResponse, writeFetchResponse } from '@hulla/api/adapters'
 import {
   createAdapterRuntime,
   type AdapterErrorInput,
   type AdapterResponse,
-  type AdapterResponseBody,
   type AdapterRoute,
   type AdapterRouteInput,
 } from '@hulla/api/adapters'
@@ -42,6 +42,9 @@ export type ElysiaServerErrorInput<App extends AnyElysia = Elysia> = Omit<
   }
 
 export type ElysiaServerOptions<App extends AnyElysia = Elysia> = {
+  readonly preserveRequestBody?: boolean
+  readonly maxBodyBytes?: number
+
   readonly onError?: ((input: ElysiaServerErrorInput<App>) => Awaitable<Response | undefined | void>) | undefined
 }
 
@@ -80,88 +83,15 @@ function parsedBody(context: ElysiaContext<AnyElysia>, representation: string): 
 async function readBody(
   nativeContext: ElysiaAdapterContext<AnyElysia>,
   representation: string,
-  preserveRequest: boolean
+  preserveRequest: boolean,
+  limit: number
 ): Promise<unknown> {
-  const request = nativeContext.request
-  if (request.bodyUsed) return parsedBody(nativeContext.elysiaContext, representation)
-  const source = preserveRequest ? request.clone() : request
-  switch (representation) {
-    case 'json':
-      return source.json()
-    case 'text':
-      return source.text()
-    case 'bytes':
-      return new Uint8Array(await source.arrayBuffer())
-    case 'form-data':
-      return source.formData()
-    default:
-      throw new TypeError(`Unsupported Elysia request body representation ${representation}`)
-  }
+  if (nativeContext.request.bodyUsed) return parsedBody(nativeContext.elysiaContext, representation)
+  return readFetchBody(nativeContext.request, representation, preserveRequest, limit)
 }
 
 function requestHeaders(request: Request): Readonly<Record<string, string>> {
   return Object.fromEntries(request.headers.entries())
-}
-
-function readableStream(source: unknown): ReadableStream<Uint8Array> {
-  const stream = source as AsyncIterable<unknown> & Iterable<unknown>
-  const iterator =
-    typeof stream[Symbol.asyncIterator] === 'function' ? stream[Symbol.asyncIterator]() : stream[Symbol.iterator]()
-  return new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      try {
-        const result = await iterator.next()
-        if (result.done) controller.close()
-        else if (result.value instanceof Uint8Array) controller.enqueue(result.value)
-        else controller.error(new TypeError('Stream chunk must be Uint8Array'))
-      } catch (error) {
-        controller.error(error)
-      }
-    },
-    async cancel(reason) {
-      await iterator.return?.(reason)
-    },
-  })
-}
-
-type FetchBodyKind = Exclude<AdapterResponseBody['kind'], 'json' | 'raw'>
-
-function responseBody(kind: FetchBodyKind, value: unknown): BodyInit | null {
-  switch (kind) {
-    case 'empty':
-      return null
-    case 'text':
-      if (typeof value !== 'string') throw new TypeError('Text adapter response body must be a string')
-      return value
-    case 'bytes':
-      if (!(value instanceof Uint8Array)) throw new TypeError('Byte adapter response body must be Uint8Array')
-      return value as BodyInit
-    case 'form-data':
-      if (!(value instanceof FormData)) throw new TypeError('Form data response body must be FormData')
-      return value
-    case 'stream':
-      return readableStream(value) as unknown as BodyInit
-  }
-}
-
-function toResponse(response: AdapterResponse): Response {
-  const body = response.body
-  if (body.kind === 'raw') {
-    if (!(body.value instanceof Response) || body.value.status !== response.status) {
-      throw new TypeError('Raw Fetch response status must match its declared contract status')
-    }
-    return body.value
-  }
-  if (body.kind === 'json') {
-    if (body.value === undefined) throw new TypeError('JSON response body cannot encode to undefined')
-    return Response.json(body.value, { status: response.status, headers: response.headers })
-  }
-  const result = new Response(responseBody(body.kind, body.value), {
-    status: response.status,
-    headers: response.headers,
-  })
-  if (body.kind === 'form-data') void result.headers.get('content-type')
-  return result
 }
 
 function replacementResponse(response: Response): AdapterResponse {
@@ -171,23 +101,37 @@ function replacementResponse(response: Response): AdapterResponse {
 function createRouteHandler<App extends AnyElysia>(
   route: AdapterRoute,
   usesNativeContext: boolean,
-  includeHostContext: boolean
+  includeHostContext: boolean,
+  options: ElysiaServerOptions<App>
 ): (context: ElysiaContext<App>) => Promise<Response> {
+  const limit = bodyLimit(options.maxBodyBytes)
   return async (elysiaContext) => {
     const request = elysiaContext.request
     const query = requestQuery(request.url)
     const nativeContext: ElysiaAdapterContext<App> = { request, elysiaContext }
     const input: AdapterRouteInput = {
       request,
+      signal: request.signal,
+      preserveRequestBody: options.preserveRequestBody ?? false,
       ...(usesNativeContext ? { contextInput: nativeContext } : {}),
       params: elysiaContext.params,
       ...(query === undefined ? {} : { query }),
       readHeaders: () => requestHeaders(request),
       readBody: (representation, preserveRequest) =>
-        readBody(nativeContext as ElysiaAdapterContext<AnyElysia>, representation, preserveRequest),
+        readBody(nativeContext as ElysiaAdapterContext<AnyElysia>, representation, preserveRequest, limit),
       ...(includeHostContext ? { hostContext: nativeContext } : {}),
     }
-    return toResponse(await route.execute(input))
+    return writeFetchResponse(
+      await route.execute(input),
+      options.onError === undefined
+        ? undefined
+        : (error) =>
+            options.onError?.({
+              ...error,
+              ...nativeContext,
+              route: { key: route.key, method: route.method, path: route.path },
+            })
+    )
   }
 }
 
@@ -208,7 +152,7 @@ function mountElysia<const App extends AnyElysia, const ContractType extends Con
             const replacement = await options.onError?.({
               ...input,
               ...nativeContext,
-              defaultResponse: toResponse(input.defaultResponse).clone(),
+              defaultResponse: toFetchResponse(input.defaultResponse).clone(),
             })
             return replacement instanceof Response ? replacementResponse(replacement) : undefined
           },
@@ -218,7 +162,7 @@ function mountElysia<const App extends AnyElysia, const ContractType extends Con
     app.route(
       route.method,
       route.path,
-      createRouteHandler<App>(route, usesNativeContext, options.onError !== undefined) as never
+      createRouteHandler<App>(route, usesNativeContext, options.onError !== undefined, options) as never
     )
   }
   return app

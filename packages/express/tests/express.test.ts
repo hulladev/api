@@ -94,7 +94,20 @@ function recordedResponse(locals: Record<string, unknown> = {}): RecordedRespons
     get writableEnded() {
       return ended
     },
-    end() {
+    get statusCode() {
+      return status
+    },
+    set statusCode(value: number) {
+      status = value
+    },
+    getHeaderNames() {
+      return [...headers.keys()]
+    },
+    removeHeader(name: string) {
+      headers.delete(name)
+    },
+    end(value?: string | Uint8Array) {
+      if (value !== undefined) chunks.push(typeof value === 'string' ? new TextEncoder().encode(value) : value.slice())
       ended = true
       return response
     },
@@ -501,7 +514,7 @@ describe('Express endpoints', () => {
     expect(new TextDecoder().decode(raw.body())).toBe('accepted')
   })
 
-  test('forwards adapter failures through Express next', async () => {
+  test('returns a safe fallback for native serialization failures before headers', async () => {
     const rawContract = defineContract({
       routes: { raw: route.get('/raw', { responses: { 202: response.raw() } }) },
     })
@@ -515,6 +528,8 @@ describe('Express endpoints', () => {
       forwarded = error
     })
 
-    expect(forwarded).toEqual(expect.objectContaining({ message: expect.stringContaining('status must match') }))
+    expect(forwarded).toBeUndefined()
+    expect(recorded.status()).toBe(500)
+    expect(JSON.parse(new TextDecoder().decode(recorded.body()))).toMatchObject({ code: 'internal-server-error' })
   })
 })

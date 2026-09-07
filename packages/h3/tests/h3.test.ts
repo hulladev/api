@@ -79,7 +79,7 @@ describe('H3 integration', () => {
       },
     })
 
-    const mounted = adapter.mount(implementation)
+    const mounted = adapter.mount(implementation, { preserveRequestBody: true })
     app.get('/outside', () => 'outside')
 
     expect(mounted).toBe(app)

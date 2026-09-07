@@ -79,7 +79,7 @@ describe('Hono integration', () => {
       }),
     })
 
-    const mounted = adapter.mount(implementation)
+    const mounted = adapter.mount(implementation, { preserveRequestBody: true })
     app.use('*', async (_context, next) => {
       middlewareOrder.push('after')
       await next()
@@ -239,4 +239,26 @@ describe('Hono integration', () => {
     expect(basedResult.status).toBe(200)
     await expect(basedResult.text()).resolves.toBe('result')
   })
+})
+
+test('retains Hono method-specific matching when a static route overlaps a parameter route', async () => {
+  const contract = defineContract({
+    routes: {
+      me: route.get('/users/me', { responses: { 200: response.text() } }),
+      update: route.post('/users/:id', { params: z.object({ id: z.string() }), responses: { 200: response.text() } }),
+    },
+  })
+  const app = new Hono()
+  honoAdapter(app).mount(
+    defineServer(contract).implement({
+      me: () => ({ status: 200, body: 'me' }),
+      update: ({ params }) => ({ status: 200, body: params.id }),
+    })
+  )
+  const updated = await app.request('/users/me', { method: 'POST' })
+  expect(updated.status).toBe(200)
+  expect(await updated.text()).toBe('me')
+  const head = await app.request('/users/me', { method: 'HEAD' })
+  expect(head.status).toBe(200)
+  expect(await head.text()).toBe('')
 })

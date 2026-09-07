@@ -1,4 +1,5 @@
 import type { Contract } from '@hulla/api'
+import { toFetchHeaders } from '@hulla/api/adapters'
 import {
   createAdapterRuntime,
   type AdapterBody,
@@ -7,6 +8,7 @@ import {
   type AdapterRoute,
   type AdapterRouteInput,
 } from '@hulla/api/adapters'
+import { nodeRequestLifetime } from '@hulla/api/adapters/node'
 import {
   assertAdapterContext,
   createServerAdapter,
@@ -82,7 +84,7 @@ function writeResponseHeaders(source: Headers, target: FastifyReply): void {
   for (const cookie of setCookies) target.header('set-cookie', cookie)
 }
 
-function writeAdapterHeaders(source: Readonly<Record<string, string>>, target: FastifyReply): void {
+function writeAdapterHeaders(source: AdapterResponse['headers'], target: FastifyReply): void {
   for (const [name, value] of Object.entries(source)) target.header(name, value)
 }
 
@@ -102,8 +104,13 @@ function readableStream(source: unknown): ReadableStream<Uint8Array> {
         const result = await iterator.next()
         if (result.done) controller.close()
         else if (result.value instanceof Uint8Array) controller.enqueue(result.value)
-        else controller.error(new TypeError('Stream chunk must be Uint8Array'))
+        else throw new TypeError('Stream chunk must be Uint8Array')
       } catch (error) {
+        try {
+          await iterator.return?.()
+        } catch {
+          /* Preserve the stream error. */
+        }
         controller.error(error)
       }
     },
@@ -129,7 +136,7 @@ function writeAdapterResponse(source: AdapterResponse, target: FastifyReply): Fa
   }
   if (body.kind === 'form-data') {
     if (!(body.value instanceof FormData)) throw new TypeError('Form data response body must be FormData')
-    const response = new Response(body.value, { status: source.status, headers: source.headers })
+    const response = new Response(body.value, { status: source.status, headers: toFetchHeaders(source.headers) })
     void response.headers.get('content-type')
     return writeFetchResponse(response, target)
   }
@@ -159,11 +166,13 @@ function createRouteHandler(
   includeHostContext: boolean
 ): FastifyHandler {
   return async (request, reply) => {
+    const lifetime = nodeRequestLifetime(request.raw, reply.raw)
     let headers: Readonly<Record<string, string>> | undefined
     const body: AdapterBody | undefined = request.body === undefined ? undefined : { value: request.body }
     const nativeContext: FastifyAdapterContext = { request, reply }
     const input: AdapterRouteInput = {
       request,
+      signal: lifetime.signal,
       ...(includeNativeContext ? { contextInput: nativeContext } : {}),
       ...(includeHostContext ? { hostContext: nativeContext } : {}),
       params: request.params as Readonly<Record<string, string>>,

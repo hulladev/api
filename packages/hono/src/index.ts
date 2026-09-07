@@ -1,9 +1,9 @@
 import type { Contract } from '@hulla/api'
+import { bodyLimit, readFetchBody, toFetchResponse, writeFetchResponse } from '@hulla/api/adapters'
 import {
   createAdapterRuntime,
   type AdapterErrorInput,
   type AdapterResponse,
-  type AdapterResponseBody,
   type AdapterRoute,
   type AdapterRouteInput,
 } from '@hulla/api/adapters'
@@ -47,6 +47,9 @@ export type HonoServerErrorInput<Env extends HonoEnv = HonoEnv> = Omit<
   }
 
 export type HonoServerOptions<Env extends HonoEnv = HonoEnv> = {
+  readonly preserveRequestBody?: boolean
+  readonly maxBodyBytes?: number
+
   readonly onError?: ((input: HonoServerErrorInput<Env>) => Awaitable<Response | undefined | void>) | undefined
 }
 
@@ -71,97 +74,12 @@ function requestQuery(url: string): URLSearchParams | undefined {
 async function readBody(
   context: NativeHonoContext,
   representation: string,
-  preserveRequest: boolean
+  preserveRequest: boolean,
+  limit: number
 ): Promise<unknown> {
-  if (preserveRequest) {
-    const request = await cloneRawRequest(context.req)
-    switch (representation) {
-      case 'json':
-        return request.json()
-      case 'text':
-        return request.text()
-      case 'bytes':
-        return new Uint8Array(await request.arrayBuffer())
-      case 'form-data':
-        return request.formData()
-      default:
-        throw new TypeError(`Unsupported Hono request body representation ${representation}`)
-    }
-  }
-
-  switch (representation) {
-    case 'json':
-      return context.req.json()
-    case 'text':
-      return context.req.text()
-    case 'bytes':
-      return new Uint8Array(await context.req.arrayBuffer())
-    case 'form-data':
-      return context.req.formData()
-    default:
-      throw new TypeError(`Unsupported Hono request body representation ${representation}`)
-  }
-}
-
-function readableStream(source: unknown): ReadableStream<Uint8Array> {
-  const stream = source as AsyncIterable<unknown> & Iterable<unknown>
-  const iterator =
-    typeof stream[Symbol.asyncIterator] === 'function' ? stream[Symbol.asyncIterator]() : stream[Symbol.iterator]()
-  return new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      try {
-        const result = await iterator.next()
-        if (result.done) controller.close()
-        else if (result.value instanceof Uint8Array) controller.enqueue(result.value)
-        else controller.error(new TypeError('Stream chunk must be Uint8Array'))
-      } catch (error) {
-        controller.error(error)
-      }
-    },
-    async cancel(reason) {
-      await iterator.return?.(reason)
-    },
-  })
-}
-
-type FetchBodyKind = Exclude<AdapterResponseBody['kind'], 'json' | 'raw'>
-
-function responseBody(kind: FetchBodyKind, value: unknown): BodyInit | null {
-  switch (kind) {
-    case 'empty':
-      return null
-    case 'text':
-      if (typeof value !== 'string') throw new TypeError('Text adapter response body must be a string')
-      return value
-    case 'bytes':
-      if (!(value instanceof Uint8Array)) throw new TypeError('Byte adapter response body must be Uint8Array')
-      return value as BodyInit
-    case 'form-data':
-      if (!(value instanceof FormData)) throw new TypeError('Form data response body must be FormData')
-      return value
-    case 'stream':
-      return readableStream(value) as unknown as BodyInit
-  }
-}
-
-function toResponse(response: AdapterResponse): Response {
-  const body = response.body
-  if (body.kind === 'raw') {
-    if (!(body.value instanceof Response) || body.value.status !== response.status) {
-      throw new TypeError('Raw Fetch response status must match its declared contract status')
-    }
-    return body.value
-  }
-  if (body.kind === 'json') {
-    if (body.value === undefined) throw new TypeError('JSON response body cannot encode to undefined')
-    return Response.json(body.value, { status: response.status, headers: response.headers })
-  }
-  const result = new Response(responseBody(body.kind, body.value), {
-    status: response.status,
-    headers: response.headers,
-  })
-  if (body.kind === 'form-data') void result.headers.get('content-type')
-  return result
+  if (!context.req.raw.bodyUsed) return readFetchBody(context.req.raw, representation, preserveRequest, limit)
+  const cached = await cloneRawRequest(context.req)
+  return readFetchBody(cached, representation, false, limit)
 }
 
 function replacementResponse(response: Response): AdapterResponse {
@@ -171,22 +89,36 @@ function replacementResponse(response: Response): AdapterResponse {
 function createRouteHandler<Env extends HonoEnv>(
   route: AdapterRoute,
   usesNativeContext: boolean,
-  includeHostContext: boolean
+  includeHostContext: boolean,
+  options: HonoServerOptions<Env>
 ): HonoHandler<Env> {
+  const limit = bodyLimit(options.maxBodyBytes)
   return async (honoContext) => {
     const request = honoContext.req.raw
     const query = requestQuery(request.url)
     const nativeContext = { request, honoContext }
     const input: AdapterRouteInput = {
       request,
+      signal: request.signal,
+      preserveRequestBody: options.preserveRequestBody ?? false,
       ...(usesNativeContext ? { contextInput: nativeContext } : {}),
       params: honoContext.req.param(),
       ...(query === undefined ? {} : { query }),
       readHeaders: () => honoContext.req.header(),
-      readBody: (representation, preserveRequest) => readBody(honoContext, representation, preserveRequest),
+      readBody: (representation, preserveRequest) => readBody(honoContext, representation, preserveRequest, limit),
       ...(includeHostContext ? { hostContext: honoContext } : {}),
     }
-    return toResponse(await route.execute(input))
+    return writeFetchResponse(
+      await route.execute(input),
+      options.onError === undefined
+        ? undefined
+        : (error) =>
+            options.onError?.({
+              ...error,
+              ...nativeContext,
+              route: { key: route.key, method: route.method, path: route.path },
+            })
+    )
   }
 }
 
@@ -207,7 +139,7 @@ function createRouteHandlers<const ContractType extends Contract, const Context 
               ...input,
               request: input.request as Request,
               honoContext,
-              defaultResponse: toResponse(input.defaultResponse).clone(),
+              defaultResponse: toFetchResponse(input.defaultResponse).clone(),
             })
             return replacement instanceof Response ? replacementResponse(replacement) : undefined
           },
@@ -216,7 +148,7 @@ function createRouteHandlers<const ContractType extends Contract, const Context 
   return runtime.routes.map((route) => ({
     method: route.method,
     path: route.path,
-    handler: createRouteHandler<Env>(route, usesNativeContext, options.onError !== undefined),
+    handler: createRouteHandler<Env>(route, usesNativeContext, options.onError !== undefined, options),
   }))
 }
 

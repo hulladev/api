@@ -1,6 +1,7 @@
 import type { Contract } from '@hulla/api'
 import {
   createAdapterRuntime,
+  errorResponse,
   type AdapterBody,
   type AdapterErrorInput,
   type AdapterResponse,
@@ -8,6 +9,7 @@ import {
   type AdapterRouteInput,
   type AdapterRuntimeOptions,
 } from '@hulla/api/adapters'
+import { nodeRequestLifetime, writeNodeResponse } from '@hulla/api/adapters/node'
 import {
   assertAdapterContext,
   createServerAdapter,
@@ -107,126 +109,17 @@ function missingBodyParser(representation: string): Promise<never> {
   )
 }
 
-function responseSetCookies(headers: Headers): readonly string[] {
-  const compatible = headers as Headers & { getSetCookie?: () => readonly string[] }
-  return compatible.getSetCookie?.() ?? []
-}
-
-function writeResponseHeaders(source: Headers, target: ExpressResponse): void {
-  const setCookies = responseSetCookies(source)
-  source.forEach((value, name) => {
-    if (name !== 'set-cookie' || setCookies.length === 0) target.setHeader(name, value)
-  })
-  if (setCookies.length > 0) target.setHeader('set-cookie', setCookies)
-}
-
-function writeAdapterHeaders(source: Readonly<Record<string, string>>, target: ExpressResponse): void {
-  for (const [name, value] of Object.entries(source)) target.setHeader(name, value)
-}
-
-function waitForDrain(response: ExpressResponse): Promise<void> {
-  if (response.once === undefined) return Promise.resolve()
-  return new Promise((resolve, reject) => {
-    const onDrain = () => {
-      cleanup()
-      resolve()
-    }
-    const onClose = () => {
-      cleanup()
-      reject(new Error('Express response closed before the body finished'))
-    }
-    const cleanup = () => {
-      response.off?.('drain', onDrain)
-      response.off?.('close', onClose)
-    }
-    response.once?.('drain', onDrain)
-    response.once?.('close', onClose)
-  })
-}
-
-async function writeFetchResponse(source: Response, target: ExpressResponse, method: string): Promise<void> {
-  target.status(source.status)
-  writeResponseHeaders(source.headers, target)
-  if (method === 'HEAD' || source.body === null) {
-    target.end()
-    return
-  }
-
-  const reader = source.body.getReader()
-  const cancel = () => void reader.cancel(new Error('Express response closed'))
-  target.once?.('close', cancel)
-  try {
-    while (target.writableEnded !== true) {
-      const chunk = await reader.read()
-      if (chunk.done) break
-      if (!target.write(chunk.value)) await waitForDrain(target)
-    }
-    if (target.writableEnded !== true) target.end()
-  } finally {
-    target.off?.('close', cancel)
-    reader.releaseLock()
-  }
-}
-
-async function writeAdapterResponse(source: AdapterResponse, target: ExpressResponse, method: string): Promise<void> {
-  const body = source.body
-  if (body.kind === 'raw') {
-    if (!(body.value instanceof Response) || body.value.status !== source.status) {
-      throw new TypeError('Raw Fetch response status must match its declared contract status')
-    }
-    await writeFetchResponse(body.value, target, method)
-    return
-  }
-  if (body.kind === 'form-data') {
-    if (!(body.value instanceof FormData)) throw new TypeError('Form data response body must be FormData')
-    const response = new Response(body.value, { status: source.status, headers: source.headers })
-    void response.headers.get('content-type')
-    await writeFetchResponse(response, target, method)
-    return
-  }
-
-  target.status(source.status)
-  writeAdapterHeaders(source.headers, target)
-  if (method === 'HEAD' || body.kind === 'empty') {
-    target.end()
-    return
-  }
-
-  switch (body.kind) {
-    case 'json':
-      if (body.value === undefined) throw new TypeError('JSON response body cannot encode to undefined')
-      target.json(body.value)
-      return
-    case 'text':
-      if (typeof body.value !== 'string') throw new TypeError('Text response body must be a string')
-      target.send(body.value)
-      return
-    case 'bytes':
-      if (!(body.value instanceof Uint8Array)) throw new TypeError('Byte response body must be Uint8Array')
-      target.send(Buffer.from(body.value.buffer, body.value.byteOffset, body.value.byteLength))
-      return
-    case 'stream': {
-      const stream = body.value as AsyncIterable<unknown> & Iterable<unknown>
-      if (typeof stream?.[Symbol.asyncIterator] !== 'function' && typeof stream?.[Symbol.iterator] !== 'function') {
-        throw new TypeError('Stream response body must be iterable')
-      }
-      for await (const chunk of stream) {
-        if (target.writableEnded === true) break
-        if (!(chunk instanceof Uint8Array)) throw new TypeError('Stream chunk must be Uint8Array')
-        if (!target.write(chunk)) await waitForDrain(target)
-      }
-      if (target.writableEnded !== true) target.end()
-      return
-    }
-  }
-}
-
 function createEndpointHandler(
   route: AdapterRoute,
   includeNativeContext: boolean,
-  includeHostContext: boolean
+  includeHostContext: boolean,
+  onError?: ExpressServerOptions['onError']
 ): ExpressHandler {
   return async (request, response, next) => {
+    const lifetime =
+      typeof request.once === 'function' && typeof response.once === 'function'
+        ? nodeRequestLifetime(request, response)
+        : undefined
     try {
       let headers: Readonly<Record<string, string>> | undefined
       const parsedBody: AdapterBody | undefined = request.body === undefined ? undefined : { value: request.body }
@@ -240,6 +133,7 @@ function createEndpointHandler(
           : undefined
       const input: AdapterRouteInput = {
         request,
+        ...(lifetime === undefined ? {} : { signal: lifetime.signal }),
         ...(includeNativeContext ? { contextInput: nativeContext! } : {}),
         ...(includeHostContext ? { hostContext: nativeContext } : {}),
         params: request.params as Readonly<Record<string, string>>,
@@ -249,9 +143,34 @@ function createEndpointHandler(
         ...(parsedBody === undefined ? {} : { body: parsedBody }),
       }
       const result = await route.execute(input)
-      await writeAdapterResponse(result, response, request.method.toUpperCase())
+      await writeNodeResponse(result, response, request.method.toUpperCase())
     } catch (error) {
-      next(error)
+      const fallback = errorResponse(error, 'transport')
+      let replacement: AdapterResponse | undefined | void
+      try {
+        replacement = await onError?.({
+          error,
+          phase: 'transport',
+          request,
+          response,
+          locals: response.locals,
+          defaultResponse: fallback,
+        })
+      } catch {
+        /* Preserve the transport failure. */
+      }
+      if (response.headersSent) {
+        response.destroy()
+        return
+      }
+      try {
+        for (const name of response.getHeaderNames()) response.removeHeader(name)
+        await writeNodeResponse(replacement ?? fallback, response, request.method.toUpperCase())
+      } catch (failure) {
+        next(failure)
+      }
+    } finally {
+      lifetime?.dispose()
     }
   }
 }
@@ -282,7 +201,12 @@ function createHandlers<
     key: route.key,
     method: route.method,
     path: route.path,
-    handler: createEndpointHandler(route, includeNativeContext, options.onError !== undefined),
+    handler: createEndpointHandler(
+      route,
+      includeNativeContext,
+      options.onError !== undefined,
+      options.onError as ExpressServerOptions['onError']
+    ),
   }))
   if (options.onError === undefined) handlerCache.set(implementation, handlers)
   return handlers

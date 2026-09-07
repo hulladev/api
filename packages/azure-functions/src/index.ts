@@ -1,5 +1,6 @@
 import type { HttpHandler, HttpRequest, HttpResponse, HttpResponseInit, InvocationContext } from '@azure/functions'
 import type { Contract } from '@hulla/api'
+import { toFetchHeaders } from '@hulla/api/adapters'
 import {
   createAdapterHandler,
   type AdapterErrorInput,
@@ -76,7 +77,7 @@ function azureResponse(response: AdapterResponse): AzureFunctionsResponse {
 
   const base: HttpResponseInit = {
     status: response.status,
-    ...(Object.keys(response.headers).length === 0 ? {} : { headers: response.headers }),
+    ...(Object.keys(response.headers).length === 0 ? {} : { headers: toFetchHeaders(response.headers) }),
   }
   switch (response.body.kind) {
     case 'empty':

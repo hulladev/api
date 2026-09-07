@@ -304,3 +304,46 @@ describe('Fastify integration', () => {
     await app.close()
   })
 })
+
+test('propagates real client disconnects to cooperative stream work', async () => {
+  const app = Fastify()
+  let finalized!: () => void
+  const finished = new Promise<void>((resolve) => {
+    finalized = resolve
+  })
+  let observed: AbortSignal | undefined
+  const contract = defineContract({ routes: { stream: route.get('/', { responses: { 200: response.stream() } }) } })
+  fastifyAdapter(app).mount(
+    defineServer(contract).implement({
+      stream: ({ signal }) => {
+        observed = signal
+        return {
+          status: 200,
+          body: (async function* () {
+            try {
+              yield new Uint8Array(4096)
+              await new Promise<void>((resolve) => {
+                if (signal.aborted) resolve()
+                else signal.addEventListener('abort', () => resolve(), { once: true })
+              })
+            } finally {
+              finalized()
+            }
+          })(),
+        }
+      },
+    })
+  )
+  const origin = await app.listen({ host: '127.0.0.1', port: 0 })
+  try {
+    const result = await fetch(origin)
+    const reader = result.body!.getReader()
+    await reader.read()
+    await reader.cancel()
+    await finished
+    expect(observed?.aborted).toBe(true)
+  } finally {
+    app.server.closeAllConnections()
+    await app.close()
+  }
+})

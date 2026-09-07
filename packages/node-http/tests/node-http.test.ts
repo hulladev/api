@@ -288,3 +288,71 @@ describe('Node HTTP integration', () => {
     }
   })
 })
+
+test('returns 413 over a real chunked connection and remains usable afterwards', async () => {
+  const handler = nodeHttpAdapter({ maxBodyBytes: 4 }).mount(implementation())
+  const running = await listen(handler)
+  try {
+    const oversized = await fetch(`${running.origin}/api/text`, {
+      method: 'POST',
+      headers: { 'content-type': 'text/plain' },
+      body: new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('too long'))
+          controller.close()
+        },
+      }),
+      duplex: 'half',
+    } as RequestInit)
+    expect(oversized.status).toBe(413)
+    await oversized.text()
+    const normal = await fetch(`${running.origin}/api/text`, {
+      method: 'POST',
+      headers: { 'content-type': 'text/plain' },
+      body: 'ok',
+    })
+    expect(await normal.text()).toBe('OK')
+  } finally {
+    await close(running.server)
+  }
+})
+
+test('aborts cooperative stream work and finalizes its producer on disconnect', async () => {
+  let finish!: () => void
+  const finalized = new Promise<void>((resolve) => {
+    finish = resolve
+  })
+  let observed: AbortSignal | undefined
+  const streamContract = defineContract({ routes: { get: route.get('/', { responses: { 200: response.stream() } }) } })
+  const server = defineServer(streamContract).implement({
+    get: ({ signal }) => {
+      observed = signal
+      return {
+        status: 200,
+        body: (async function* () {
+          try {
+            yield new Uint8Array(256 * 1024)
+            await new Promise<void>((resolve) => {
+              if (signal.aborted) resolve()
+              else signal.addEventListener('abort', () => resolve(), { once: true })
+            })
+          } finally {
+            finish()
+          }
+        })(),
+      }
+    },
+  })
+  const running = await listen(nodeHttpAdapter().mount(server))
+  try {
+    const result = await fetch(running.origin)
+    const reader = result.body!.getReader()
+    await reader.read()
+    await reader.cancel()
+    await finalized
+    expect(observed?.aborted).toBe(true)
+  } finally {
+    running.server.closeAllConnections()
+    await close(running.server)
+  }
+})

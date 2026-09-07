@@ -118,17 +118,17 @@ async function collectBytes(source: unknown): Promise<Uint8Array> {
   return body
 }
 
-function splitResponseHeaders(source: Readonly<Record<string, string>>): {
+function splitResponseHeaders(source: AdapterResponse['headers']): {
   readonly cookies?: readonly string[]
   readonly headers: Readonly<Record<string, string>>
 } {
   const headers: Record<string, string> = {}
-  let cookie: string | undefined
+  let cookies: readonly string[] | undefined
   for (const [name, value] of Object.entries(source)) {
-    if (name.toLowerCase() === 'set-cookie') cookie = value
-    else headers[name] = value
+    if (name.toLowerCase() === 'set-cookie') cookies = typeof value === 'string' ? [value] : value
+    else headers[name] = typeof value === 'string' ? value : value.join(', ')
   }
-  return cookie === undefined ? { headers } : { cookies: [cookie], headers }
+  return cookies === undefined ? { headers } : { cookies, headers }
 }
 
 function rawLambdaResponse(body: AdapterResponseBody, status: number): AWSLambdaResponse | undefined {
