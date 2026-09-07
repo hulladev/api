@@ -1,3 +1,4 @@
+import type { Contract } from '@hulla/api'
 import { clientRouteIntegration } from '@hulla/api/client'
 
 export type TanStackQueryFunctionContext = {
@@ -48,13 +49,17 @@ export type TanStackQueryRoute<Call extends RouteCall, Key extends readonly stri
   readonly mutationOptions: MutationOptions<Call, Key>
 }
 
+type Calls<Client extends object> = Client extends { readonly contract: infer C extends Contract }
+  ? Pick<Client, Extract<keyof C['routes'], keyof Client>>
+  : Client
+
 export type TanStackQueryClient<Client extends object, Prefix extends readonly string[] = readonly []> = {
   readonly queryKey: () => readonly [...Prefix]
 } & {
-  readonly [Key in keyof Client]: Client[Key] extends RouteCall
-    ? TanStackQueryRoute<Client[Key], readonly [...Prefix, Key & string]>
-    : Client[Key] extends object
-      ? TanStackQueryClient<Client[Key], readonly [...Prefix, Key & string]>
+  readonly [Key in keyof Calls<Client>]: Calls<Client>[Key] extends RouteCall
+    ? TanStackQueryRoute<Calls<Client>[Key], readonly [...Prefix, Key & string]>
+    : Calls<Client>[Key] extends object
+      ? TanStackQueryClient<Calls<Client>[Key], readonly [...Prefix, Key & string]>
       : never
 }
 
@@ -92,6 +97,8 @@ function routeIntegration(call: (...args: readonly unknown[]) => Promise<unknown
 function integrationTree(value: object, key: readonly string[]): Record<string, unknown> {
   const result: Record<string, unknown> = { queryKey: () => [...key] }
   for (const [name, child] of Object.entries(value)) {
+    if (name === 'queryKey')
+      throw new TypeError('Query integration name "queryKey" is reserved; rename this contract node')
     const childKey = [...key, name]
     Object.defineProperty(result, name, {
       enumerable: true,
@@ -107,6 +114,9 @@ function integrationTree(value: object, key: readonly string[]): Record<string, 
 }
 
 /** Creates a parallel TanStack Query view without extending or copying the client calls. */
-export function createTanStackQuery<const Client extends object>(client: Client): TanStackQueryClient<Client> {
-  return integrationTree(client, []) as TanStackQueryClient<Client>
+export function createTanStackQuery<const Client extends object, const Prefix extends readonly string[] = readonly []>(
+  client: Client,
+  options: { readonly prefix?: Prefix } = {}
+): TanStackQueryClient<Client, Prefix> {
+  return integrationTree(client, [...(options.prefix ?? [])]) as TanStackQueryClient<Client, Prefix>
 }

@@ -30,7 +30,7 @@ describe('SWR integration', () => {
     )
     const client = defineClient(contract, {
       transport: fetchTransport({ baseUrl: 'https://api.example.com', fetch: fetcher }),
-    }).create()
+    })
     const swr = createSWR(client)
     const input = { params: { id: 'user-1' } }
 
@@ -68,7 +68,7 @@ describe('SWR integration', () => {
   test('requires query input while supporting no-input routes', async () => {
     const client = defineClient(contract, {
       transport: fetchTransport({ baseUrl: 'https://api.example.com', fetch: async () => json('ok') }),
-    }).create()
+    })
     const swr = createSWR(client)
 
     // @ts-expect-error Input routes require bound query input.
@@ -81,4 +81,42 @@ describe('SWR integration', () => {
     expect(key).toEqual(['health'])
     await expect(fetcher()).resolves.toMatchObject({ body: 'ok' })
   })
+})
+
+test('uses SWR structural keys and isolates cache mutations by namespace', async () => {
+  const { unstable_serialize, mutate } = await import('swr')
+  const client = defineClient(contract, {
+    transport: fetchTransport({ baseUrl: 'https://cache.test', fetch: async () => json({ id: 'one' }) }),
+  })
+  const first = createSWR(client, { prefix: ['tenant-a'] })
+  const second = createSWR(client, { prefix: ['tenant-b'] })
+  const keyA = first.users.byId.queryKey({ params: { id: 'one' } })
+  const keyB = second.users.byId.queryKey({ params: { id: 'one' } })
+  expect(unstable_serialize(keyA)).toBe(unstable_serialize(first.users.byId.queryKey({ params: { id: 'one' } })))
+  expect(unstable_serialize(keyA)).not.toBe(unstable_serialize(keyB))
+  await mutate(keyA, 'a', { revalidate: false })
+  await mutate(keyB, 'b', { revalidate: false })
+  try {
+    await mutate(
+      keyA,
+      (value) => {
+        expect(value).toBe('a')
+        return 'updated'
+      },
+      { revalidate: false }
+    )
+    await mutate(
+      keyB,
+      (value) => {
+        expect(value).toBe('b')
+        return value
+      },
+      { revalidate: false }
+    )
+    // @ts-expect-error Authoring controls are not cache routes.
+    void first.select
+  } finally {
+    await mutate(keyA, undefined, { revalidate: false })
+    await mutate(keyB, undefined, { revalidate: false })
+  }
 })

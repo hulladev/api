@@ -1,3 +1,4 @@
+import type { Contract } from '@hulla/api'
 import { clientRouteIntegration } from '@hulla/api/client'
 
 type RouteCall = (...args: never[]) => Promise<unknown>
@@ -29,13 +30,17 @@ export type SWRRoute<Call extends RouteCall, Key extends readonly string[]> = {
   readonly mutationOptions: MutationOptions<Call, Key>
 }
 
+type Calls<Client extends object> = Client extends { readonly contract: infer C extends Contract }
+  ? Pick<Client, Extract<keyof C['routes'], keyof Client>>
+  : Client
+
 export type SWRClient<Client extends object, Prefix extends readonly string[] = readonly []> = {
   readonly queryKey: () => readonly [...Prefix]
 } & {
-  readonly [Key in keyof Client]: Client[Key] extends RouteCall
-    ? SWRRoute<Client[Key], readonly [...Prefix, Key & string]>
-    : Client[Key] extends object
-      ? SWRClient<Client[Key], readonly [...Prefix, Key & string]>
+  readonly [Key in keyof Calls<Client>]: Calls<Client>[Key] extends RouteCall
+    ? SWRRoute<Calls<Client>[Key], readonly [...Prefix, Key & string]>
+    : Calls<Client>[Key] extends object
+      ? SWRClient<Calls<Client>[Key], readonly [...Prefix, Key & string]>
       : never
 }
 
@@ -67,6 +72,8 @@ function routeIntegration(call: (...args: readonly unknown[]) => Promise<unknown
 function integrationTree(value: object, key: readonly string[]): Record<string, unknown> {
   const result: Record<string, unknown> = { queryKey: () => [...key] }
   for (const [name, child] of Object.entries(value)) {
+    if (name === 'queryKey')
+      throw new TypeError('Query integration name "queryKey" is reserved; rename this contract node')
     const childKey = [...key, name]
     Object.defineProperty(result, name, {
       enumerable: true,
@@ -82,6 +89,9 @@ function integrationTree(value: object, key: readonly string[]): Record<string, 
 }
 
 /** Creates a parallel SWR view without extending or copying the client calls. */
-export function createSWR<const Client extends object>(client: Client): SWRClient<Client> {
-  return integrationTree(client, []) as SWRClient<Client>
+export function createSWR<const Client extends object, const Prefix extends readonly string[] = readonly []>(
+  client: Client,
+  options: { readonly prefix?: Prefix } = {}
+): SWRClient<Client, Prefix> {
+  return integrationTree(client, [...(options.prefix ?? [])]) as SWRClient<Client, Prefix>
 }

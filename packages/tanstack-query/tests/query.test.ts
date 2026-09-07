@@ -31,7 +31,7 @@ describe('TanStack Query integration', () => {
     )
     const client = defineClient(contract, {
       transport: fetchTransport({ baseUrl: 'https://api.example.com', fetch: fetcher }),
-    }).create()
+    })
     const tanstack = createTanStackQuery(client)
     const input = { params: { id: 'user-1' } }
 
@@ -78,7 +78,7 @@ describe('TanStack Query integration', () => {
     const fetcher = vi.fn<(_request: Request) => Promise<Response>>(async () => json({ id: 'user-1' }))
     const client = defineClient(contract, {
       transport: fetchTransport({ baseUrl: 'https://api.example.com', fetch: fetcher }),
-    }).create()
+    })
     const tanstack = createTanStackQuery(client)
 
     // @ts-expect-error Input routes require bound query input.
@@ -92,4 +92,33 @@ describe('TanStack Query integration', () => {
     controller.abort()
     expect(requestSignal.aborted).toBe(true)
   })
+})
+
+test('uses real cache namespaces, structural input identity and scoped invalidation', async () => {
+  const { QueryClient } = await import('@tanstack/query-core')
+  const fetcher = vi.fn<() => Promise<Response>>(async () => json({ id: 'one' }))
+  const client = defineClient(contract, {
+    transport: fetchTransport({ baseUrl: 'https://cache.test', fetch: fetcher }),
+  })
+  const first = createTanStackQuery(client, { prefix: ['tenant-a'] })
+  const second = createTanStackQuery(client, { prefix: ['tenant-b'] })
+  const cache = new QueryClient({
+    defaultOptions: { queries: { staleTime: Infinity, retry: false, gcTime: Infinity } },
+  })
+  try {
+    await cache.fetchQuery(first.users.byId.queryOptions({ params: { id: 'one' } }))
+    await cache.fetchQuery(first.users.byId.queryOptions({ params: { id: 'one' } }))
+    expect(fetcher).toHaveBeenCalledTimes(1)
+    await cache.fetchQuery(second.users.byId.queryOptions({ params: { id: 'one' } }))
+    expect(fetcher).toHaveBeenCalledTimes(2)
+    await cache.invalidateQueries({ queryKey: first.users.queryKey() })
+    expect(cache.getQueryState(first.users.byId.queryKey({ params: { id: 'one' } }))?.isInvalidated).toBe(true)
+    expect(cache.getQueryState(second.users.byId.queryKey({ params: { id: 'one' } }))?.isInvalidated).toBe(false)
+    await cache.fetchQuery(first.users.byId.queryOptions({ params: { id: 'one' } }))
+    expect(fetcher).toHaveBeenCalledTimes(3)
+    // @ts-expect-error Authoring controls are not cache routes.
+    void first.select
+  } finally {
+    cache.clear()
+  }
 })
