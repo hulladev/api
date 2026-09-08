@@ -1,1 +1,1 @@
-export { nodeHttpAdapter } from '@hulla/api-node-http'
+export { nodeHttpAdapter } from '@hulla/api-node/http'

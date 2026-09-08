@@ -1,15 +1,13 @@
-import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from 'node:http'
+import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Contract } from '@hulla/api'
 import {
   createAdapterHandler,
   bodyLimit,
-  readBodyBytes,
   errorResponse,
   type AdapterErrorInput,
   type AdapterResponse,
   type AdapterRuntimeOptions,
 } from '@hulla/api/adapters'
-import { nodeRequestLifetime, writeNodeResponse } from '@hulla/api/adapters/node'
 import {
   assertAdapterContext,
   createServerAdapter,
@@ -19,6 +17,17 @@ import {
   type ServerContextInput,
   type ServerExecutableFor,
 } from '@hulla/api/server'
+import {
+  createNodeBodyReader,
+  nodeRequestHeader,
+  nodeRequestHeaders,
+  nodeRequestLifetime,
+  writeNodeResponse,
+} from './index'
+
+function readHeader(this: { readonly request: NodeHttpRequest }, name: string): string | undefined {
+  return nodeRequestHeader(this.request.headers, name)
+}
 
 export type NodeHttpRequest = IncomingMessage
 export type NodeHttpResponse = ServerResponse<NodeHttpRequest>
@@ -64,44 +73,6 @@ function requestQuery(url: string): URLSearchParams | undefined {
   return new URLSearchParams(url.slice(query + 1, hash === -1 ? undefined : hash))
 }
 
-function requestHeaders(source: IncomingHttpHeaders): Readonly<Record<string, string>> {
-  const headers: Record<string, string> = {}
-  for (const [name, value] of Object.entries(source)) {
-    if (value === undefined || name.startsWith(':')) continue
-    headers[name] = typeof value === 'string' ? value : value.join(', ')
-  }
-  return headers
-}
-
-function createBodyReader(request: NodeHttpRequest, limit: number) {
-  let body: Promise<Uint8Array> | undefined
-  return async (representation: string): Promise<unknown> => {
-    const bytes = await (body ??= readBodyBytes(
-      request.iterator({ destroyOnReturn: false }) as AsyncIterable<Uint8Array>,
-      limit
-    ).catch((error) => {
-      request.resume()
-      throw error
-    }))
-    switch (representation) {
-      case 'json':
-        return JSON.parse(new TextDecoder().decode(bytes)) as unknown
-      case 'text':
-        return new TextDecoder().decode(bytes)
-      case 'bytes':
-        return bytes
-      case 'form-data': {
-        const contentType = request.headers['content-type']
-        return new Response(bytes as BodyInit, {
-          ...(contentType === undefined ? {} : { headers: { 'content-type': contentType } }),
-        }).formData()
-      }
-      default:
-        throw new TypeError(`Unsupported Node HTTP request body representation ${representation}`)
-    }
-  }
-}
-
 function transportFailure(_error: unknown, response: NodeHttpResponse): void {
   if (response.destroyed || response.writableEnded) return
   if (response.headersSent) {
@@ -144,8 +115,9 @@ function createNodeHttpHandler<const ContractType extends Contract, const Contex
         method: dispatchMethod,
         pathname: pathname(url),
         ...(query === undefined ? {} : { query }),
-        readHeaders: () => requestHeaders(request.headers),
-        readBody: createBodyReader(request, limit),
+        readHeaders: () => nodeRequestHeaders(request.headers),
+        readHeader,
+        readBody: createNodeBodyReader(request, limit),
         ...(usesNativeContext ? { contextInput: nativeContext } : {}),
         ...(options.onError === undefined ? {} : { hostContext: nativeContext }),
       })

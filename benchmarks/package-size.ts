@@ -88,7 +88,7 @@ const targets: readonly PackageSizeTarget[] = [
   {
     runtime: 'Node HTTP server adapter',
     entry: 'hulla-api-node-http-adapter',
-    imports: '@hulla/api-node-http (nodeHttpAdapter)',
+    imports: '@hulla/api-node/http (nodeHttpAdapter)',
     comparison: 'breakdown',
   },
   {

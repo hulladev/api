@@ -150,8 +150,23 @@ try {
     }
   }
   assert(selected === undefined || packages.includes(selected), `Unknown package: ${selected}`)
+  const manifests = new Map(
+    await Promise.all(packages.map(async (name) => [name, await manifest(join(root, 'packages', name))] as const))
+  )
+  const packageNames = new Map([...manifests].map(([name, pkg]) => [pkg.name, name]))
+  function localDependencies(name: string, result = new Set<string>()): Set<string> {
+    for (const dependency of Object.keys(manifests.get(name)?.dependencies ?? {})) {
+      const local = packageNames.get(dependency)
+      if (local === undefined || result.has(local)) continue
+      result.add(local)
+      localDependencies(local, result)
+    }
+    return result
+  }
+  const toPack = new Set(['core', ...packages.filter((name) => selected === undefined || name === selected)])
+  for (const name of toPack) for (const dependency of localDependencies(name)) toPack.add(dependency)
   const archives = new Map<string, string>()
-  for (const name of new Set(['core', ...packages.filter((name) => selected === undefined || name === selected)])) {
+  for (const name of toPack) {
     const directory = join(root, 'packages', name)
     const pkg = await manifest(directory)
     if (pkg.private) continue
@@ -175,8 +190,13 @@ try {
       '@hulla/api': `file:${archives.get('core')!}`,
       [pkg.name]: `file:${archives.get(name)!}`,
     }
-    // Only the package's declared peers and consumer type environment are installed.
-    // No workspace dev dependencies, aliases, or sibling packages can mask omissions.
+    const overrides: Record<string, string> = {}
+    // Resolve declared workspace dependencies to tarballs before they are published.
+    for (const dependency of localDependencies(name)) {
+      overrides[manifests.get(dependency)!.name] = `file:${archives.get(dependency)!}`
+    }
+    // Only declared dependencies, peers, and the consumer type environment are installed.
+    // Unrelated sibling packages and workspace dev dependencies cannot mask omissions.
     for (const [peer, range] of Object.entries(pkg.peerDependencies ?? {})) {
       if (peer === '@hulla/api') continue
       const installed = await manifest(join(directory, 'node_modules', peer))
@@ -197,7 +217,7 @@ try {
     dependencies['@types/node'] ??= nodeTypes.version
     await writeFile(
       join(consumer, 'package.json'),
-      JSON.stringify({ name: 'isolated-consumer', private: true, type: 'module', dependencies })
+      JSON.stringify({ name: 'isolated-consumer', private: true, type: 'module', dependencies, overrides })
     )
     await command('bun', ['install', '--ignore-scripts'], consumer)
     for (const [peer, requested] of Object.entries(profile?.peers ?? {})) {

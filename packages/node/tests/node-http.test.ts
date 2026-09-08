@@ -11,7 +11,7 @@ import {
   type NodeHttpRequest,
   type NodeHttpResponse,
   type NodeHttpServerErrorInput,
-} from '../src'
+} from '../src/http'
 
 type TestServer = {
   readonly origin: string

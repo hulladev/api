@@ -28,7 +28,7 @@
     "@hulla/api-message-port": "workspace:*",
     "@hulla/api-netlify-functions": "workspace:*",
     "@hulla/api-next": "workspace:*",
-    "@hulla/api-node-http": "workspace:*",
+    "@hulla/api-node": "workspace:*",
     "@hulla/api-nuxt": "workspace:*",
     "@hulla/api-react-router": "workspace:*",
     "@hulla/api-solid-start": "workspace:*",

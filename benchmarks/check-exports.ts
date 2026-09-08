@@ -8,7 +8,7 @@ const core = JSON.parse(await readFile(new URL('../packages/core/package.json', 
   optionalDependencies?: Record<string, string>
   peerDependencies?: Record<string, string>
 }
-for (const name of ['message-port', 'websocket', 'nestjs']) {
+for (const name of ['message-port', 'websocket', 'nestjs', 'node']) {
   assert(!Object.hasOwn(core.exports, `./${name}`), `${name} must be installed separately`)
   for (const dependencies of [core.dependencies, core.peerDependencies])
     assert(!Object.hasOwn(dependencies ?? {}, `@hulla/api-${name}`), `Core must not depend on ${name}`)
@@ -16,6 +16,7 @@ for (const name of ['message-port', 'websocket', 'nestjs']) {
 for (const dependencies of [core.dependencies, core.optionalDependencies, core.peerDependencies]) {
   assert(!Object.hasOwn(dependencies ?? {}, '@hulla/api-message-port'), 'Core must not depend on MessagePort')
 }
+assert(!Object.hasOwn(core.exports, './adapters/node'), 'Node helpers must be installed separately')
 for (const subpath of Object.keys(core.exports)) {
   const module = await import(`${core.name}${subpath === '.' ? '' : subpath.slice(1)}`)
   assert(Object.keys(module).length > 0, `Empty built export: ${subpath}`)

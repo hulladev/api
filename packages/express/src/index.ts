@@ -1,4 +1,5 @@
 import type { Contract } from '@hulla/api'
+import { nodeRequestHeader, nodeRequestHeaders, nodeRequestLifetime, writeNodeResponse } from '@hulla/api-node'
 import {
   createAdapterRuntime,
   errorResponse,
@@ -9,7 +10,6 @@ import {
   type AdapterRouteInput,
   type AdapterRuntimeOptions,
 } from '@hulla/api/adapters'
-import { nodeRequestLifetime, writeNodeResponse } from '@hulla/api/adapters/node'
 import {
   assertAdapterContext,
   createServerAdapter,
@@ -84,13 +84,17 @@ export type ExpressContextInput<
   Locals extends Record<string, unknown> = Record<string, unknown>,
 > = ServerContextInput<ContractType> & ExpressAdapterContext<Locals>
 
-function requestHeaders(request: ExpressRequest): Readonly<Record<string, string>> {
-  const headers: Record<string, string> = {}
-  for (const [name, value] of Object.entries(request.headers)) {
-    if (value === undefined || name.startsWith(':')) continue
-    headers[name] = typeof value === 'string' ? value : value.join(', ')
-  }
-  return headers
+type HeaderInput = AdapterRouteInput & {
+  readonly request: ExpressRequest
+  cachedHeaders?: Readonly<Record<string, string>>
+}
+
+function readHeaders(this: HeaderInput): Readonly<Record<string, string>> {
+  return (this.cachedHeaders ??= nodeRequestHeaders(this.request.headers))
+}
+
+function readHeader(this: HeaderInput, name: string): string | undefined {
+  return this.cachedHeaders === undefined ? nodeRequestHeader(this.request.headers, name) : this.cachedHeaders[name]
 }
 
 function requestQuery(request: ExpressRequest): URLSearchParams | Readonly<Record<string, unknown>> {
@@ -121,7 +125,6 @@ function createEndpointHandler(
         ? nodeRequestLifetime(request, response)
         : undefined
     try {
-      let headers: Readonly<Record<string, string>> | undefined
       const parsedBody: AdapterBody | undefined = request.body === undefined ? undefined : { value: request.body }
       const nativeContext =
         includeNativeContext || includeHostContext
@@ -131,14 +134,15 @@ function createEndpointHandler(
               locals: response.locals as Readonly<Record<string, unknown>>,
             }
           : undefined
-      const input: AdapterRouteInput = {
+      const input: HeaderInput = {
         request,
         ...(lifetime === undefined ? {} : { signal: lifetime.signal }),
         ...(includeNativeContext ? { contextInput: nativeContext! } : {}),
         ...(includeHostContext ? { hostContext: nativeContext } : {}),
         params: request.params as Readonly<Record<string, string>>,
         query: requestQuery(request),
-        readHeaders: () => (headers ??= requestHeaders(request)),
+        readHeaders,
+        readHeader,
         readBody: (representation) => missingBodyParser(representation),
         ...(parsedBody === undefined ? {} : { body: parsedBody }),
       }

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
 import { defineContract, response, route } from '@hulla/api'
-import { nodeHttpAdapter } from '@hulla/api-node-http'
+import { nodeHttpAdapter } from '@hulla/api-node/http'
 import { defineClient } from '@hulla/api/client'
 import { fetchTransport } from '@hulla/api/fetch'
 import { defineServer } from '@hulla/api/server'

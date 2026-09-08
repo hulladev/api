@@ -22,6 +22,9 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "@hulla/api-node": "workspace:^"
+  },
   "devDependencies": {
     "@hulla/api": "workspace:*",
     "@nestjs/common": "^12.0.1",

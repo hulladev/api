@@ -1,9 +1,8 @@
-import type { IncomingHttpHeaders, IncomingMessage } from 'node:http'
 import { Readable } from 'node:stream'
 import type { Contract } from '@hulla/api'
+import { createNodeBodyReader, nodeRequestHeader, nodeRequestHeaders, nodeRequestLifetime } from '@hulla/api-node'
 import {
   bodyLimit,
-  readBodyBytes,
   createAdapterHandler,
   errorResponse,
   toFetchResponse,
@@ -11,7 +10,6 @@ import {
   type AdapterResponse,
   type AdapterRuntimeOptions,
 } from '@hulla/api/adapters'
-import { nodeRequestLifetime } from '@hulla/api/adapters/node'
 import {
   assertAdapterContext,
   createServerAdapter,
@@ -22,6 +20,10 @@ import {
   type ServerExecutableFor,
 } from '@hulla/api/server'
 import type Koa from 'koa'
+
+function readHeader(this: { readonly request: Koa.Context['req'] }, name: string): string | undefined {
+  return nodeRequestHeader(this.request.headers, name)
+}
 
 export type KoaAdapterContext<State extends object = Koa.DefaultState> = {
   readonly ctx: Koa.ParameterizedContext<State>
@@ -42,44 +44,6 @@ export type KoaAdapter<State extends object = Koa.DefaultState> = ServerAdapter<
     implementation: ServerExecutableFor<C, Context, 'koa', KoaAdapterContext<State>>,
     options?: KoaServerOptions<State>
   ) => Koa.Middleware<State>
-}
-
-function requestHeaders(source: IncomingHttpHeaders): Readonly<Record<string, string>> {
-  const headers: Record<string, string> = {}
-  for (const [name, value] of Object.entries(source)) {
-    if (value === undefined || name.startsWith(':')) continue
-    headers[name] = typeof value === 'string' ? value : value.join(', ')
-  }
-  return headers
-}
-
-function createBodyReader(request: IncomingMessage, limit: number) {
-  let body: Promise<Uint8Array> | undefined
-  return async (representation: string): Promise<unknown> => {
-    const bytes = await (body ??= readBodyBytes(
-      request.iterator({ destroyOnReturn: false }) as AsyncIterable<Uint8Array>,
-      limit
-    ).catch((error) => {
-      request.resume()
-      throw error
-    }))
-    switch (representation) {
-      case 'json':
-        return JSON.parse(new TextDecoder().decode(bytes)) as unknown
-      case 'text':
-        return new TextDecoder().decode(bytes)
-      case 'bytes':
-        return bytes
-      case 'form-data': {
-        const contentType = request.headers['content-type']
-        return new Response(bytes as BodyInit, {
-          ...(contentType === undefined ? {} : { headers: { 'content-type': contentType } }),
-        }).formData()
-      }
-      default:
-        throw new TypeError(`Unsupported Koa request body representation ${representation}`)
-    }
-  }
 }
 
 /** Mount as terminal middleware. Scope paths with the application's router when composing APIs. */
@@ -133,8 +97,9 @@ export function koaAdapter<State extends object = Koa.DefaultState>(
             method: ctx.method === 'HEAD' ? 'GET' : ctx.method,
             pathname: ctx.path,
             query: new URLSearchParams(ctx.querystring),
-            readHeaders: () => requestHeaders(ctx.req.headers),
-            readBody: createBodyReader(ctx.req, limit),
+            readHeaders: () => nodeRequestHeaders(ctx.req.headers),
+            readHeader,
+            readBody: createNodeBodyReader(ctx.req, limit, 'Koa'),
             ...(parsed === undefined ? {} : { body: { value: parsed } }),
             ...(native ? { contextInput: host } : {}),
             ...(options.onError === undefined ? {} : { hostContext: host }),

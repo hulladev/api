@@ -2,6 +2,7 @@ import 'reflect-metadata'
 import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from 'node:http'
 import { Readable } from 'node:stream'
 import { compileContract, type CompiledContractRoute, type Contract } from '@hulla/api'
+import { nodeRequestLifetime } from '@hulla/api-node'
 import {
   createAdapterRuntime,
   errorResponse,
@@ -11,7 +12,6 @@ import {
   type AdapterRoute,
   type AdapterRuntime,
 } from '@hulla/api/adapters'
-import { nodeRequestLifetime } from '@hulla/api/adapters/node'
 import {
   assertAdapterContext,
   createServerAdapter,

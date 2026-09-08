@@ -1,7 +1,7 @@
 {
-  "name": "@hulla/api-node-http",
+  "name": "@hulla/api-node",
   "version": "2.0.0",
-  "description": "Node.js HTTP server adapter for @hulla/api implementations",
+  "description": "Node.js HTTP adapter and shared native HTTP helpers for @hulla/api",
   "license": "MIT",
   "files": [
     "dist"
@@ -12,6 +12,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./http": {
+      "types": "./dist/http.d.ts",
+      "import": "./dist/http.js"
     }
   },
   "scripts": {

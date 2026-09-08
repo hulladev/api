@@ -1,6 +1,54 @@
-import type { IncomingMessage, ServerResponse } from 'node:http'
-import { toFetchHeaders } from './headers'
-import type { AdapterResponse } from './types'
+import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from 'node:http'
+import { readBodyBytes, toFetchHeaders, type AdapterResponse } from '@hulla/api/adapters'
+
+/** Reads one normalized Node header without copying unrelated fields. */
+export function nodeRequestHeader(source: IncomingHttpHeaders, name: string): string | undefined {
+  if (name.startsWith(':') || !Object.hasOwn(source, name)) return undefined
+  const value = source[name]
+  return typeof value === 'string' ? value : value?.join(', ')
+}
+
+export function nodeRequestHeaders(source: IncomingHttpHeaders): Readonly<Record<string, string>> {
+  const entries = Object.entries(source)
+  let length = 0
+  for (const entry of entries) {
+    const [name, value] = entry
+    if (value === undefined || name.startsWith(':')) continue
+    entry[1] = typeof value === 'string' ? value : value.join(', ')
+    entries[length++] = entry
+  }
+  entries.length = length
+  return Object.fromEntries(entries) as Record<string, string>
+}
+
+export function createNodeBodyReader(request: IncomingMessage, limit: number, host = 'Node HTTP') {
+  let body: Promise<Uint8Array> | undefined
+  return async (representation: string): Promise<unknown> => {
+    const bytes = await (body ??= readBodyBytes(
+      request.iterator({ destroyOnReturn: false }) as AsyncIterable<Uint8Array>,
+      limit
+    ).catch((error) => {
+      request.resume()
+      throw error
+    }))
+    switch (representation) {
+      case 'json':
+        return JSON.parse(new TextDecoder().decode(bytes)) as unknown
+      case 'text':
+        return new TextDecoder().decode(bytes)
+      case 'bytes':
+        return bytes
+      case 'form-data': {
+        const contentType = request.headers['content-type']
+        return new Response(bytes as BodyInit, {
+          ...(contentType === undefined ? {} : { headers: { 'content-type': contentType } }),
+        }).formData()
+      }
+      default:
+        throw new TypeError(`Unsupported ${host} request body representation ${representation}`)
+    }
+  }
+}
 
 /** Request lifetime shared by Node HTTP and Express; never retained after response completion. */
 export function nodeRequestLifetime(request: IncomingMessage, response: ServerResponse) {

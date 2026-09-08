@@ -83,9 +83,9 @@ export async function verify() { if (await (await handler(new Request('https://b
   },
   {
     name: 'node-writer',
-    code: `export { writeNodeResponse, nodeRequestLifetime } from '@hulla/api/adapters/node';`,
-    required: ['adapters/node.ts'],
-    forbidden: ['fetch/', 'client/', 'message-port/'],
+    code: `export { writeNodeResponse, nodeRequestLifetime } from '@hulla/api-node';`,
+    required: ['node/index.ts'],
+    forbidden: ['fetch/', 'client/', 'message-port/', 'node/http.ts'],
     target: 'node',
   },
 ]
@@ -106,10 +106,11 @@ function command(args: string[]): string {
 }
 function sourceImports(code: string): string {
   return code
+    .replace(/'@hulla\/api-node'/g, `'${resolve(root, 'packages/node/src/index.ts')}'`)
     .replace(/'@hulla\/api-websocket'/g, `'${resolve(root, 'packages/websocket/src/index.ts')}'`)
     .replace(/'@hulla\/api-message-port'/g, `'${resolve(root, 'packages/message-port/src/index.ts')}'`)
     .replace(/'@hulla\/api([^']*)'/g, (_match, subpath: string) => {
-      const entry = subpath === '/adapters/node' ? 'adapters/node.ts' : `${subpath.slice(1) || '.'}/index.ts`
+      const entry = `${subpath.slice(1) || '.'}/index.ts`
       return `'${resolve(root, 'packages/core/src', entry)}'`
     })
 }
@@ -148,26 +149,37 @@ try {
         const contains = (path: string) =>
           retained.some((input) =>
             input.startsWith(
-              path.startsWith('websocket/')
-                ? resolve(root, 'packages/websocket/src', path.slice('websocket/'.length))
-                : path.startsWith('message-port/')
-                  ? resolve(root, 'packages/message-port/src', path.slice('message-port/'.length))
-                  : resolve(root, 'packages/core/src', path)
+              path.startsWith('node/')
+                ? resolve(root, 'packages/node/src', path.slice('node/'.length))
+                : path.startsWith('websocket/')
+                  ? resolve(root, 'packages/websocket/src', path.slice('websocket/'.length))
+                  : path.startsWith('message-port/')
+                    ? resolve(root, 'packages/message-port/src', path.slice('message-port/'.length))
+                    : resolve(root, 'packages/core/src', path)
             )
           )
         for (const path of consumer.required)
           assert(contains(path), `${consumer.name}: missing expected implementation ${path}`)
-        for (const path of [...consumer.forbidden, ...(consumer.target === 'node' ? [] : ['adapters/node.ts'])])
+        for (const path of [...consumer.forbidden, ...(consumer.target === 'node' ? [] : ['node/'])])
           assert(!contains(path), `${consumer.name}: retained forbidden implementation ${path}`)
       } else {
-        for (const path of [
-          ...(consumer.name.startsWith('fetch-') ? [] : ['fetch/index.js']),
-          ...(consumer.target === 'node' ? [] : ['adapters/node.js']),
-        ])
+        for (const path of [...(consumer.name.startsWith('fetch-') ? [] : ['fetch/index.js'])])
           assert(
             !retained.includes(resolve(root, 'packages/core/dist', path)),
             `${consumer.name}: retained forbidden built entry ${path}`
           )
+      }
+      if (consumer.name === 'node-writer' && mode === 'built') {
+        assert(
+          !retained.includes(resolve(root, 'packages/node/dist/http.js')),
+          'Node helpers must not retain the standalone HTTP adapter'
+        )
+      }
+      if (consumer.target !== 'node') {
+        assert(
+          !retained.some((path) => path.startsWith(resolve(root, 'packages/node') + '/')),
+          `${consumer.name}: retained optional Node package`
+        )
       }
       if (!consumer.name.startsWith('message-port')) {
         assert(
