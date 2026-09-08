@@ -12,6 +12,22 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./desktop": {
+      "types": "./dist/desktop.d.ts",
+      "import": "./dist/desktop.js"
+    },
+    "./electron": {
+      "types": "./dist/electron.d.ts",
+      "import": "./dist/electron.js"
+    },
+    "./tauri": {
+      "types": "./dist/tauri.d.ts",
+      "import": "./dist/tauri.js"
+    },
+    "./dioxus": {
+      "types": "./dist/dioxus.d.ts",
+      "import": "./dist/dioxus.js"
     }
   },
   "scripts": {
