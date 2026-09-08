@@ -49,6 +49,9 @@ export function compilePathParameterEncoder(
           if (typeof parameter !== 'string') {
             throw new TypeError(`Route parameter "${name}" must encode to a string`)
           }
+          if (parameter === '.' || parameter === '..') {
+            throw new TypeError(`Route parameter "${name}" cannot be a dot segment`)
+          }
           setOwn(encodedValues, name, parameter)
         }
       }
