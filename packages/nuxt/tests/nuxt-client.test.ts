@@ -127,3 +127,25 @@ describe('Nuxt fetch transport', () => {
     )
   })
 })
+
+test('uses native request-scoped fetch without discarding failure status or response headers', async () => {
+  const fetcher = vi.fn<(url: string, options: RequestInit) => Promise<Response>>(async () =>
+    Response.json({ message: 'Name is unavailable' }, { status: 422, headers: { 'x-request-id': 'one' } })
+  )
+  const client = defineClient(contract, { transport: nuxtFetchTransport({ fetch: fetcher }) })
+  const result = await client.rename({ body: { name: 'Ada' } })
+  expect(result).toMatchObject({
+    status: 422,
+    body: { message: 'Name is unavailable' },
+    headers: { 'x-request-id': 'one' },
+  })
+  expect(fetcher).toHaveBeenCalledExactlyOnceWith(
+    '/api/users',
+    expect.objectContaining({ method: 'POST', body: '{"name":"Ada"}' })
+  )
+})
+
+test('rejects a parsed-only request fetcher at setup with migration guidance', () => {
+  // @ts-expect-error Parsed $fetch cannot preserve HTTP status and response headers.
+  expect(() => nuxtFetchTransport(async () => ({ ok: true }))).toThrow('event.fetch')
+})

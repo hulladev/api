@@ -2,7 +2,12 @@ import type { ClientTransport, ClientTransportRequest, ClientTransportResponse }
 import { ClientResponseError } from '@hulla/api/client'
 import type { $Fetch } from 'ofetch'
 
-export type NuxtRequestFetch = Pick<$Fetch, 'raw'>
+export type NuxtRequestFetch =
+  | Pick<$Fetch, 'raw'>
+  | {
+      /** Nitro's request-scoped event.fetch preserves local dispatch and native response metadata. */
+      readonly fetch: (url: string, options: RequestInit) => Promise<Response>
+    }
 
 export type NuxtFetchTransportOptions = {
   /** URL prefix placed before the contract base path. Relative paths retain Nitro's local SSR dispatch. */
@@ -114,23 +119,37 @@ function transportResponse(response: Response): ClientTransportResponse {
   return result
 }
 
-/** Creates a Hulla transport over Nuxt's request-aware `$fetch` implementation. */
+/** Preserves response metadata over browser $fetch.raw or Nitro's request-scoped event.fetch. */
 export function nuxtFetchTransport(
   fetcher: NuxtRequestFetch,
   options: NuxtFetchTransportOptions = {}
 ): ClientTransport {
   assertBaseUrl(options.baseUrl)
   const baseUrl = normalizedBaseUrl(options.baseUrl)
+  const nativeFetch = 'fetch' in fetcher ? fetcher.fetch : undefined
+  const rawFetch = 'raw' in fetcher ? fetcher.raw : undefined
+  if (typeof nativeFetch !== 'function' && typeof rawFetch !== 'function') {
+    throw new TypeError(
+      'Nuxt transport requires $fetch.raw or { fetch: event.fetch }; useRequestFetch() can return a parsed-only fetcher on the server'
+    )
+  }
+  const send =
+    typeof nativeFetch === 'function'
+      ? (url: string, init: RequestInit) => nativeFetch(url, init)
+      : (url: string, init: RequestInit) =>
+          rawFetch!(url, {
+            ...init,
+            ignoreResponseError: true,
+            responseType: 'stream',
+            retry: false,
+          })
   return async (request) => {
     request.signal?.throwIfAborted()
     const body = requestBody(request)
-    const response = await fetcher.raw(requestUrl(request, baseUrl), {
-      body,
+    const response = await send(requestUrl(request, baseUrl), {
+      ...(body === undefined ? {} : { body }),
       headers: request.headers,
-      ignoreResponseError: true,
       method: request.method,
-      responseType: 'stream',
-      retry: false,
       ...(request.signal === undefined ? {} : { signal: request.signal }),
     })
     return transportResponse(response)
