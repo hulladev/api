@@ -18,7 +18,7 @@ Client root names `contract`, `context`, `middlewares`, `middleware`, `use`, `se
 
 Handlers may return a subset of declared statuses. Missing routes, undeclared statuses and invalid response bodies remain errors. Client response unions still reflect the contract, so callers continue to narrow by status.
 
-Native context no longer implicitly preserves a Fetch request body. Set `preserveRequestBody: true` on Fetch/H3/Hono/Elysia mounts when needed. Owned request readers default to a 1 MiB byte limit. Set `maxBodyBytes` deliberately for upload endpoints. Host parsers retain their own limits. NDJSON/SSE decoders default to a 1 MiB record limit; use `createNdjsonFormat({ maxRecordBytes })` or `createSseJsonFormat({ maxRecordBytes })`, including `Infinity` for an explicitly unbounded decoder.
+Native context no longer implicitly preserves a Fetch request body. Set `preserveRequestBody: true` on Fetch/H3/Hono/Elysia mounts when needed. Owned request readers impose no byte cap by default. Set `maxBodyBytes` explicitly to opt into a limit. Host parsers retain their own limits. NDJSON/SSE decoders default to a 1 MiB record limit; use `createNdjsonFormat({ maxRecordBytes })` or `createSseJsonFormat({ maxRecordBytes })`, including `Infinity` for an explicitly unbounded decoder.
 
 Response headers now support `string | readonly string[]` and normalize names to lowercase. Arrays preserve repeated cookies. Update code that assumed every response header was a scalar. Explicit header schemas still determine their decoded application types.
 

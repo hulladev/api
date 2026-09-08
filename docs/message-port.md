@@ -75,6 +75,8 @@ active work but deliberately do not close the supplied port, because the applica
 
 ## Tauri, Dioxus, and custom IPC
 
+For ready-made host helpers and JSON-safe relays, see [desktop bridges](./desktop-bridges.md).
+
 Tauri channels and Dioxus eval messaging are not JavaScript `MessagePort` objects: their other endpoint is Rust and their
 serialization and lifecycle are host-defined. Use the exported `MessageEndpoint` interface when an application provides
 an ordered, bidirectional bridge:

@@ -124,6 +124,8 @@ export const client = observed.compose(health, organizations)
 
 Here both fragments use `logRequests`, while only the organization routes use `authenticate`. `compose(...fragments)` requires complete route coverage and rejects duplicates, fragments from another client definition, and fragments that do not inherit the composition scope middleware. A route fragment is its route call, and a router fragment is its callable subtree, so either can also be used independently.
 
+For framework-specific client placement, server-only import guards, and native server-function patterns, see [hybrid rendering](./hybrid-rendering.md).
+
 ## Transport boundary
 
 Each client leaf performs exactly one transport invocation. Ordinary schemas expose their input types directly; explicit codecs encode shared application values before the declared representation is handed to the transport. The selected response declaration is then decoded back into its application value.

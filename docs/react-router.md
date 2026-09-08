@@ -1,5 +1,7 @@
 # React Router v7
 
+For the recommended local/browser setup and enforced module boundaries, see [hybrid rendering](./hybrid-rendering.md). Its examples link to the production-build fixtures used by this integration.
+
 `@hulla/api-react-router` mounts an `@hulla/api` server implementation in a React Router v7 Framework Mode resource
 route. React Router owns the host route, request middleware, rendering, loaders, actions, and revalidation;
 `@hulla/api` owns the shared HTTP contract, request decoding, server middleware and handler execution, and declared

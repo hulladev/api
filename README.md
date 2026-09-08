@@ -1,6 +1,6 @@
 # @hulla/api
 
-Greenfield implementation of a small directional contract layer for TypeScript APIs. Contracts accept any Standard Schema directly for one-way validation and expose an explicit validator-neutral codec when client and server should share an application value. Client and server authoring stay transport-neutral; optional transports include `@hulla/api/fetch`, `@hulla/api/in-process`, and the separately installed `@hulla/api-message-port` package.
+Greenfield implementation of a small directional contract layer for TypeScript APIs. Contracts accept any Standard Schema directly for one-way validation and expose an explicit validator-neutral codec when client and server should share an application value. Client and server authoring stay transport-neutral; optional transports include `@hulla/api/fetch`, `@hulla/api/in-process`, and the separately installed `@hulla/api-message-port` and `@hulla/api-websocket` packages.
 
 The active workspace contains the batteries-included [`@hulla/api`](./packages/core) package. Zod, Valibot, and other Standard Schema implementations remain application dependencies. The previous implementation remains in [`legacy`](./legacy) for behavioral reference and is excluded from the active workspace.
 
@@ -180,3 +180,11 @@ packages/astro/     Astro endpoint and explicit-context in-process adapters
 The publishable package uses the next major version while the root workspace and benchmarks remain private.
 
 See the [migration guide](./docs/migration.md) for executable client scopes, explicit composition, response headers and request lifetime changes.
+
+For safe server/browser client setup across frameworks, see [hybrid rendering](./docs/hybrid-rendering.md).
+
+NestJS integrates through the separate [`@hulla/api-nestjs`](./docs/nestjs.md) package.
+See [WebSocket transport](./docs/websocket.md) and [Bun, Deno and Vercel runtime fixtures](./docs/runtime-hosts.md) for the other runtime integrations.
+
+Koa middleware is available through [`@hulla/api-koa`](./docs/koa.md).
+[Desktop bridges](./docs/desktop-bridges.md) cover Electron ports, Tauri channels and Dioxus eval messaging.

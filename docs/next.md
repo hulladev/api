@@ -1,5 +1,7 @@
 # Next.js
 
+For the recommended local/browser setup and enforced module boundaries, see [hybrid rendering](./hybrid-rendering.md). Its examples link to the production-build fixtures used by this integration.
+
 `@hulla/api-next` is a convenience layer over `@hulla/api/fetch` and Next.js's own data APIs. It does not replace
 Next.js caching, generate Server Actions, or introduce another request lifecycle. Import server hosting APIs from
 `@hulla/api-next/server` and client transport/cache APIs from `@hulla/api-next/client`. The package intentionally has

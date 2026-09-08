@@ -1,5 +1,7 @@
 # SvelteKit
 
+For the recommended local/browser setup and enforced module boundaries, see [hybrid rendering](./hybrid-rendering.md). Its examples link to the production-build fixtures used by this integration.
+
 `@hulla/api-sveltekit` mounts an `@hulla/api` server implementation in a SvelteKit `+server.ts` endpoint. SvelteKit owns
 file routing, hooks, rendering, form actions, remote functions, and deployment; `@hulla/api` owns the shared HTTP
 contract, input decoding, middleware and handler execution, and declared response serialization.

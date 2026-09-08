@@ -1,5 +1,7 @@
 # Nuxt
 
+For the recommended local/browser setup and enforced module boundaries, see [hybrid rendering](./hybrid-rendering.md). Its examples link to the production-build fixtures used by this integration.
+
 `@hulla/api-nuxt` mounts an `@hulla/api` server implementation in a Nuxt/Nitro server route and provides a
 request-aware client transport for Nuxt data composables. Nuxt owns file routing, rendering, payload caching,
 hydration, invalidation, and deployment; `@hulla/api` owns the shared HTTP contract, validation, middleware, handler
@@ -45,7 +47,7 @@ export const contract = defineContract({
 ```
 
 ```ts
-// server/utils/api.ts
+// server/api-implementation.ts
 import { defineServer } from '@hulla/api/server'
 import { contract } from '~~/shared/api/contract'
 
@@ -76,7 +78,7 @@ Mount the implementation under one Nuxt catch-all server route:
 // server/api/[...hulla].ts
 import { nuxtAdapter } from '@hulla/api-nuxt/server'
 import { defineEventHandler } from 'h3'
-import { implementation } from '../utils/api'
+import { implementation } from '../api-implementation'
 
 export default defineEventHandler(nuxtAdapter().mount(implementation))
 ```
@@ -91,7 +93,7 @@ route and returned without a body.
 
 ## Create a request-aware client
 
-Create the client inside a Nuxt composable so `useRequestFetch()` captures the current SSR request:
+Create the client inside a Nuxt composable so `useRequestEvent()` captures the current SSR request:
 
 ```ts
 // app/composables/useApi.ts
@@ -100,7 +102,8 @@ import { nuxtFetchTransport } from '@hulla/api-nuxt/client'
 import { contract } from '~~/shared/api/contract'
 
 export function useApi() {
-  const requestFetch = useRequestFetch()
+  const event = useRequestEvent()
+  const requestFetch = event ? { fetch: event.fetch } : $fetch
 
   return defineClient(contract, {
     transport: nuxtFetchTransport(requestFetch),
@@ -108,10 +111,20 @@ export function useApi() {
 }
 ```
 
-`nuxtFetchTransport()` uses the raw-response side of Nuxt's `$fetch`. This matters because @hulla/api must retain the status,
-headers, streaming body, and declared non-success responses rather than letting ofetch throw or eagerly decode them. A
-relative URL also preserves Nitro's direct in-process dispatch during SSR. `useRequestFetch()` forwards the safe incoming
-headers and cookies on the server and behaves like ordinary `$fetch` in the browser.
+`nuxtFetchTransport()` accepts either a fetcher with `.raw` (such as browser `$fetch`) or `{ fetch: event.fetch }` on the server. Nitro's `event.fetch` forwards request context and eligible headers and dispatches relative local routes without a network hop. The native response retains status, headers and streaming. Avoid passing `useRequestFetch()` directly: its SSR result can be a parsed-only function without `.raw`, which cannot preserve the contract response metadata. Unsupported fetchers fail at client setup with migration guidance.
+
+When bundling a shared contract through both Nuxt SSR and Nitro, keep core external in the Vite SSR stage so Nitro can resolve a single copy of its contract state:
+
+```ts
+// nuxt.config.ts
+export default defineNuxtConfig({
+  vite: { ssr: { external: ['@hulla/api'] } },
+})
+```
+
+Keep the implementation in an explicitly imported module such as `server/api-implementation.ts`, outside Nitro's auto-imported `server/utils` directory. Auto-importing the implementation can introduce initialization cycles through library modules; the runtime fixture covers this layout.
+
+This configuration is exercised by the production SSR fixture. It does not externalize core from the browser bundle.
 
 Do not construct a request-bound client once at module scope: that would capture no active Nuxt request or, worse, reuse
 one request's credentials for another. Calling `useApi()` within setup, a plugin, route middleware, or another active
@@ -186,7 +199,7 @@ notifications, and error presentation remain explicit application concerns.
 
 ## Calls from Nitro handlers
 
-Inside another server route, use that event's `$fetch` instance. Nitro forwards its request context and eligible headers
+Inside another server route, use that event's native `fetch` function. Nitro forwards its request context and eligible headers
 and can dispatch an internal relative route without a network round trip:
 
 ```ts
@@ -197,7 +210,7 @@ import { contract } from '~~/shared/api/contract'
 
 export default defineEventHandler(async (event) => {
   const api = defineClient(contract, {
-    transport: nuxtFetchTransport(event.$fetch),
+    transport: nuxtFetchTransport({ fetch: event.fetch }),
   })
   return api.users.byId({ params: { id: 'user-1' } })
 })
@@ -258,6 +271,6 @@ boundaries.
 
 Current Nuxt uses explicit Nitro HTTP routes for client/server communication; it does not provide an official
 remote-functions primitive comparable to SvelteKit's. The request-aware transport therefore follows Nuxt's established
-data path: `useAsyncData` owns query lifecycle, `useRequestFetch` owns SSR request forwarding and local dispatch, and
+data path: `useAsyncData` owns query lifecycle, Nitro's request-scoped `event.fetch` owns SSR request forwarding and local dispatch, and
 Nitro owns the server route. If Nuxt adds a stable native server-function boundary later, it can receive a dedicated
 zero-hop integration without changing the contract or server implementation.

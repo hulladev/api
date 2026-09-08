@@ -1,5 +1,7 @@
 # Astro
 
+For the recommended local/browser setup and enforced module boundaries, see [hybrid rendering](./hybrid-rendering.md). Its examples link to the production-build fixtures used by this integration.
+
 `@hulla/api-astro` mounts an `@hulla/api` implementation in an Astro endpoint and can call the same implementation
 without HTTP from an Astro component or server island. Astro continues to own file routing, rendering, middleware,
 actions, islands, and deployment; @hulla/api owns the shared HTTP contract, validation, middleware, handler execution, and

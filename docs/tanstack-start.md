@@ -1,5 +1,7 @@
 # TanStack Start
 
+For the recommended local/browser setup and enforced module boundaries, see [hybrid rendering](./hybrid-rendering.md). Its examples link to the production-build fixtures used by this integration.
+
 `@hulla/api-tanstack-start` mounts an `@hulla/api` server implementation in a TanStack Start server route. The contract remains
 the API source of truth; Start owns the wildcard host route, request middleware, rendering, loaders, and application
 caches.

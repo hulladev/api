@@ -1,5 +1,7 @@
 # SolidStart
 
+For the recommended local/browser setup and enforced module boundaries, see [hybrid rendering](./hybrid-rendering.md). Its examples link to the production-build fixtures used by this integration.
+
 `@hulla/api-solid-start` mounts an `@hulla/api` server implementation in a SolidStart v2 API route. SolidStart owns file
 routing, request middleware, rendering, server functions, and deployment; `@hulla/api` owns the shared HTTP contract, input
 decoding, middleware and handler execution, and declared response serialization.
