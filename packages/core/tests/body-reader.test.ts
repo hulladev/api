@@ -1,5 +1,8 @@
 import { expect, test, vi } from 'vitest'
+import { defineContract, request, response, route } from '../src'
 import { readFetchBody } from '../src/adapters/web'
+import { fetchAdapter } from '../src/fetch'
+import { defineServer } from '../src/server'
 
 function streamedRequest(chunks: readonly Uint8Array[], cancel = () => {}) {
   let index = 0
@@ -50,4 +53,26 @@ test('retains producer errors and releases the reader', async () => {
 
 test('accepts an empty body at a zero byte limit', async () => {
   expect(await readFetchBody(streamedRequest([]), 'bytes', false, 0)).toEqual(new Uint8Array())
+})
+
+test('accepts a Fetch request above the former 1 MiB cap by default', async () => {
+  const contract = defineContract({
+    routes: {
+      size: route.post('/', {
+        body: request.bytes(),
+        responses: { 200: response.text() },
+      }),
+    },
+  })
+  const handler = fetchAdapter().mount(
+    defineServer(contract).implement({
+      size: ({ body }) => ({ status: 200, body: String(body.length) }),
+    })
+  )
+  const input = streamedRequest([new Uint8Array(1_048_576), new Uint8Array(1)])
+  input.headers.set('content-type', 'application/octet-stream')
+  expect(input.headers.has('content-length')).toBe(false)
+  const result = await handler(input)
+  expect(result.status).toBe(200)
+  expect(await result.text()).toBe('1048577')
 })

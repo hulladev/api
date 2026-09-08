@@ -43,6 +43,7 @@ export type H3ServerErrorInput = Omit<AdapterErrorInput, 'defaultResponse' | 'ho
 
 export type H3ServerOptions = {
   readonly preserveRequestBody?: boolean
+  /** Optional byte limit for adapter-owned body reads. Defaults to Infinity; host limits still apply. */
   readonly maxBodyBytes?: number
 
   readonly onError?: ((input: H3ServerErrorInput) => Awaitable<Response | undefined | void>) | undefined

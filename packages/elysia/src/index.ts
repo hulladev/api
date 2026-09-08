@@ -43,6 +43,7 @@ export type ElysiaServerErrorInput<App extends AnyElysia = Elysia> = Omit<
 
 export type ElysiaServerOptions<App extends AnyElysia = Elysia> = {
   readonly preserveRequestBody?: boolean
+  /** Optional byte limit for adapter-owned body reads. Defaults to Infinity; host limits still apply. */
   readonly maxBodyBytes?: number
 
   readonly onError?: ((input: ElysiaServerErrorInput<App>) => Awaitable<Response | undefined | void>) | undefined

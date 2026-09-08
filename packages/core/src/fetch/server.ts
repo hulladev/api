@@ -25,6 +25,7 @@ export type FetchServerErrorInput<HandlerContext = undefined> = {
 }
 
 export type FetchServerOptions<HandlerContext = undefined, AdapterId extends string = 'fetch'> = {
+  /** Optional byte limit for adapter-owned body reads. Defaults to Infinity; host limits still apply. */
   readonly maxBodyBytes?: number
   readonly preserveRequestBody?: boolean
   /** @internal Adapter identity used to validate native-context factories. */
@@ -42,6 +43,7 @@ export type FetchServerOptions<HandlerContext = undefined, AdapterId extends str
 export type FetchAdapterErrorInput = Omit<FetchServerErrorInput, 'handlerContext'>
 
 export type FetchAdapterOptions = {
+  /** Optional byte limit for adapter-owned body reads. Defaults to Infinity; host limits still apply. */
   readonly maxBodyBytes?: number
   readonly preserveRequestBody?: boolean
   readonly onError?: ((input: FetchAdapterErrorInput) => Awaitable<Response | undefined | void>) | undefined

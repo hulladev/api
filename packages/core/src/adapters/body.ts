@@ -1,6 +1,7 @@
 import { ServerRuntimeError } from '../server/errors'
 
-export const DEFAULT_MAX_BODY_BYTES = 1_048_576
+/** No library-imposed cap; adapters may opt into a finite maxBodyBytes. */
+export const DEFAULT_MAX_BODY_BYTES = Infinity
 
 export function bodyLimit(value = DEFAULT_MAX_BODY_BYTES): number {
   if (value !== Infinity && (!Number.isSafeInteger(value) || value < 0)) {

@@ -48,6 +48,7 @@ export type HonoServerErrorInput<Env extends HonoEnv = HonoEnv> = Omit<
 
 export type HonoServerOptions<Env extends HonoEnv = HonoEnv> = {
   readonly preserveRequestBody?: boolean
+  /** Optional byte limit for adapter-owned body reads. Defaults to Infinity; host limits still apply. */
   readonly maxBodyBytes?: number
 
   readonly onError?: ((input: HonoServerErrorInput<Env>) => Awaitable<Response | undefined | void>) | undefined

@@ -356,3 +356,27 @@ test('aborts cooperative stream work and finalizes its producer on disconnect', 
     await close(running.server)
   }
 })
+
+test('accepts a chunked request above the former 1 MiB cap by default', async () => {
+  const running = await listen(nodeHttpAdapter().mount(implementation()))
+  try {
+    const result = await fetch(`${running.origin}/api/bytes`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/octet-stream' },
+      body: new ReadableStream({
+        start(controller) {
+          controller.enqueue(new Uint8Array(1_048_576))
+          controller.enqueue(new Uint8Array([255]))
+          controller.close()
+        },
+      }),
+      duplex: 'half',
+    } as RequestInit)
+    expect(result.status).toBe(200)
+    const bytes = new Uint8Array(await result.arrayBuffer())
+    expect(bytes.length).toBe(1_048_577)
+    expect(bytes.at(-1)).toBe(255)
+  } finally {
+    await close(running.server)
+  }
+})
