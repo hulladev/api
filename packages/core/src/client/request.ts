@@ -1,6 +1,6 @@
 import type { ClientRoutePlan } from '../contract/client-plan'
 import type { QueryWireObject } from '../contract/query'
-import { textWireObject, type RequestBodyKind } from '../contract/request'
+import { textWireEntries, type TextWireEntries, type RequestBodyKind } from '../contract/request'
 import { type ExecutionStep, mapExecutionSteps, mapExecutionStep } from '../execution'
 import type { ResponseHeaderValues } from '../headers'
 import { setOwn } from '../object'
@@ -71,13 +71,19 @@ function assignHeaders(
 function mergedHeaders(
   configured: Readonly<Record<string, string | undefined>> | undefined,
   options: Readonly<Record<string, string | undefined>> | undefined,
-  routeHeaders: Readonly<Record<string, string | undefined>> | undefined,
+  routeHeaders: TextWireEntries | undefined,
   contentType: string | undefined
 ): Record<string, string> {
   const headers: Record<string, string> = {}
   assignHeaders(headers, configured)
   assignHeaders(headers, options)
-  assignHeaders(headers, routeHeaders)
+  if (routeHeaders !== undefined) {
+    for (const [name, value] of routeHeaders) {
+      const normalized = name.toLowerCase()
+      if (value === undefined) delete headers[normalized]
+      else setOwn(headers, normalized, value)
+    }
+  }
   if (contentType !== undefined) setOwn(headers, 'content-type', contentType)
   return headers
 }
@@ -127,10 +133,10 @@ export function compileClientRequest(plan: ClientRoutePlan, configuredHeaders?: 
   const hasBody = plan.body !== undefined
   const staticPath = encodePath === undefined ? compiled.path : undefined
 
-  const routeHeaders = (value: unknown): ExecutionStep<Readonly<Record<string, string | undefined>>> =>
+  const routeHeaders = (value: unknown): ExecutionStep<TextWireEntries> =>
     encodeHeaders === undefined
-      ? textWireObject(value, 'headers')
-      : mapExecutionStep(encodeHeaders(value), (encoded) => textWireObject(encoded, 'headers'))
+      ? textWireEntries(value, 'headers')
+      : mapExecutionStep(encodeHeaders(value), (encoded) => textWireEntries(encoded, 'headers'))
   const requestBody = (value: unknown): ExecutionStep<ClientTransportBody> => {
     const body = plan.body!
     return encodeBody === undefined
@@ -192,7 +198,7 @@ export function compileClientRequest(plan: ClientRoutePlan, configuredHeaders?: 
       path: string,
       query: QueryWireObject | undefined,
       configuredHeaders: Readonly<Record<string, string | undefined>> | undefined,
-      routeHeaders: Readonly<Record<string, string | undefined>> | undefined,
+      routeHeaders: TextWireEntries | undefined,
       body: ClientTransportBody | undefined,
     ]
     return mapExecutionStep(

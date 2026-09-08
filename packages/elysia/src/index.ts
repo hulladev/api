@@ -99,6 +99,10 @@ function replacementResponse(response: Response): AdapterResponse {
   return { status: response.status, headers: {}, body: { kind: 'raw', value: response } }
 }
 
+function readHeader(this: AdapterRouteInput, name: string): string | undefined {
+  return (this.request as Request).headers.get(name) ?? undefined
+}
+
 function createRouteHandler<App extends AnyElysia>(
   route: AdapterRoute,
   usesNativeContext: boolean,
@@ -118,6 +122,7 @@ function createRouteHandler<App extends AnyElysia>(
       params: elysiaContext.params,
       ...(query === undefined ? {} : { query }),
       readHeaders: () => requestHeaders(request),
+      readHeader,
       readBody: (representation, preserveRequest) =>
         readBody(nativeContext as ElysiaAdapterContext<AnyElysia>, representation, preserveRequest, limit),
       ...(includeHostContext ? { hostContext: nativeContext } : {}),

@@ -22,44 +22,63 @@ export function compilePathParameterEncoder(
   path: string,
   declarations: readonly CompiledPathParameters[]
 ): PathParameterEncoder {
-  const segments = path.split('/').map((segment) => (segment.startsWith(':') ? { name: segment.slice(1) } : segment))
   const plans = declarations.map((declaration) => ({
     declaration,
     encode: compileSchemaExecution(declaration.schema, { location: 'params' }).encode,
   }))
-
-  return (value) => {
-    const resolved = mapExecutionSteps(plans, ({ declaration, encode }) => {
-      const group = parameterGroup(declaration, value)
-      const encoded = encode === undefined ? group : encode(group)
-      return mapExecutionStep(encoded, (resolved) => {
-        if (!isRecord(resolved)) throw new TypeError('Encoded route parameters must be an object')
-        return { declaration, encoded: resolved }
-      })
-    })
-
-    return mapExecutionStep(resolved, (groups) => {
-      const encodedValues: Record<string, string> = {}
-      for (const { declaration, encoded } of groups) {
-        for (const name of declaration.names) {
-          const parameter = encoded[name]
-          if (parameter === undefined || parameter === null) {
-            throw new TypeError(`Route parameter "${name}" must be defined`)
-          }
-          if (typeof parameter !== 'string') {
-            throw new TypeError(`Route parameter "${name}" must encode to a string`)
-          }
-          if (parameter === '.' || parameter === '..') {
-            throw new TypeError(`Route parameter "${name}" cannot be a dot segment`)
-          }
-          setOwn(encodedValues, name, parameter)
-        }
-      }
-      return segments
-        .map((segment) => (typeof segment === 'string' ? segment : encodeURIComponent(encodedValues[segment.name]!)))
-        .join('/')
-    })
+  const groupsByName = new Map<string, number>()
+  for (let index = 0; index < declarations.length; index++) {
+    for (const name of declarations[index]!.names) groupsByName.set(name, index)
   }
+  const segments = path
+    .split('/')
+    .map((segment) =>
+      segment.startsWith(':') ? { name: segment.slice(1), group: groupsByName.get(segment.slice(1))! } : segment
+    )
+
+  const render = (
+    value: Readonly<Record<string, unknown>>,
+    groups?: readonly Readonly<Record<string, unknown>>[]
+  ): string => {
+    let path = ''
+    for (let index = 0; index < segments.length; index++) {
+      if (index > 0) path += '/'
+      const segment = segments[index]!
+      if (typeof segment === 'string') {
+        path += segment
+        continue
+      }
+      const group = groups === undefined ? value : groups[segment.group]!
+      const parameter = group[segment.name]
+      if (parameter === undefined || parameter === null) {
+        throw new TypeError(`Route parameter "${segment.name}" must be defined`)
+      }
+      if (typeof parameter !== 'string') {
+        throw new TypeError(`Route parameter "${segment.name}" must encode to a string`)
+      }
+      if (parameter === '.' || parameter === '..') {
+        throw new TypeError(`Route parameter "${segment.name}" cannot be a dot segment`)
+      }
+      path += encodeURIComponent(parameter)
+    }
+    return path
+  }
+
+  // Ordinary schemas expose wire types directly. Only codecs need isolated
+  // declaration groups; rendering can read ordinary parameters without copying.
+  if (plans.every((plan) => plan.encode === undefined)) return render
+
+  return (value) =>
+    mapExecutionStep(
+      mapExecutionSteps(plans, ({ declaration, encode }) => {
+        if (encode === undefined) return value
+        return mapExecutionStep(encode(parameterGroup(declaration, value)), (encoded) => {
+          if (!isRecord(encoded)) throw new TypeError('Encoded route parameters must be an object')
+          return encoded
+        })
+      }),
+      (groups) => render(value, groups)
+    )
 }
 
 /** Compiles captured wire path parameter decoding for a route. */

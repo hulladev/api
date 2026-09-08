@@ -44,6 +44,8 @@ export type AdapterRouteInput = {
   readonly params?: Readonly<Record<string, string>>
   readonly headers?: Readonly<Record<string, string>>
   readonly readHeaders?: () => Readonly<Record<string, string>>
+  /** Reads a normalized header without materializing the full record. Must agree with readHeaders. */
+  readonly readHeader?: (name: string) => string | undefined
   readonly query?: QuerySource
   readonly body?: AdapterBody
   readonly readBody?: (representation: AnyRequestBody['representation'], preserveRequest: boolean) => Promise<unknown>

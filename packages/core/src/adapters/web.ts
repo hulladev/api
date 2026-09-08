@@ -1,27 +1,36 @@
+import type { ExecutionStep } from '../execution'
 import { readBodyBytes, readableBytes } from './body'
 import { errorResponse } from './errors'
 import { toFetchHeaders } from './headers'
 import type { AdapterResponse } from './types'
 
-export async function readFetchBody(
+export function readFetchBody(
   request: Request,
   representation: string,
   preserveRequest: boolean,
   limit: number
 ): Promise<unknown> {
-  const source = preserveRequest ? request.clone() : request
-  if (limit === Infinity) {
-    switch (representation) {
-      case 'json':
-        return source.json()
-      case 'text':
-        return source.text()
-      case 'bytes':
-        return new Uint8Array(await source.arrayBuffer())
-      case 'form-data':
-        return source.formData()
+  try {
+    const source = preserveRequest ? request.clone() : request
+    if (limit === Infinity) {
+      switch (representation) {
+        case 'json':
+          return source.json()
+        case 'text':
+          return source.text()
+        case 'bytes':
+          return source.arrayBuffer().then((buffer) => new Uint8Array(buffer))
+        case 'form-data':
+          return source.formData()
+      }
     }
+    return readBoundedFetchBody(source, representation, limit)
+  } catch (error) {
+    return Promise.reject(error)
   }
+}
+
+async function readBoundedFetchBody(source: Request, representation: string, limit: number): Promise<unknown> {
   const bytes = source.body === null ? new Uint8Array() : await readBodyBytes(readableBytes(source.body), limit)
   switch (representation) {
     case 'json':
@@ -115,10 +124,10 @@ export type FetchWriteError = {
 }
 
 /** Before commitment errors can replace a response; after commitment the hook only observes. */
-export async function writeFetchResponse(
+export function writeFetchResponseStep(
   source: AdapterResponse,
   onError?: (input: FetchWriteError) => unknown
-): Promise<Response> {
+): ExecutionStep<Response> {
   const failed = async (error: unknown, committed: boolean): Promise<Response> => {
     const fallback = toFetchResponse(errorResponse(error, 'transport'))
     let replacement: unknown
@@ -138,4 +147,12 @@ export async function writeFetchResponse(
   } catch (error) {
     return failed(error, false)
   }
+}
+
+/** Keeps the public writer Promise-based while internal Fetch composition stays synchronous. */
+export function writeFetchResponse(
+  source: AdapterResponse,
+  onError?: (input: FetchWriteError) => unknown
+): Promise<Response> {
+  return Promise.resolve(writeFetchResponseStep(source, onError))
 }

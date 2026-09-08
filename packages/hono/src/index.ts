@@ -87,6 +87,10 @@ function replacementResponse(response: Response): AdapterResponse {
   return { status: response.status, headers: {}, body: { kind: 'raw', value: response } }
 }
 
+function readHeader(this: AdapterRouteInput, name: string): string | undefined {
+  return (this.request as Request).headers.get(name) ?? undefined
+}
+
 function createRouteHandler<Env extends HonoEnv>(
   route: AdapterRoute,
   usesNativeContext: boolean,
@@ -106,6 +110,7 @@ function createRouteHandler<Env extends HonoEnv>(
       params: honoContext.req.param(),
       ...(query === undefined ? {} : { query }),
       readHeaders: () => honoContext.req.header(),
+      readHeader,
       readBody: (representation, preserveRequest) => readBody(honoContext, representation, preserveRequest, limit),
       ...(includeHostContext ? { hostContext: honoContext } : {}),
     }

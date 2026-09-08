@@ -95,7 +95,7 @@ export type ClientResponseDecoder = (response: ClientTransportResponse) => Execu
 function decodedStream(source: AsyncIterable<Uint8Array>, plan: DecodableStreamPlan): AsyncIterable<unknown> {
   async function* decode(): AsyncIterable<unknown> {
     for await (const value of plan.format.decode(source)) {
-      yield await plan.decode(value)
+      yield plan.decode(value)
     }
   }
 

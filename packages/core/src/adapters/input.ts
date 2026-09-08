@@ -18,6 +18,11 @@ const emptyQuery = {}
 function wireHeaders(input: AdapterRouteInput): Readonly<Record<string, string>> {
   return input.headers ?? input.readHeaders?.() ?? emptyHeaders
 }
+function wireHeader(input: AdapterRouteInput, name: string): string | undefined {
+  if (input.headers !== undefined) return input.headers[name]
+  if (input.readHeader !== undefined) return input.readHeader(name)
+  return input.readHeaders?.()[name]
+}
 function compileBodyDecoder(plan: CanonicalRequestBodyPlan): (input: AdapterRouteInput) => ExecutionStep<unknown> {
   const declaration = plan.declaration
   const decode = plan.schema.decode
@@ -31,7 +36,7 @@ function compileBodyDecoder(plan: CanonicalRequestBodyPlan): (input: AdapterRout
 
   return (input) => {
     const provided = input.body
-    const contentType = provided?.contentType ?? wireHeaders(input)['content-type'] ?? ''
+    const contentType = provided?.contentType ?? wireHeader(input, 'content-type') ?? ''
     const received = mimeEssence(contentType)
     if (received !== plan.expectedContentType) {
       throw new ServerRuntimeError(

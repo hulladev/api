@@ -1,4 +1,3 @@
-import { setOwn } from '../object'
 import { isSchema, type AnySchema, type NonSchemaOptions, type SchemaInput } from '../validation'
 import { bytesSchema, formDataSchema, jsonValueSchema, stringSchema, type JsonValue } from './representation'
 
@@ -6,19 +5,25 @@ type QueryWireValue = string | readonly string[] | undefined
 export type QueryWireObject = Readonly<Record<string, QueryWireValue>>
 export type TextWireObject = Readonly<Record<string, string | undefined>>
 
-/** Serializes a header-like input object into the string values used by HTTP. */
-export function textWireObject(value: unknown, name: string): TextWireObject {
+export type TextWireEntries = readonly (readonly [string, string | undefined])[]
+
+/** Snapshots and validates text fields once, before asynchronous request stages can mutate their source. */
+export function textWireEntries(value: unknown, name: string): TextWireEntries {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     throw new TypeError(`Encoded ${name} must be an object`)
   }
-
-  const encoded: Record<string, string | undefined> = {}
-  for (const [key, field] of Object.entries(value)) {
-    if (field === undefined || typeof field === 'string') setOwn(encoded, key, field)
-    else throw new TypeError(`${name} field "${key}" must be a string or undefined`)
+  const entries = Object.entries(value)
+  for (const [key, field] of entries) {
+    if (field !== undefined && typeof field !== 'string') {
+      throw new TypeError(`${name} field "${key}" must be a string or undefined`)
+    }
   }
+  return entries as TextWireEntries
+}
 
-  return encoded
+/** Serializes a header-like input object into the string values used by HTTP. */
+export function textWireObject(value: unknown, name: string): TextWireObject {
+  return Object.fromEntries(textWireEntries(value, name))
 }
 
 export type RequestBodyKind = 'bytes' | 'form-data' | 'json' | 'text'

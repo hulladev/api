@@ -65,8 +65,11 @@ function registerRoute(registry: RouteRegistry, name: string, path: string, rout
   routes.set(signature, registered)
 }
 
-function compilePathParameters(path: string, schema: ObjectSchema | undefined): CompiledPathParameters | undefined {
-  const names = pathParamNames(path)
+function compilePathParameters(
+  path: string,
+  schema: ObjectSchema | undefined,
+  names: readonly string[]
+): CompiledPathParameters | undefined {
   if (names.length === 0) return undefined
   if (schema === undefined) throw new TypeError(`Contract route path "${path}" is missing a parameter schema`)
   return { path, names, schema }
@@ -76,9 +79,10 @@ function compiledRoute(
   key: readonly string[],
   path: string,
   pathParameters: readonly CompiledPathParameters[],
-  route: Route
+  route: Route,
+  ownNames: readonly string[]
 ): CompiledContractRoute {
-  const ownParameters = compilePathParameters(route.path, 'params' in route ? route.params : undefined)
+  const ownParameters = compilePathParameters(route.path, 'params' in route ? route.params : undefined, ownNames)
   return {
     key: Object.freeze([...key]),
     method: route.method,
@@ -125,8 +129,6 @@ function compileContractRouteDefinitions(
           `Contract declaration "${qualifiedName}" redeclares ${conflicts.length === 1 ? 'parameter' : 'parameters'} ${conflicts.map((parameter) => `"${parameter}"`).join(', ')}`
         )
       }
-      const nextNames = new Set(parameterNames)
-      for (const parameter of ownNames) nextNames.add(parameter)
 
       if (!nestedRouter) {
         assertRoute(value, qualifiedKey.join('.'))
@@ -139,13 +141,19 @@ function compileContractRouteDefinitions(
         }
         const path = joinRoutePaths(...pathPrefix, value.path)
         registerRoute(registry, qualifiedName, path, value)
-        compiledRoutes.push(compiledRoute(qualifiedKey, path, pathParameters, value))
+        compiledRoutes.push(compiledRoute(qualifiedKey, path, pathParameters, value, ownNames))
         continue
       }
 
       assertRouter(value, qualifiedKey.join('.'))
       const metadata = value.$meta
-      const routerParameters = compilePathParameters(metadata.path, 'params' in metadata ? metadata.params : undefined)
+      const routerParameters = compilePathParameters(
+        metadata.path,
+        'params' in metadata ? metadata.params : undefined,
+        ownNames
+      )
+      // Only routers extend the inherited scope. Leaf routes have no descendants.
+      const nextNames = ownNames.length === 0 ? parameterNames : new Set([...parameterNames, ...ownNames])
       visit(
         routerRoutes(value),
         qualifiedKey,

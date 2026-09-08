@@ -56,17 +56,12 @@ export type H3Adapter<App extends H3App = H3App> = ServerAdapter<'h3', H3Adapter
   ) => App
 }
 
-async function readBody(
-  request: Request,
-  representation: string,
-  preserveRequest: boolean,
-  limit: number
-): Promise<unknown> {
-  return readFetchBody(request, representation, preserveRequest, limit)
-}
-
 function replacementResponse(response: Response): AdapterResponse {
   return { status: response.status, headers: {}, body: { kind: 'raw', value: response } }
+}
+
+function readHeader(this: AdapterRouteInput, name: string): string | undefined {
+  return (this.request as Request).headers.get(name) ?? undefined
 }
 
 function createRouteHandler(
@@ -87,7 +82,8 @@ function createRouteHandler(
       params: getRouterParams(h3Event, { decode: true }),
       ...(h3Event.url.search === '' ? {} : { query: h3Event.url.searchParams }),
       readHeaders: () => Object.fromEntries(request.headers.entries()),
-      readBody: (representation, preserveRequest) => readBody(request, representation, preserveRequest, limit),
+      readHeader,
+      readBody: (representation, preserveRequest) => readFetchBody(request, representation, preserveRequest, limit),
       ...(includeHostContext ? { hostContext: nativeContext } : {}),
     }
     return writeFetchResponse(

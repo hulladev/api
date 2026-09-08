@@ -1,6 +1,6 @@
 import { annotateAPIErrorIssues, type APIError, type APIErrorIssue, type QueryTransportErrorCode } from '../errors'
 import { type ExecutionStep, mapExecutionStep } from '../execution'
-import { hasOwn, isPlainRecord, setOwn } from '../object'
+import { isPlainRecord, setOwn } from '../object'
 import { compileSchemaExecution, type ObjectSchema, type SchemaOutbound, type SchemaOutput } from '../validation'
 
 export type { QueryTransportErrorCode } from '../errors'
@@ -48,26 +48,20 @@ function scalarText(value: unknown, key: string): string {
 function encodedQuery(value: unknown): QueryWireObject {
   if (!isPlainRecord(value)) throw new QueryTransportError('invalid-query-value', 'Encoded query must be an object')
 
-  const parameters: Record<string, string | readonly string[] | undefined> = {}
-  for (const [key, field] of Object.entries(value)) {
-    if (field === undefined) {
-      setOwn(parameters, key, undefined)
-      continue
-    }
+  const entries = Object.entries(value)
+  for (const entry of entries) {
+    const [key, field] = entry
+    if (field === undefined) continue
     if (!Array.isArray(field)) {
-      setOwn(parameters, key, scalarText(field, key))
+      scalarText(field, key)
       continue
     }
     if (field.length === 0) {
       throw new QueryTransportError('empty-query-array', `Query field "${key}" cannot encode an empty array`, key)
     }
-    setOwn(
-      parameters,
-      key,
-      field.map((item) => scalarText(item, key))
-    )
+    entry[1] = field.map((item) => scalarText(item, key))
   }
-  return parameters
+  return Object.fromEntries(entries) as QueryWireObject
 }
 
 function queryInput(parameters: QuerySource): Readonly<Record<string, unknown>> {
@@ -82,14 +76,16 @@ function queryInput(parameters: QuerySource): Readonly<Record<string, unknown>> 
     }
     return normalized ?? parameters
   }
-  const input: Record<string, string | string[]> = {}
+  // Group repeated fields in a key-safe accumulator, then materialize one
+  // ordinary record for the schema boundary. No per-field property descriptors.
+  const fields = new Map<string, string | string[]>()
   for (const [key, value] of parameters) {
-    const existing = input[key]
-    if (existing === undefined && !hasOwn(input, key)) setOwn(input, key, value)
+    const existing = fields.get(key)
+    if (existing === undefined) fields.set(key, value)
     else if (Array.isArray(existing)) existing.push(value)
-    else setOwn(input, key, [existing as string, value])
+    else fields.set(key, [existing, value])
   }
-  return input
+  return Object.fromEntries(fields)
 }
 
 export function compileQueryEncoder<const Query extends ObjectSchema>(query: Query): QueryEncoder<Query> {

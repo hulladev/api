@@ -1,5 +1,5 @@
 import type { CanonicalResponseEntry, CanonicalResponsePlan } from '../contract/plan'
-import { mapExecutionStep, type ExecutionStep, mapExecutionSteps } from '../execution'
+import { isPromiseLike, mapExecutionStep, type ExecutionStep, mapExecutionSteps } from '../execution'
 import { normalizeResponseHeaders } from '../headers'
 import type { ResponseHeaderValues } from '../headers'
 import { isRecord } from '../object'
@@ -19,9 +19,10 @@ async function* encodedStream(
 ): AsyncIterable<unknown> {
   for await (const value of source) {
     if (schema.encode === undefined) {
-      await schema.decode(value)
+      const decoded = schema.decode(value)
+      if (isPromiseLike(decoded)) await decoded
       yield value
-    } else yield await schema.encode(value)
+    } else yield schema.encode(value)
   }
 }
 

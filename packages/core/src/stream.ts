@@ -117,7 +117,11 @@ function stringifyJson(value: JsonValue): string {
   return encoded
 }
 
-async function* decodeTextLines(source: StreamSource<Uint8Array>, maxRecordBytes: number): AsyncIterable<string> {
+async function* decodeTextRecords<Value>(
+  source: StreamSource<Uint8Array>,
+  maxRecordBytes: number,
+  readRecord: (line: string) => Value | undefined
+): AsyncIterable<Value> {
   const decoder = new TextDecoder()
   let buffer = ''
   let scanStart = 0
@@ -164,7 +168,8 @@ async function* decodeTextLines(source: StreamSource<Uint8Array>, maxRecordBytes
     buffer += decoder.decode(chunk, { stream: true })
     let line = takeLine(false)
     while (line !== undefined) {
-      yield line
+      const value = readRecord(line)
+      if (value !== undefined) yield value
       line = takeLine(false)
     }
   }
@@ -172,7 +177,8 @@ async function* decodeTextLines(source: StreamSource<Uint8Array>, maxRecordBytes
   buffer += decoder.decode()
   let line = takeLine(true)
   while (line !== undefined) {
-    yield line
+    const value = readRecord(line)
+    if (value !== undefined) yield value
     line = takeLine(true)
   }
 }
@@ -213,31 +219,30 @@ async function* encodeNdjson(source: StreamSource<JsonValue>): AsyncIterable<Uin
   for await (const value of source) yield textEncoder.encode(`${stringifyJson(value)}\n`)
 }
 
-async function* decodeNdjson(source: StreamSource<Uint8Array>, limit: number): AsyncIterable<JsonValue> {
-  for await (const line of decodeTextLines(source, limit)) {
-    if (line.length > 0) yield JSON.parse(line) as JsonValue
-  }
+function decodeNdjson(source: StreamSource<Uint8Array>, limit: number): AsyncIterable<JsonValue> {
+  return decodeTextRecords(source, limit, (line) => (line.length === 0 ? undefined : (JSON.parse(line) as JsonValue)))
 }
 
 async function* encodeSseJson(source: StreamSource<JsonValue>): AsyncIterable<Uint8Array> {
   for await (const value of source) yield textEncoder.encode(`data: ${stringifyJson(value)}\n\n`)
 }
 
-async function* decodeSseJson(source: StreamSource<Uint8Array>, limit: number): AsyncIterable<JsonValue> {
+function decodeSseJson(source: StreamSource<Uint8Array>, limit: number): AsyncIterable<JsonValue> {
   let data: string[] = []
   let dataBytes = 0
 
-  for await (const line of decodeTextLines(source, limit)) {
+  return decodeTextRecords(source, limit, (line) => {
     if (line === '') {
       if (data.length > 0) {
-        yield JSON.parse(data.join('\n')) as JsonValue
+        const value = JSON.parse(data.join('\n')) as JsonValue
         data = []
         dataBytes = 0
+        return value
       }
-      continue
+      return undefined
     }
 
-    if (line.startsWith(':')) continue
+    if (line.startsWith(':')) return undefined
 
     const separator = line.indexOf(':')
     const field = separator === -1 ? line : line.slice(0, separator)
@@ -248,7 +253,8 @@ async function* decodeSseJson(source: StreamSource<Uint8Array>, limit: number): 
       if (dataBytes > limit) throw new RangeError('SSE event exceeds maxRecordBytes')
       data.push(value)
     }
-  }
+    return undefined
+  })
 }
 
 export type JsonStreamOptions = { readonly maxRecordBytes?: number }

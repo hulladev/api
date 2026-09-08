@@ -82,18 +82,15 @@ function createDefinition<ContractType extends Contract, Context extends object,
     Context,
     ErrorMode
   >['compose']
-  const controls = {
-    contract,
-    context: options.context,
-    middlewares: middlewarePlan.all,
-    middleware,
-    use,
-    select,
-    compose,
-  }
-  for (const [name, control] of Object.entries(controls)) {
-    Object.defineProperty(value, name, { value: control })
-  }
+  Object.defineProperties(value, {
+    contract: { value: contract },
+    context: { value: options.context },
+    middlewares: { value: middlewarePlan.all },
+    middleware: { value: middleware },
+    use: { value: use },
+    select: { value: select },
+    compose: { value: compose },
+  })
   for (const [name, node] of Object.entries(contract.routes)) {
     Object.defineProperty(value, name, {
       enumerable: true,

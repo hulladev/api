@@ -55,6 +55,20 @@ test('accepts an empty body at a zero byte limit', async () => {
   expect(await readFetchBody(streamedRequest([]), 'bytes', false, 0)).toEqual(new Uint8Array())
 })
 
+test.each([Infinity, 100])('returns a rejected Promise when cloning a consumed body, limit=%s', async (limit) => {
+  const input = new Request('https://body.test', { method: 'POST', body: 'already consumed' })
+  await input.text()
+  const result = readFetchBody(input, 'text', true, limit)
+  expect(result).toBeInstanceOf(Promise)
+  await expect(result).rejects.toThrow(TypeError)
+})
+
+test.each([false, true])('reads unbounded bodies with preserveRequest=%s', async (preserveRequest) => {
+  const input = new Request('https://body.test', { method: 'POST', body: '✓' })
+  expect(await readFetchBody(input, 'bytes', preserveRequest, Infinity)).toEqual(new TextEncoder().encode('✓'))
+  expect(input.bodyUsed).toBe(!preserveRequest)
+})
+
 test('accepts a Fetch request above the former 1 MiB cap by default', async () => {
   const contract = defineContract({
     routes: {

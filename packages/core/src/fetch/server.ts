@@ -1,9 +1,10 @@
 import { bodyLimit } from '../adapters/body'
-import { createAdapterHandler } from '../adapters/runtime'
+import { createAdapterDispatcher } from '../adapters/runtime'
 import type { AdapterDispatchInput, AdapterErrorInput, AdapterPhase, AdapterResponse } from '../adapters/types'
-import { readFetchBody, toFetchResponse, writeFetchResponse } from '../adapters/web'
+import { readFetchBody, toFetchResponse, writeFetchResponseStep } from '../adapters/web'
 import type { Awaitable } from '../context'
 import type { Contract } from '../contract'
+import { isPromiseLike } from '../execution'
 import {
   assertAdapterContext,
   createServerAdapter,
@@ -74,8 +75,17 @@ function pathname(url: string): string {
   return url.slice(start, end) || '/'
 }
 
-function requestHeaders(request: Request): Readonly<Record<string, string>> {
-  return Object.fromEntries(request.headers.entries())
+type FetchDispatchInput = AdapterDispatchInput & {
+  readonly request: Request
+  cachedHeaders?: Readonly<Record<string, string>>
+}
+
+function requestHeaders(this: FetchDispatchInput): Readonly<Record<string, string>> {
+  return (this.cachedHeaders ??= Object.fromEntries(this.request.headers.entries()))
+}
+
+function requestHeader(this: FetchDispatchInput, name: string): string | undefined {
+  return this.cachedHeaders === undefined ? (this.request.headers.get(name) ?? undefined) : this.cachedHeaders[name]
 }
 
 function requestQuery(url: string): URLSearchParams | undefined {
@@ -116,14 +126,16 @@ export function createFetchHandler<
           })
           return replacement instanceof Response ? replacementResponse(replacement) : undefined
         }
-  const dispatch = createAdapterHandler(implementation, onAdapterError === undefined ? {} : { onError: onAdapterError })
+  const dispatch = createAdapterDispatcher(
+    implementation,
+    onAdapterError === undefined ? {} : { onError: onAdapterError }
+  )
 
   const handler = async (request: Request, handlerContext: HandlerContext) => {
     if (!(request instanceof Request)) throw new TypeError('Fetch handler input must be a Request')
-    let headers: Readonly<Record<string, string>> | undefined
     const query = requestQuery(request.url)
     const nativeContext = usesNativeContext ? options.contextInput?.(request, handlerContext) : undefined
-    const input: AdapterDispatchInput = {
+    const input: FetchDispatchInput = {
       request,
       signal: request.signal,
       ...(options.preserveRequestBody === undefined ? {} : { preserveRequestBody: options.preserveRequestBody }),
@@ -133,12 +145,13 @@ export function createFetchHandler<
       ...(options.onError === undefined ? {} : { hostContext: handlerContext }),
       method: request.method,
       pathname: pathname(request.url),
-      readHeaders: () => (headers ??= requestHeaders(request)),
+      readHeaders: requestHeaders,
+      readHeader: requestHeader,
       readBody: (representation, preserveRequest) => readFetchBody(request, representation, preserveRequest, limit),
     }
-    const response = await dispatch(query === undefined ? input : { ...input, query })
-    return writeFetchResponse(
-      response,
+    const response = dispatch(query === undefined ? input : { ...input, query })
+    return writeFetchResponseStep(
+      isPromiseLike(response) ? await response : response,
       options.onError === undefined ? undefined : (input) => options.onError?.({ ...input, request, handlerContext })
     )
   }
