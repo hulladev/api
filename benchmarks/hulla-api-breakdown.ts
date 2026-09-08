@@ -2,6 +2,7 @@ import { codec, defineContract, response, route } from '@hulla/api'
 import { createAdapterHandler } from '@hulla/api/adapters'
 import { defineClient } from '@hulla/api/client'
 import { fetchAdapter, fetchTransport } from '@hulla/api/fetch'
+import { inProcessTransport } from '@hulla/api/in-process'
 import { defineServer } from '@hulla/api/server'
 import { ndjson } from '@hulla/api/stream'
 import { z } from 'zod'
@@ -26,14 +27,13 @@ const transportContract = defineContract({
   },
 })
 const transportServer = defineServer(transportContract)
-const transportHandler = fetchHost.mount(
-  transportServer.implement({
-    item: (input) => ({
-      status: 200,
-      body: { id: input.params.id, limit: input.query.limit, token: input.headers['x-token'] },
-    }),
-  })
-)
+const transportImplementation = transportServer.implement({
+  item: (input) => ({
+    status: 200,
+    body: { id: input.params.id, limit: input.query.limit, token: input.headers['x-token'] },
+  }),
+})
+const transportHandler = fetchHost.mount(transportImplementation)
 const transportClient = defineClient(transportContract, {
   transport: fetchTransport({ baseUrl: 'https://bench.local', fetch: transportHandler }),
 })
@@ -213,7 +213,8 @@ const codecContract = defineContract({
   },
 })
 const codecServer = defineServer(codecContract)
-const codecHandler = fetchHost.mount(codecServer.implement({ echo: (input) => ({ status: 200, body: input.body }) }))
+const codecImplementation = codecServer.implement({ echo: (input) => ({ status: 200, body: input.body }) })
+const codecHandler = fetchHost.mount(codecImplementation)
 const codecClient = defineClient(codecContract, {
   transport: fetchTransport({ baseUrl: 'https://bench.local', fetch: codecHandler }),
 })
@@ -245,7 +246,8 @@ const streamContract = defineContract({
   routes: { events: route.get('/events', { responses: { 200: response.stream(ndjson(chunkSchema)) } }) },
 })
 const streamServer = defineServer(streamContract)
-const streamHandler = fetchHost.mount(streamServer.implement({ events: () => ({ status: 200, body: chunks }) }))
+const streamImplementation = streamServer.implement({ events: () => ({ status: 200, body: chunks }) })
+const streamHandler = fetchHost.mount(streamImplementation)
 const streamClient = defineClient(streamContract, {
   transport: fetchTransport({ baseUrl: 'https://bench.local', fetch: streamHandler }),
 })
@@ -281,8 +283,48 @@ async function directStream(): Promise<void> {
   if (count !== chunks.length || buffered !== '') throw new Error('Unexpected stream length')
 }
 
+const inProcessTransportClient = defineClient(transportContract, {
+  transport: inProcessTransport(transportImplementation),
+})
+const inProcessCodecClient = defineClient(codecContract, { transport: inProcessTransport(codecImplementation) })
+const inProcessStreamClient = defineClient(streamContract, { transport: inProcessTransport(streamImplementation) })
+
 export const hullaApiBreakdownBenchmarks: readonly Benchmark[] = (
   [
+    {
+      runtime: '@hulla/api in-process',
+      scenario: 'dynamic-http',
+      async run() {
+        const result = await inProcessTransportClient.item({
+          params: { id: transportValue.id },
+          query: { limit: transportValue.limit },
+          headers: { 'x-token': transportValue.token },
+        })
+        if (result.status !== 200 || result.body.id !== transportValue.id)
+          throw new Error('Unexpected transport result')
+      },
+    },
+    {
+      runtime: '@hulla/api in-process',
+      scenario: 'codec-roundtrip',
+      async run() {
+        const result = await inProcessCodecClient.echo({ body: codecValue })
+        if (result.status !== 200 || result.body.createdAt.getTime() !== codecValue.createdAt.getTime())
+          throw new Error('Unexpected codec result')
+      },
+    },
+    {
+      runtime: '@hulla/api in-process',
+      scenario: 'streaming',
+      async run() {
+        const result = await inProcessStreamClient.events()
+        let count = 0
+        for await (const chunk of result.body) {
+          if (chunk.sequence !== count++) throw new Error('Unexpected stream value')
+        }
+        if (count !== chunks.length) throw new Error('Unexpected stream length')
+      },
+    },
     { runtime: 'Direct Fetch', scenario: 'wire-dispatch', run: directWireDispatch },
     { runtime: '@hulla/api Fetch', scenario: 'wire-dispatch', run: hullaApiFetchDispatch },
     { runtime: '@hulla/api Adapter', scenario: 'wire-dispatch', run: hullaApiWireDispatch },

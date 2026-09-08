@@ -73,3 +73,32 @@ test('preserves raw batches and process groups while excluding incompatible per-
   expect(aggregate?.processIds).toEqual([11, 12])
   expect(aggregate?.runs).toBe(2)
 })
+
+test('fingerprints the built product, ignoring unbuilt edits but detecting rebuilds', async () => {
+  const { mkdtemp, mkdir, writeFile, rm } = await import('node:fs/promises')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  const { productFingerprint } = await import('./provenance')
+  const root = await mkdtemp(join(tmpdir(), 'bench-product-'))
+  try {
+    await mkdir(join(root, 'packages/core/dist'), { recursive: true })
+    await mkdir(join(root, 'packages/core/src'), { recursive: true })
+    await writeFile(join(root, 'packages/core/package.json'), '{"exports":"./dist/index.js"}')
+    await writeFile(join(root, 'packages/core/dist/index.js'), 'export const value = 1')
+    await writeFile(join(root, 'packages/core/src/index.ts'), 'export const value = 1')
+    const before = await productFingerprint(root)
+    await writeFile(join(root, 'packages/core/src/index.ts'), 'export const value = 2')
+    expect(await productFingerprint(root)).toBe(before)
+    await writeFile(join(root, 'packages/core/dist/index.js'), 'export const value = 2')
+    expect(await productFingerprint(root)).not.toBe(before)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('identifies the changed input in measurement errors', async () => {
+  const { assertCompatibleIdentity } = await import('./provenance')
+  expect(() =>
+    assertCompatibleIdentity(identity, { ...identity, productFingerprint: 'rebuilt' }, 'fastify / orpc')
+  ).toThrow(/fastify \/ orpc: built packages/)
+})

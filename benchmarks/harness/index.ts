@@ -59,7 +59,7 @@ const benchmarkProfiles: Readonly<Record<BenchmarkProfile, { readonly descriptio
     focused: {
       title: 'Focused @hulla/api diagnostics',
       description:
-        'These isolate @hulla/api feature costs against direct equivalents. They are implementation diagnostics, not cross-package rankings.',
+        'Feature-specific measurements show the cost of transport encoding, middleware, validation errors, codecs and streams. Each row names its execution path; HTTP-only fixtures do not imply an in-process measurement.',
     },
   }
 
@@ -275,7 +275,11 @@ const implementationPrefixes: readonly {
 export function benchmarkDimensions(runtimeKey: string, scenario: BenchmarkScenario): BenchmarkDimensions {
   const identity = implementationPrefixes.find(({ prefix }) => runtimeKey.startsWith(prefix))
   if (identity === undefined) throw new TypeError(`Unknown benchmark implementation: ${runtimeKey}`)
-  return { ...benchmarkScenarioDimensions[scenario], ...identity }
+  return {
+    ...benchmarkScenarioDimensions[scenario],
+    ...identity,
+    ...(runtimeKey.endsWith('in-process') ? { adapter: 'none' as const, protocol: 'direct' as const } : {}),
+  }
 }
 
 export function summarizeBenchmarkResult(
@@ -377,7 +381,7 @@ type ApplicationSummary = {
 }
 
 function applicationSummaries(results: readonly BenchmarkResult[]): readonly ApplicationSummary[] {
-  const application = results.filter(({ profile }) => profile === 'application')
+  const application = results.filter(({ profile, adapter }) => profile === 'application' && adapter !== 'none')
   const scenarios = [...new Set(application.map(({ scenario }) => scenario))]
   if (scenarios.length === 0) return []
   const runtimes = [...new Set(application.map(({ runtimeKey }) => runtimeKey))]
@@ -591,7 +595,8 @@ function aggregateResult(
 ): string {
   const ratios = cohort.selectors.flatMap((selector) => {
     const selected = results.filter(
-      (result) => result.profile === selector.profile && result.scenario === selector.scenario
+      (result) =>
+        result.profile === selector.profile && result.scenario === selector.scenario && result.adapter !== 'none'
     )
     const hullaApi = hullaApiReference(selected)
     const result =
@@ -765,6 +770,33 @@ function resultOrder(left: BenchmarkResult, right: BenchmarkResult): number {
   return implementationDifference || left.runtime.localeCompare(right.runtime)
 }
 
+export function transportComparisonLines(results: readonly BenchmarkResult[]): readonly string[] {
+  const inProcess = results.filter(({ runtimeKey }) => runtimeKey === '@hulla/api in-process')
+  if (inProcess.length === 0) return []
+  return [
+    '',
+    '## Fetch and in-process coverage',
+    '',
+    'The same @hulla/api contract, handlers, validation and result checks run through both transports for every everyday scenario. Fetch includes Request/Response creation, HTTP encoding and JSON serialization in memory; it does not use a network socket. In-process passes values directly. This table compares transport costs, not competing packages. HTTP host adapters and raw HTTP body readers have separate transport-specific measurements.',
+    '',
+    '| Profile | Use case | Fetch median [95% CI] | In-process median [95% CI] | Fetch / in-process |',
+    '|---|---|---:|---:|---:|',
+    ...profileOrder().flatMap((profile) =>
+      inProcess
+        .filter((result) => result.profile === profile)
+        .map((result) => {
+          const fetch = results.find(
+            (candidate) =>
+              candidate.runtimeKey === '@hulla/api' &&
+              candidate.profile === profile &&
+              candidate.scenario === result.scenario
+          )
+          return `| ${benchmarkProfiles[profile].title} | ${benchmarkScenarios[result.scenario]} | ${fetch === undefined ? '—' : formatMedian(fetch)} | ${formatMedian(result)} | ${fetch === undefined ? '—' : benchmarkRatio(fetch, result)} |`
+        })
+    ),
+  ]
+}
+
 function detailedResultLines(results: readonly BenchmarkResult[]): readonly string[] {
   if (results.length === 0) return []
   const lines: string[] = [
@@ -808,7 +840,9 @@ function detailedResultLines(results: readonly BenchmarkResult[]): readonly stri
           `##### ${description}`,
           '',
           '```text',
-          benchmarkScenarioExamples[scenario],
+          adapter === 'none' && scenarioResults.every(({ runtimeKey }) => runtimeKey.endsWith('in-process'))
+            ? 'Typed client → in-process transport → server handler → typed result (no HTTP serialization)'
+            : benchmarkScenarioExamples[scenario],
           '```',
           '',
           '| Package / implementation | Median [95% CI] | Min–max | vs direct | vs @hulla/api | Change from previous [95% CI] |',
@@ -1045,6 +1079,7 @@ export async function writeBenchmarkReport(
     '## Contents',
     '',
     '- [How to read the report](#how-to-read-the-report)',
+    '- [Fetch and in-process coverage](#fetch-and-in-process-coverage)',
     '- [Cross-package overview](#cross-package-overview)',
     ...(adapterCohorts.length === 0 ? [] : ['- [Framework adapter overview](#framework-adapter-overview)']),
     ...measuredAdapters.map(
@@ -1063,7 +1098,9 @@ export async function writeBenchmarkReport(
           '- `Change from previous` is a deterministic 95% run-level bootstrap interval. Negative values are faster; positive values are slower. Non-direct rows are normalized by matching direct-baseline drift.',
         ]),
     '- Aggregate rows use geometric means and require every operation in that cohort; missing coverage is shown as an em dash.',
+    '- Rows labeled `@hulla/api` in Fetch tables use Fetch; in-process results are paired in the transport table and listed separately below.',
     '- Native-protocol cohorts compare equivalent work through each package’s own protocol, not identical URL shapes or validation guarantees.',
+    ...transportComparisonLines(results),
     ...aggregateResultLines(results),
     ...independentAdapterSummaryLines(adapterCohorts),
     ...detailedResultLines(results),

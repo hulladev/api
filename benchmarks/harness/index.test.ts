@@ -223,7 +223,7 @@ describe('benchmark artifacts', () => {
       }[]
       schemaVersion: number
     }
-    expect(snapshot).toMatchObject({ schemaVersion: 2, methodologyVersion: 3 })
+    expect(snapshot).toMatchObject({ schemaVersion: 2, methodologyVersion: 4 })
     expect(
       snapshot.results.map(({ adapter, implementation, scenario }) => `${adapter}:${scenario}:${implementation}`)
     ).toEqual([

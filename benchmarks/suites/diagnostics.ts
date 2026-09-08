@@ -7,7 +7,7 @@ import { messagePortAdapter, messagePortTransport } from '@hulla/api-message-por
 import { nodeHttpAdapter } from '@hulla/api-node-http'
 import { createAdapterHandler, readFetchBody } from '@hulla/api/adapters'
 import { defineClient } from '@hulla/api/client'
-import { fetchAdapter } from '@hulla/api/fetch'
+import { fetchAdapter, fetchTransport } from '@hulla/api/fetch'
 import { inProcessTransport } from '@hulla/api/in-process'
 import { defineServer } from '@hulla/api/server'
 import { z } from 'zod'
@@ -116,14 +116,33 @@ export async function scaling(): Promise<Diagnostic[]> {
       routes: { echo: route.post('/', { body: request.json(output), responses: { 200: response.json(output) } }) },
     })
     const implementation = defineServer(contract).implement({ echo: ({ body }) => ({ status: 200, body }) })
-    const client = defineClient(contract, { transport: inProcessTransport(implementation) })
+    const clients = {
+      'in-process': defineClient(contract, { transport: inProcessTransport(implementation) }),
+      fetch: defineClient(contract, {
+        transport: fetchTransport({
+          baseUrl: 'http://bench',
+          fetch: fetchAdapter({ maxBodyBytes: Infinity }).mount(implementation),
+        }),
+      }),
+    }
     const value = 'x'.repeat(bytes)
-    results.push(
-      await measure('in-process-payload', { bytes, serializedBytes: JSON.stringify({ value }).length }, async () => {
-        assert.equal((await client.echo({ body: { value } })).body.value.length, bytes)
-      })
-    )
+    for (const [transport, client] of Object.entries(clients))
+      results.push(
+        await measure(
+          'payload-roundtrip',
+          {
+            transport,
+            bytes,
+            serializedBytes: JSON.stringify({ value }).length,
+            bodyLimit: 'unbounded (includes 1 MiB payload plus JSON envelope)',
+          },
+          async () => {
+            assert.equal((await client.echo({ body: { value } })).body.value.length, bytes)
+          }
+        )
+      )
   }
+
   for (const payloadBytes of [256, 16_384, 262_144]) {
     const value = 'x'.repeat(payloadBytes)
     const encoded = new TextEncoder().encode(JSON.stringify({ value }))

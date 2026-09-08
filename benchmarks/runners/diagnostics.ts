@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile, readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { gzipSync } from 'node:zlib'
 import { benchmarkOptions } from '../harness'
-import { benchmarkIdentity, compatibleIdentity, type BenchmarkIdentity } from '../harness/provenance'
+import { assertCompatibleIdentity, benchmarkIdentity, type BenchmarkIdentity } from '../harness/provenance'
 import type { Diagnostic } from '../suites/diagnostics'
 
 const identity = await benchmarkIdentity()
@@ -25,8 +25,7 @@ for (const suite of ['scaling', 'sockets', 'ipc', 'lifecycle']) {
     const snapshot = JSON.parse(
       child('./diagnostic-child.ts', { ...process.env, BENCH_RUN_ID: identity.runId, BENCH_DIAGNOSTIC_SUITE: suite })
     ) as { identity: BenchmarkIdentity; processId: number; results: Diagnostic[] }
-    if (!compatibleIdentity(identity, snapshot.identity))
-      throw new Error('Source/environment changed during diagnostics')
+    assertCompatibleIdentity(identity, snapshot.identity, suite)
     runs.push({ suite, processId: snapshot.processId, results: snapshot.results })
   }
 }

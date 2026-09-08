@@ -16,7 +16,12 @@ import {
 } from './harness'
 import { resultKey } from './harness/history'
 import { persistBenchmarkHistory } from './harness/history'
-import { benchmarkIdentity, compatibleIdentity, type BenchmarkIdentity } from './harness/provenance'
+import {
+  assertCompatibleIdentity,
+  benchmarkIdentity,
+  compatibleIdentity,
+  type BenchmarkIdentity,
+} from './harness/provenance'
 import { honoApplicationBenchmarks, honoBenchmarks, honoNativeBenchmarks } from './hono'
 import {
   hullaApiApplicationBenchmarks,
@@ -102,6 +107,7 @@ const benchmarks: readonly Benchmark[] = [
 ].map((benchmark) => ({ ...benchmark, runtimeKey: benchmark.runtime, runtime: versionedRuntime(benchmark.runtime) }))
 if (process.env['BENCH_MAIN_CHILD'] === '1') {
   const results = await runBenchmarkRuns(benchmarks, { ...options, runs: 1 })
+  assertCompatibleIdentity(identity, await benchmarkIdentity(), 'main suite')
   console.log(JSON.stringify({ identity, results }))
   process.exit(0)
 }
@@ -119,7 +125,7 @@ for (let run = 0; run < options.runs; run++) {
     identity: BenchmarkIdentity
     results: Awaited<ReturnType<typeof runBenchmarkRuns>>
   }
-  if (!compatibleIdentity(identity, snapshot.identity)) throw new Error('Source/environment changed during measurement')
+  assertCompatibleIdentity(identity, snapshot.identity, 'main suite')
   processRuns.push(snapshot.results)
 }
 const results = processRuns[0]!.map((result) => {

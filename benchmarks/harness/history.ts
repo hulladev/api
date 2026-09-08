@@ -86,19 +86,25 @@ function gitOutput(arguments_: readonly string[]): string | undefined {
 async function sourceRevision(): Promise<SourceRevision> {
   const packageValue = JSON.parse(await readFile(corePackagePath, 'utf8')) as { version?: unknown }
   if (typeof packageValue.version !== 'string') throw new TypeError('Missing @hulla/api package version')
-  const status = gitOutput([
-    'status',
-    '--short',
-    '--untracked-files=all',
-    '--',
-    'packages',
-    'benchmarks',
-    'bun.lock',
-    'package.json',
-  ])
+  const status =
+    process.env['BENCH_SOURCE_DIRTY'] === undefined
+      ? gitOutput([
+          'status',
+          '--short',
+          '--untracked-files=all',
+          '--',
+          'packages',
+          'benchmarks',
+          'bun.lock',
+          'package.json',
+        ])
+      : undefined
   return {
-    commit: gitOutput(['rev-parse', 'HEAD']) ?? 'unavailable',
-    dirty: status !== undefined && status !== '',
+    commit: process.env['BENCH_SOURCE_COMMIT'] ?? gitOutput(['rev-parse', 'HEAD']) ?? 'unavailable',
+    dirty:
+      process.env['BENCH_SOURCE_DIRTY'] === undefined
+        ? status !== undefined && status !== ''
+        : process.env['BENCH_SOURCE_DIRTY'] === 'true',
     packageVersion: packageValue.version,
   }
 }
@@ -389,6 +395,7 @@ export async function persistBenchmarkHistory(
       ? undefined
       : current.find(
           (candidate) =>
+            candidate.adapter === result.adapter &&
             candidate.profile === result.profile &&
             candidate.scenario === result.scenario &&
             candidate.runtimeKey.startsWith('Direct ')

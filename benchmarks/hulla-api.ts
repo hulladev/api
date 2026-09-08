@@ -86,94 +86,88 @@ const client = defineClient(contract, {
 })
 const inProcessClient = defineClient(contract, { transport: inProcessAdapter().mount(implementation) })
 
-export const hullaApiBenchmarks: readonly Benchmark[] = [
-  {
-    runtime: '@hulla/api',
-    scenario: 'static-get',
-    async run() {
-      const result = await client.health()
-      if (result.status !== 200 || !result.body.ok) throw new Error('Unexpected health result')
+function basicBenchmarks(client: typeof inProcessClient): readonly Benchmark[] {
+  return [
+    {
+      runtime: '@hulla/api',
+      scenario: 'static-get',
+      async run() {
+        const result = await client.health()
+        if (result.status !== 200 || !result.body.ok) throw new Error('Unexpected health result')
+      },
     },
-  },
-  {
-    runtime: '@hulla/api',
-    scenario: 'small-json-post',
-    async run() {
-      const result = await client.createUser({ body: createUserValue })
-      if (result.status !== 201 || result.body.id !== 'user-1') throw new Error('Unexpected benchmark result')
+    {
+      runtime: '@hulla/api',
+      scenario: 'small-json-post',
+      async run() {
+        const result = await client.createUser({ body: createUserValue })
+        if (result.status !== 201 || result.body.id !== 'user-1') throw new Error('Unexpected benchmark result')
+      },
     },
-  },
-  {
-    runtime: '@hulla/api',
-    scenario: 'large-json-post',
-    async run() {
-      const result = await client.large({ body: largeValue })
-      if (result.status !== 200 || result.body.count !== 100) throw new Error('Unexpected large result')
+    {
+      runtime: '@hulla/api',
+      scenario: 'large-json-post',
+      async run() {
+        const result = await client.large({ body: largeValue })
+        if (result.status !== 200 || result.body.count !== 100) throw new Error('Unexpected large result')
+      },
     },
-  },
-]
+  ]
+}
+
+export const hullaApiBenchmarks = basicBenchmarks(client)
 
 export const hullaApiNativeBenchmarks: readonly Benchmark[] = hullaApiBenchmarks.map((benchmark) => ({
   ...benchmark,
   profile: 'native',
 }))
 
-export const hullaApiInProcessBenchmarks: readonly Benchmark[] = [
-  {
-    runtime: '@hulla/api in-process',
-    scenario: 'static-get',
-    async run() {
-      const result = await inProcessClient.health()
-      if (result.status !== 200 || !result.body.ok) throw new Error('Unexpected in-process health result')
+function applicationBenchmarks(client: typeof inProcessClient): readonly Benchmark[] {
+  return [
+    {
+      profile: 'application',
+      runtime: '@hulla/api',
+      scenario: 'path-parameter-read',
+      async run() {
+        const result = await client.resource({ params: resourceValue })
+        if (result.status !== 200 || result.body.userId !== resourceValue.userId) throw new Error('Unexpected resource')
+      },
     },
-  },
-  {
-    runtime: '@hulla/api in-process',
-    scenario: 'small-json-post',
-    async run() {
-      const result = await inProcessClient.createUser({ body: createUserValue })
-      if (result.status !== 201 || result.body.id !== 'user-1') throw new Error('Unexpected in-process result')
+    {
+      profile: 'application',
+      runtime: '@hulla/api',
+      scenario: 'query-header-read',
+      async run() {
+        const result = await client.collection({
+          params: { organizationId: resourceValue.organizationId },
+          query: queryValue,
+          headers: headerValue,
+        })
+        if (result.status !== 200 || result.body.roles.length !== 2) throw new Error('Unexpected collection')
+      },
     },
-  },
-]
+    {
+      profile: 'application',
+      runtime: '@hulla/api',
+      scenario: 'mixed-update',
+      async run() {
+        const result = await client.update({
+          params: resourceValue,
+          query: updateQueryValue,
+          headers: headerValue,
+          body: updateBodyValue,
+        })
+        if (result.status !== 200 || result.body.displayName !== updateBodyValue.displayName) {
+          throw new Error('Unexpected update')
+        }
+      },
+    },
+  ]
+}
 
-export const hullaApiApplicationBenchmarks: readonly Benchmark[] = [
-  {
-    profile: 'application',
-    runtime: '@hulla/api',
-    scenario: 'path-parameter-read',
-    async run() {
-      const result = await client.resource({ params: resourceValue })
-      if (result.status !== 200 || result.body.userId !== resourceValue.userId) throw new Error('Unexpected resource')
-    },
-  },
-  {
-    profile: 'application',
-    runtime: '@hulla/api',
-    scenario: 'query-header-read',
-    async run() {
-      const result = await client.collection({
-        params: { organizationId: resourceValue.organizationId },
-        query: queryValue,
-        headers: headerValue,
-      })
-      if (result.status !== 200 || result.body.roles.length !== 2) throw new Error('Unexpected collection')
-    },
-  },
-  {
-    profile: 'application',
-    runtime: '@hulla/api',
-    scenario: 'mixed-update',
-    async run() {
-      const result = await client.update({
-        params: resourceValue,
-        query: updateQueryValue,
-        headers: headerValue,
-        body: updateBodyValue,
-      })
-      if (result.status !== 200 || result.body.displayName !== updateBodyValue.displayName) {
-        throw new Error('Unexpected update')
-      }
-    },
-  },
-]
+export const hullaApiApplicationBenchmarks = applicationBenchmarks(client)
+export const hullaApiInProcessBenchmarks: readonly Benchmark[] = [
+  ...basicBenchmarks(inProcessClient),
+  ...basicBenchmarks(inProcessClient).map((benchmark) => ({ ...benchmark, profile: 'native' as const })),
+  ...applicationBenchmarks(inProcessClient),
+].map((benchmark) => ({ ...benchmark, runtime: '@hulla/api in-process' }))

@@ -10,7 +10,12 @@ import {
   updateBenchmarkReportAdapterSummary,
   type BenchmarkResult,
 } from '../harness'
-import { benchmarkIdentity, compatibleIdentity, type BenchmarkIdentity } from '../harness/provenance'
+import {
+  assertCompatibleIdentity,
+  benchmarkIdentity,
+  compatibleIdentity,
+  type BenchmarkIdentity,
+} from '../harness/provenance'
 
 const entry = fileURLToPath(new URL('./adapter-cohort.ts', import.meta.url))
 const options = benchmarkOptions()
@@ -34,8 +39,7 @@ for (const cohort of adapterCohorts) {
     })
     if (result.status !== 0) throw new Error(`Adapter cohort failed: ${label}\n${result.stdout}\n${result.stderr}`)
     const snapshot = JSON.parse(result.stdout) as { identity: BenchmarkIdentity; results: BenchmarkResult[] }
-    if (!compatibleIdentity(identity, snapshot.identity))
-      throw new Error(`Source or environment changed while measuring ${label}`)
+    assertCompatibleIdentity(identity, snapshot.identity, label)
     runs.push(snapshot.results)
   }
   const results = runs[0]!.map((result, index) => ({
