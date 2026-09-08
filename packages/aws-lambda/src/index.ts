@@ -1,6 +1,7 @@
 import type { Contract } from '@hulla/api'
 import {
   createAdapterHandler,
+  errorResponse,
   type AdapterErrorInput,
   type AdapterResponse,
   type AdapterResponseBody,
@@ -82,7 +83,9 @@ async function readEventBody(
 ): Promise<unknown> {
   switch (representation) {
     case 'json':
-      return JSON.parse(event.body ?? '') as unknown
+      return JSON.parse(
+        event.isBase64Encoded ? new TextDecoder().decode(eventBodyBytes(event)) : (event.body ?? '')
+      ) as unknown
     case 'text':
       return event.isBase64Encoded ? new TextDecoder().decode(eventBodyBytes(event)) : (event.body ?? '')
     case 'bytes':
@@ -102,12 +105,26 @@ async function collectBytes(source: unknown): Promise<Uint8Array> {
       : candidate[Symbol.iterator]()
   const chunks: Uint8Array[] = []
   let length = 0
-  for (;;) {
-    const result = await iterator.next()
-    if (result.done) break
-    if (!(result.value instanceof Uint8Array)) throw new TypeError('Stream chunk must be Uint8Array')
-    chunks.push(result.value)
-    length += result.value.byteLength
+  let complete = false
+  try {
+    for (;;) {
+      const result = await iterator.next()
+      if (result.done) {
+        complete = true
+        break
+      }
+      if (!(result.value instanceof Uint8Array)) throw new TypeError('Stream chunk must be Uint8Array')
+      chunks.push(result.value)
+      length += result.value.byteLength
+    }
+  } finally {
+    if (!complete) {
+      try {
+        await iterator.return?.()
+      } catch {
+        // Preserve the collection failure if producer cleanup also fails.
+      }
+    }
   }
   const body = new Uint8Array(length)
   let offset = 0
@@ -152,6 +169,7 @@ async function lambdaResponse(response: AdapterResponse): Promise<AWSLambdaRespo
       break
     case 'json':
       body = JSON.stringify(response.body.value)
+      if (body === undefined) throw new TypeError('JSON response body cannot encode to undefined')
       break
     case 'text':
       if (typeof response.body.value !== 'string') {
@@ -195,6 +213,8 @@ async function lambdaResponse(response: AdapterResponse): Promise<AWSLambdaRespo
 }
 
 function adapterReplacement(response: AWSLambdaResponse): AdapterResponse {
+  if (!Number.isInteger(response.statusCode))
+    throw new TypeError('AWS Lambda error replacement must define a statusCode')
   return { status: response.statusCode, headers: {}, body: { kind: 'raw', value: response } }
 }
 
@@ -238,7 +258,24 @@ function createLambdaHandler<
       readHeaders: () => (headers ??= eventHeaders(event)),
       readBody: (representation: string) => readEventBody(event, (headers ??= eventHeaders(event)), representation),
     }
-    return lambdaResponse(await dispatch(input))
+    const result = await dispatch(input)
+    try {
+      return await lambdaResponse(result)
+    } catch (error) {
+      const fallback = await lambdaResponse(errorResponse(error, 'transport'))
+      try {
+        const replacement = await options.onError?.({
+          error,
+          phase: 'transport',
+          ...nativeContext,
+          defaultResponse: fallback,
+        })
+        return replacement === undefined ? fallback : await lambdaResponse(adapterReplacement(replacement))
+      } catch {
+        // Observer and replacement failures do not recursively invoke the observer.
+        return fallback
+      }
+    }
   }
 }
 

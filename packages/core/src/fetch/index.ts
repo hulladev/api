@@ -1,4 +1,4 @@
-export { fetchTransport } from './client'
+export { fetchTransport, fetchTransportResponse } from './client'
 export type { ClientFetch, FetchTransportOptions } from './client'
 export { createFetchHandler, fetchAdapter } from './server'
 export type {

@@ -102,6 +102,8 @@ class MessagePortRemoteStream implements AsyncIterable<Uint8Array>, AsyncIterato
     readonly reject: (error: unknown) => void
   }> = []
   #finished = false
+  #failed = false
+  #error: unknown
 
   constructor(endpoint: MessageEndpoint, channel: string, id: string, onFinish: () => void) {
     this.#endpoint = endpoint
@@ -111,6 +113,7 @@ class MessagePortRemoteStream implements AsyncIterable<Uint8Array>, AsyncIterato
   }
 
   next(): Promise<IteratorResult<Uint8Array>> {
+    if (this.#failed) return Promise.reject(this.#error)
     if (this.#finished) return Promise.resolve({ done: true, value: undefined })
     const result = new Promise<IteratorResult<Uint8Array>>((resolve, reject) => {
       this.#waiters.push({ resolve, reject })
@@ -189,6 +192,8 @@ class MessagePortRemoteStream implements AsyncIterable<Uint8Array>, AsyncIterato
 
   fail(error: unknown): void {
     if (this.#finished) return
+    this.#failed = true
+    this.#error = error
     this.#finished = true
     for (const waiter of this.#waiters.splice(0)) waiter.reject(error)
     this.#onFinish()
@@ -333,7 +338,25 @@ export function messagePortTransport(
   const transport = (async (request: ClientTransportRequest): Promise<ClientTransportResponse> => {
     if (closed) throw new MessagePortTransportError('closed', 'Message-port transport is closed')
     request.signal?.throwIfAborted()
-    await ready
+    await new Promise<void>((resolve, reject) => {
+      const signal = request.signal
+      const abort = () => {
+        signal?.removeEventListener('abort', abort)
+        reject(signal?.reason)
+      }
+      signal?.addEventListener('abort', abort, { once: true })
+      void ready.then(
+        () => {
+          signal?.removeEventListener('abort', abort)
+          resolve()
+        },
+        (error: unknown) => {
+          signal?.removeEventListener('abort', abort)
+          reject(error)
+        }
+      )
+      if (signal?.aborted) abort()
+    })
     request.signal?.throwIfAborted()
 
     const id = nextRequestId()

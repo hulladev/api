@@ -91,7 +91,8 @@ function nativeRequest(request: ClientTransportRequest, baseUrl: string): Reques
   }
 }
 
-function transportResponse(response: Response): ClientTransportResponse {
+/** Adapts a native Fetch response with cancellable body ownership and repeated headers. */
+export function fetchTransportResponse(response: Response): ClientTransportResponse {
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
   let disposed = false
   async function* bytes(): AsyncIterable<Uint8Array> {
@@ -189,7 +190,7 @@ export function fetchTransport<const FetchOptions extends object = RequestInit>(
     const configured = typeof options.fetchOptions === 'function' ? options.fetchOptions(request) : options.fetchOptions
     const response = configured === undefined ? fetcher(native) : fetcher(native, configured)
     return response instanceof Response
-      ? transportResponse(response)
-      : Promise.resolve(response).then(transportResponse)
+      ? fetchTransportResponse(response)
+      : Promise.resolve(response).then(fetchTransportResponse)
   }
 }

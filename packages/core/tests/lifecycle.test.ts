@@ -225,3 +225,55 @@ test('preserves repeated Set-Cookie response headers across in-process and Fetch
     expect(result.headers['x-name']).toBe('test')
   }
 })
+
+test.each(['opaque', 'formatted'] as const)(
+  'cancels %s streams before the first pull and during a pending read',
+  async (kind) => {
+    const { ndjson } = await import('../src/stream')
+    for (const start of [false, true]) {
+      const cancel = vi.fn<() => void>()
+      const native = new Response(new ReadableStream<Uint8Array>({ cancel }), {
+        headers: { 'content-type': kind === 'formatted' ? 'application/x-ndjson' : 'application/octet-stream' },
+      })
+      const contract = defineContract({
+        routes: {
+          get: route.get('/', {
+            responses: {
+              200: kind === 'formatted' ? response.stream(ndjson(z.object({ ok: z.boolean() }))) : response.stream(),
+            },
+          }),
+        },
+      })
+      const client = defineClient(contract, { transport: fetchTransport({ baseUrl: origin, fetch: () => native }) })
+      const result = await client.get()
+      const iterator = result.body[Symbol.asyncIterator]()
+      const pending = start ? iterator.next() : undefined
+      await iterator.return?.()
+      await pending
+      await iterator.return?.()
+      expect(cancel).toHaveBeenCalledTimes(1)
+      expect(native.body!.locked).toBe(false)
+    }
+  }
+)
+
+test.each([200, 204] as const)('releases unread bodies on empty response status %s', async (status) => {
+  const cancel = vi.fn<() => void>()
+  const native = new Response(status === 200 ? new ReadableStream({ cancel }) : null, { status })
+  const contract = defineContract({ routes: { get: route.get('/', { responses: { [status]: response.empty() } }) } })
+  const client = defineClient(contract, { transport: fetchTransport({ baseUrl: origin, fetch: () => native }) })
+  expect(await client.get()).toEqual({ status, headers: {} })
+  expect(cancel).toHaveBeenCalledTimes(status === 200 ? 1 : 0)
+})
+
+test('retains synchronous in-process stream iteration', async () => {
+  const contract = defineContract({ routes: { get: route.get('/', { responses: { 200: response.stream() } }) } })
+  const implementation = defineServer(contract).implement({ get: () => ({ status: 200, body: [new Uint8Array([1])] }) })
+  const client = defineClient(contract, { transport: inProcessTransport(implementation) })
+  const chunks = []
+  for await (const chunk of (await client.get()).body) chunks.push(chunk)
+  expect(chunks).toEqual([new Uint8Array([1])])
+  const iterator = (await client.get()).body[Symbol.asyncIterator]()
+  await iterator.return?.()
+  expect(await iterator.next()).toEqual({ done: true, value: undefined })
+})

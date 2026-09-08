@@ -102,6 +102,32 @@ function decodedStream(source: AsyncIterable<Uint8Array>, plan: DecodableStreamP
   return decode()
 }
 
+/** Owns cancellation independently of whether a lazy decoder has started. */
+function ownedStream(
+  source: AsyncIterable<unknown> | Iterable<unknown>,
+  response: ClientTransportResponse
+): AsyncIterableIterator<unknown> {
+  const iterator = Symbol.asyncIterator in source ? source[Symbol.asyncIterator]() : source[Symbol.iterator]()
+  let returning: Promise<IteratorResult<unknown>> | undefined
+  let closed = false
+  return {
+    [Symbol.asyncIterator]() {
+      return this
+    },
+    next: async () => (closed ? { done: true, value: undefined } : iterator.next()),
+    return: () =>
+      (returning ??= (async () => {
+        closed = true
+        try {
+          await response.dispose?.()
+        } finally {
+          await iterator.return?.()
+        }
+        return { done: true as const, value: undefined }
+      })()),
+  }
+}
+
 function assertContentType(response: ClientTransportResponse, expected: string | undefined): void {
   if (expected === undefined) return
   const header = responseHeader(response.headers, 'content-type') ?? ''
@@ -157,7 +183,7 @@ function compileBodyDecoder(
   const body = definition.body
   switch (body.kind) {
     case 'empty':
-      return () => undefined
+      return (response) => mapExecutionStep(response.dispose?.(), () => undefined)
     case 'raw':
       return (response, cancellable) => response.native ?? read(response, 'raw', cancellable)
     case 'json': {
@@ -178,13 +204,16 @@ function compileBodyDecoder(
     }
     case 'stream': {
       if (!('schema' in body)) {
-        return (response, cancellable) => read(response, 'stream', cancellable)
+        return (response, cancellable) =>
+          mapExecutionStep(read(response, 'stream', cancellable), (source) =>
+            ownedStream(source as AsyncIterable<unknown>, response)
+          )
       }
       const decode = plan.body!.decode
       const streamPlan = { decode, format: body.format as unknown as StreamFormat<unknown> }
       return (response, cancellable) =>
         mapExecutionStep(read(response, 'stream', cancellable), (source) =>
-          decodedStream(source as AsyncIterable<Uint8Array>, streamPlan)
+          ownedStream(decodedStream(source as AsyncIterable<Uint8Array>, streamPlan), response)
         )
     }
   }

@@ -149,3 +149,48 @@ test('rejects a parsed-only request fetcher at setup with migration guidance', (
   // @ts-expect-error Parsed $fetch cannot preserve HTTP status and response headers.
   expect(() => nuxtFetchTransport(async () => ({ ok: true }))).toThrow('event.fetch')
 })
+
+test.each(['status', 'content-type'] as const)('cancels an unread Nuxt response rejected for %s', async (failure) => {
+  const cancel = vi.fn<() => void>()
+  const native = new Response(new ReadableStream({ cancel }), {
+    status: failure === 'status' ? 500 : 200,
+    headers: { 'content-type': failure === 'content-type' ? 'text/plain' : 'application/json' },
+  })
+  const client = defineClient(contract, { transport: nuxtFetchTransport({ fetch: async () => native }) })
+  await expect(client.rename({ body: { name: 'Ada' } })).rejects.toMatchObject({
+    code: failure === 'status' ? 'unexpected-status' : 'content-type-mismatch',
+  })
+  expect(cancel).toHaveBeenCalledTimes(1)
+})
+
+test('cancels an active Nuxt body read when asynchronous header validation fails', async () => {
+  const cancel = vi.fn<() => void>()
+  let rejectHeaders!: (error: Error) => void
+  const headers = z.object({}).transform(
+    async () =>
+      new Promise<never>((_resolve, reject) => {
+        rejectHeaders = reject
+      })
+  )
+  const api = defineContract({
+    routes: { get: route.get('/', { responses: { 200: response.json(z.object({ ok: z.boolean() }), { headers }) } }) },
+  })
+  const native = new Response(new ReadableStream({ cancel }), { headers: { 'content-type': 'application/json' } })
+  const client = defineClient(api, { transport: nuxtFetchTransport({ fetch: async () => native }) })
+  const call = client.get()
+  await vi.waitFor(() => expect(native.body!.locked).toBe(true))
+  const failure = new Error('invalid headers')
+  rejectHeaders(failure)
+  await expect(call).rejects.toBe(failure)
+  expect(cancel).toHaveBeenCalledTimes(1)
+})
+
+test('preserves separate Set-Cookie values for SSR callers', async () => {
+  const cookies = ['session=one; Path=/; HttpOnly', 'refresh=two; Path=/; HttpOnly']
+  const headers = new Headers()
+  for (const cookie of cookies) headers.append('set-cookie', cookie)
+  const client = defineClient(contract, {
+    transport: nuxtFetchTransport({ fetch: async () => Response.json({ name: 'Ada' }, { headers }) }),
+  })
+  expect((await client.rename({ body: { name: 'Ada' } })).headers['set-cookie']).toEqual(cookies)
+})

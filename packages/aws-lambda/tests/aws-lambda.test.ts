@@ -8,6 +8,7 @@ import {
   awsLambdaAdapter,
   type AWSLambdaContextInput,
   type AWSLambdaHandler,
+  type AWSLambdaResponse,
   type AWSLambdaServerErrorInput,
 } from '../src'
 
@@ -182,3 +183,91 @@ describe('AWS Lambda integration', () => {
     )
   })
 })
+
+test('decodes base64 JSON requests before validation, including Unicode', async () => {
+  const api = defineContract({
+    routes: {
+      echo: route.post('/echo', {
+        body: request.json(z.object({ name: z.string() })),
+        responses: { 200: response.json(z.object({ name: z.string() })) },
+      }),
+    },
+  })
+  const implementation = defineServer(api).implement({ echo: ({ body }) => ({ status: 200, body }) })
+  const body = { name: 'Žofie 🌍' }
+  const result = await awsLambdaAdapter().mount(implementation)(
+    event({
+      rawPath: '/echo',
+      rawQueryString: '',
+      body: Buffer.from(JSON.stringify(body)).toString('base64'),
+      isBase64Encoded: true,
+    }),
+    lambdaContext()
+  )
+  expect(result.statusCode).toBe(200)
+  expect(JSON.parse(result.body!)).toEqual(body)
+})
+
+test.each(['invalid-chunk', 'rejected-next'] as const)(
+  'closes the AWS producer after %s and observes the transport failure once',
+  async (failure) => {
+    const api = defineContract({
+      routes: { download: route.get('/download', { responses: { 200: response.stream() } }) },
+    })
+    const primary = new Error('producer failed')
+    const cleanup = vi.fn<() => Promise<never>>(async () => {
+      throw new Error('cleanup failed')
+    })
+    const source: AsyncIterable<Uint8Array> = {
+      [Symbol.asyncIterator]: () => ({
+        next: async () => {
+          if (failure === 'rejected-next') throw primary
+          return { done: false, value: 'invalid' as never }
+        },
+        return: cleanup,
+      }),
+    }
+    const implementation = defineServer(api).implement({ download: () => ({ status: 200, body: source }) })
+    const onError = vi.fn<(input: AWSLambdaServerErrorInput) => void>()
+    const input = event({
+      rawPath: '/download',
+      requestContext: { ...event().requestContext, http: { ...event().requestContext.http, method: 'GET' } },
+    })
+    const result = await awsLambdaAdapter().mount(implementation, { onError })(input, lambdaContext())
+    expect(result.statusCode).toBe(500)
+    expect(cleanup).toHaveBeenCalledTimes(1)
+    expect(onError).toHaveBeenCalledTimes(1)
+    expect(onError.mock.calls[0]![0]).toMatchObject({ phase: 'transport', event: input })
+    expect(onError.mock.calls[0]![0].error).toEqual(
+      failure === 'rejected-next' ? primary : new TypeError('Stream chunk must be Uint8Array')
+    )
+  }
+)
+
+test.each(['replace', 'throw', 'invalid-replacement'] as const)(
+  'handles AWS JSON serialization failure with %s observer',
+  async (policy) => {
+    const api = defineContract({
+      routes: { get: route.get('/cycle', { responses: { 200: response.json(z.custom<{ self: string }>()) } }) },
+    })
+    const cycle: Record<string, unknown> = {}
+    cycle['self'] = cycle
+    const implementation = defineServer(api).implement({
+      get: () => ({ status: 200, body: cycle as { self: string } }),
+    })
+    const onError = vi.fn<() => AWSLambdaResponse>(() => {
+      if (policy === 'throw') throw new Error('observer failed')
+      return policy === 'replace' ? { statusCode: 503, body: 'recovered' } : ({ body: 'missing status' } as never)
+    })
+    const result = await awsLambdaAdapter().mount(implementation, { onError })(
+      event({
+        rawPath: '/cycle',
+        requestContext: { ...event().requestContext, http: { ...event().requestContext.http, method: 'GET' } },
+      }),
+      lambdaContext()
+    )
+    expect(onError).toHaveBeenCalledTimes(1)
+    expect(result.statusCode).toBe(policy === 'replace' ? 503 : 500)
+    expect(result.body).toMatch(policy === 'replace' ? /^recovered$/ : /"status":500/)
+  }
+)

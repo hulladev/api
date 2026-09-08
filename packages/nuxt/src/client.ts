@@ -1,5 +1,5 @@
-import type { ClientTransport, ClientTransportRequest, ClientTransportResponse } from '@hulla/api/client'
-import { ClientResponseError } from '@hulla/api/client'
+import type { ClientTransport, ClientTransportRequest } from '@hulla/api/client'
+import { fetchTransportResponse } from '@hulla/api/fetch'
 import type { $Fetch } from 'ofetch'
 
 export type NuxtRequestFetch =
@@ -62,63 +62,6 @@ function requestBody(request: ClientTransportRequest): BodyInit | undefined {
   }
 }
 
-function responseHeaders(response: Response): Readonly<Record<string, string>> {
-  return Object.fromEntries(response.headers.entries())
-}
-
-function responseBytes(response: Response, transportResponse: ClientTransportResponse): AsyncIterable<Uint8Array> {
-  async function* read(): AsyncIterable<Uint8Array> {
-    if (response.body === null) {
-      throw new ClientResponseError('missing-body', transportResponse, `Response ${response.status} has no stream body`)
-    }
-    const reader = response.body.getReader()
-    let complete = false
-    try {
-      while (true) {
-        const result = await reader.read()
-        if (result.done) {
-          complete = true
-          return
-        }
-        yield result.value
-      }
-    } finally {
-      try {
-        if (!complete) await reader.cancel()
-      } finally {
-        reader.releaseLock()
-      }
-    }
-  }
-  return read()
-}
-
-function transportResponse(response: Response): ClientTransportResponse {
-  let result: ClientTransportResponse
-  result = {
-    status: response.status,
-    headers: responseHeaders(response),
-    native: response,
-    readBody: (kind) => {
-      switch (kind) {
-        case 'json':
-          return response.json()
-        case 'text':
-          return response.text()
-        case 'bytes':
-          return response.arrayBuffer().then((buffer) => new Uint8Array(buffer))
-        case 'form-data':
-          return response.formData()
-        case 'stream':
-          return responseBytes(response, result)
-        case 'raw':
-          return response
-      }
-    },
-  }
-  return result
-}
-
 /** Preserves response metadata over browser $fetch.raw or Nitro's request-scoped event.fetch. */
 export function nuxtFetchTransport(
   fetcher: NuxtRequestFetch,
@@ -152,6 +95,6 @@ export function nuxtFetchTransport(
       method: request.method,
       ...(request.signal === undefined ? {} : { signal: request.signal }),
     })
-    return transportResponse(response)
+    return fetchTransportResponse(response)
   }
 }

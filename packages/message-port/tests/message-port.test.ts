@@ -299,3 +299,85 @@ describe('messagePortTransport', () => {
     closePorts(channel)
   })
 })
+
+test.each(['abort', 'remote-close'] as const)(
+  'retains MessagePort %s failures between stream pulls',
+  async (failure) => {
+    const channel = new MessageChannel()
+    const contract = defineContract({ routes: { download: route.get('/', { responses: { 200: response.stream() } }) } })
+    const implementation = defineServer(contract).implement({
+      download: () => ({
+        status: 200,
+        body: (async function* () {
+          yield new Uint8Array([1])
+          yield new Uint8Array([2])
+        })(),
+      }),
+    })
+    const server = messagePortAdapter(channel.port1).mount(implementation)
+    const transport = messagePortTransport(channel.port2)
+    const controller = new AbortController()
+    try {
+      const client = defineClient(contract, { transport })
+      const result = await client.download({ signal: controller.signal })
+      const iterator = result.body[Symbol.asyncIterator]()
+      expect(await iterator.next()).toEqual({ done: false, value: new Uint8Array([1]) })
+      const reason = new Error('stop between pulls')
+      if (failure === 'abort') controller.abort(reason)
+      else {
+        const closed = new Promise<void>((resolve) => {
+          const listener = (message: { readonly type?: string }) => {
+            if (message.type !== 'close') return
+            channel.port2.off('message', listener)
+            resolve()
+          }
+          channel.port2.on('message', listener)
+        })
+        await server.close()
+        await closed
+      }
+      for (let read = 0; read < 2; read++) {
+        await expect(iterator.next()).rejects.toMatchObject(failure === 'abort' ? reason : { code: 'closed' })
+      }
+    } finally {
+      await transport.close()
+      await server.close()
+      closePorts(channel)
+    }
+  }
+)
+
+test('aborts during endpoint setup without cancelling other calls or sending the aborted request', async () => {
+  let finishSetup!: (cleanup: () => void) => void
+  let receive!: (message: unknown) => void
+  const sent: string[] = []
+  const endpoint: MessageEndpoint = {
+    subscribe(listener) {
+      receive = listener
+      return new Promise((resolve) => {
+        finishSetup = resolve
+      })
+    },
+    send(message) {
+      if (message.type !== 'request') return
+      sent.push(message.request.path)
+      receive({
+        ...message,
+        type: 'response',
+        response: { status: 200, headers: {}, body: { kind: 'text', value: 'ok' } },
+      })
+    },
+  }
+  const transport = messagePortTransport(endpoint)
+  const controller = new AbortController()
+  const call = transport({ key: [], method: 'GET', path: '/cancelled', headers: {}, signal: controller.signal })
+  const other = transport({ key: [], method: 'GET', path: '/other', headers: {} })
+  const reason = new Error('abort while connecting')
+  controller.abort(reason)
+  await expect(call).rejects.toBe(reason)
+  expect(sent).toEqual([])
+  finishSetup(() => {})
+  await expect(other).resolves.toMatchObject({ status: 200 })
+  expect(sent).toEqual(['/other'])
+  await transport.close()
+})
