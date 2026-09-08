@@ -1,0 +1,98 @@
+name: Compatibility
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: compatibility-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  profiles:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.value }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
+      - run: bun ci
+      - id: matrix
+        run: echo "value=$(bun scripts/check-packages.ts --matrix)" >> "$GITHUB_OUTPUT"
+
+  host-majors:
+    needs: profiles
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.profiles.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - run: bun ci
+      - name: Build the package and its dependencies
+        run: bun x turbo run build --filter='${{ matrix.package }}...'
+      - name: Check isolated published consumer against the selected host major
+        run: bun run check:compatibility --profile=${{ matrix.profile }}
+
+  node-runtimes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22.18.0', '24.11.0', '26']
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+      - run: bun ci
+      - name: Build portable runtime and native server adapters
+        run: >-
+          bun x turbo run build
+          --filter=@hulla/api-message-port...
+          --filter=@hulla/api-websocket...
+          --filter=@hulla/api-nestjs...
+          --filter=@hulla/api-node-http...
+          --filter=@hulla/api-express...
+          --filter=@hulla/api-fastify...
+          --filter=@hulla/api-hono...
+          --filter=@hulla/api-h3...
+          --filter=@hulla/api-elysia...
+      - name: Exercise core laws and shared adapter conformance under Node
+        run: >-
+          node node_modules/vitest/vitest.mjs run
+          --exclude 'legacy/**'
+          packages/core/tests
+          packages/message-port/tests
+          packages/websocket/tests
+          packages/nestjs/tests
+          packages/node-http/tests
+          packages/express/tests
+          packages/fastify/tests
+          packages/hono/tests
+          packages/h3/tests
+          packages/elysia/tests
+
+  fetch-runtimes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - run: bun ci
+      - run: bun x turbo run build --filter=@hulla/api
+      - run: npm exec --yes --package=deno@2.9.6 -- bun run check:runtimes --deno
