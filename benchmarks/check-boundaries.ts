@@ -55,6 +55,14 @@ export const connect = (port: MessagePortLike) => defineClient(contract, { trans
     forbidden: [...httpModules, 'message-port/server.ts', 'adapters/runtime.ts'],
   },
   {
+    name: 'websocket-client',
+    code: `${contract}\n${client}
+import { webSocketTransport, type WebSocketLike } from '@hulla/api-websocket';
+export const connect = (socket: WebSocketLike) => defineClient(contract, { transport: webSocketTransport(socket) });`,
+    required: ['websocket/client.ts'],
+    forbidden: [...httpModules, 'websocket/server.ts', 'adapters/runtime.ts'],
+  },
+  {
     name: 'fetch-client',
     code: `${contract}\n${client}
 import { fetchTransport } from '@hulla/api/fetch';
@@ -98,6 +106,7 @@ function command(args: string[]): string {
 }
 function sourceImports(code: string): string {
   return code
+    .replace(/'@hulla\/api-websocket'/g, `'${resolve(root, 'packages/websocket/src/index.ts')}'`)
     .replace(/'@hulla\/api-message-port'/g, `'${resolve(root, 'packages/message-port/src/index.ts')}'`)
     .replace(/'@hulla\/api([^']*)'/g, (_match, subpath: string) => {
       const entry = subpath === '/adapters/node' ? 'adapters/node.ts' : `${subpath.slice(1) || '.'}/index.ts`
@@ -139,9 +148,11 @@ try {
         const contains = (path: string) =>
           retained.some((input) =>
             input.startsWith(
-              path.startsWith('message-port/')
-                ? resolve(root, 'packages/message-port/src', path.slice('message-port/'.length))
-                : resolve(root, 'packages/core/src', path)
+              path.startsWith('websocket/')
+                ? resolve(root, 'packages/websocket/src', path.slice('websocket/'.length))
+                : path.startsWith('message-port/')
+                  ? resolve(root, 'packages/message-port/src', path.slice('message-port/'.length))
+                  : resolve(root, 'packages/core/src', path)
             )
           )
         for (const path of consumer.required)
@@ -162,6 +173,12 @@ try {
         assert(
           !retained.some((path) => path.startsWith(resolve(root, 'packages/message-port') + '/')),
           `${consumer.name}: retained the optional MessagePort package`
+        )
+      }
+      if (!consumer.name.startsWith('websocket')) {
+        assert(
+          !retained.some((path) => path.startsWith(resolve(root, 'packages/websocket') + '/')),
+          `${consumer.name}: retained optional WebSocket package`
         )
       }
       if (consumer.execute) command(['--eval', `await (await import(${JSON.stringify(output)})).verify()`])

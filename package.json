@@ -53,6 +53,7 @@
     "tsdown": "^0.22.14",
     "turbo": "^2.10.11",
     "typescript": "^7.0.2",
+    "typescript-api": "npm:@typescript/typescript6@^6.0.2",
     "vitest": "^4.1.11",
     "zod": "^4.4.3"
   },

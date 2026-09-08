@@ -1,0 +1,8 @@
+{
+  "nodeModulesDir": "manual",
+  "imports": {
+    "@hulla/api": "../../packages/core/dist/index.js",
+    "@hulla/api/fetch": "../../packages/core/dist/fetch/index.js",
+    "@hulla/api/server": "../../packages/core/dist/server/index.js"
+  }
+}

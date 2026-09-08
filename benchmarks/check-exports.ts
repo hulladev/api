@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
+import { WEBSOCKET_PROTOCOL, webSocketTransport, webSocketAdapter } from '@hulla/api-websocket'
 const core = JSON.parse(await readFile(new URL('../packages/core/package.json', import.meta.url), 'utf8')) as {
   name: string
   exports: Record<string, { import: string }>
@@ -7,7 +8,11 @@ const core = JSON.parse(await readFile(new URL('../packages/core/package.json', 
   optionalDependencies?: Record<string, string>
   peerDependencies?: Record<string, string>
 }
-assert(!Object.hasOwn(core.exports, './message-port'), 'MessagePort must be installed separately')
+for (const name of ['message-port', 'websocket', 'nestjs']) {
+  assert(!Object.hasOwn(core.exports, `./${name}`), `${name} must be installed separately`)
+  for (const dependencies of [core.dependencies, core.peerDependencies])
+    assert(!Object.hasOwn(dependencies ?? {}, `@hulla/api-${name}`), `Core must not depend on ${name}`)
+}
 for (const dependencies of [core.dependencies, core.optionalDependencies, core.peerDependencies]) {
   assert(!Object.hasOwn(dependencies ?? {}, '@hulla/api-message-port'), 'Core must not depend on MessagePort')
 }
@@ -99,3 +104,7 @@ defineClient(reserved, { transport: () => { throw new Error() } });
 }
 
 await import('./check-boundaries')
+
+assert.equal(WEBSOCKET_PROTOCOL, '@hulla/api-websocket/1')
+assert.equal(typeof webSocketTransport, 'function')
+assert.equal(typeof webSocketAdapter, 'function')

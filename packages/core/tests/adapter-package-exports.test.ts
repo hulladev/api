@@ -25,8 +25,11 @@ describe('adapter package exports', () => {
       'google-cloud-functions',
       'h3',
       'hono',
+      'koa',
       'netlify-functions',
       'node-http',
+      'nestjs',
+      'websocket',
       'react-router',
       'solid-start',
       'tanstack-start',
@@ -36,6 +39,7 @@ describe('adapter package exports', () => {
   })
 
   test('keeps packages with distinct runtime surfaces split', async () => {
+    await expect(exportPaths('message-port')).resolves.toEqual(['.', './desktop', './electron', './tauri', './dioxus'])
     await expect(exportPaths('cloudflare')).resolves.toEqual(['.', './pages'])
     await expect(exportPaths('next')).resolves.toEqual(['./client', './server'])
     await expect(exportPaths('nuxt')).resolves.toEqual(['./client', './server'])
