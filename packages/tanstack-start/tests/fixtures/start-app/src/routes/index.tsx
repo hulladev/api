@@ -1,7 +1,12 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { getHealth } from '../api/health.functions'
 
-export const Route = createFileRoute('/')({ component: Page })
+export const Route = createFileRoute('/')({
+  loader: () => getHealth(),
+  component: Page,
+})
 
 function Page() {
-  return <main>@hulla/api TanStack Start fixture</main>
+  const health = Route.useLoaderData()
+  return <main>@hulla/api TanStack Start fixture: {health}</main>
 }

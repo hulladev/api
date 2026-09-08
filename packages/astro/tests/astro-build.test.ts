@@ -98,6 +98,20 @@ describe('Astro build integration', () => {
       expect(island).toContain('data-request-path="/_server-islands/Status"')
       expect(island).toContain('data-route-path="/api/health"')
       expect(island).toContain('Ada')
+      const islands = await Promise.all(
+        ['ada', 'grace', 'ada', 'grace'].map(async (session) => {
+          const result = await fetch(`${origin}${islandPath!.replaceAll('&amp;', '&')}`, {
+            headers: { cookie: `session=${session}`, referer: `${origin}/` },
+          })
+          expect(result.status).toBe(200)
+          return result.text()
+        })
+      )
+      islands.forEach((html, index) => {
+        expect(html).toContain(index % 2 === 0 ? 'Ada' : 'Grace')
+        // A loopback API request would replace this with /api/health.
+        expect(html).toContain('data-request-path="/_server-islands/Status"')
+      })
     } finally {
       if (server !== undefined && server.exitCode === null) {
         server.kill('SIGTERM')

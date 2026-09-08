@@ -1,13 +1,12 @@
-import { createNextCache } from '@hulla/api-next/client'
-import { contract } from '../contract'
+import { api } from '../local-client'
+import { Refresh } from './refresh'
 
-const cache = createNextCache(contract, {
-  namespace: 'fixture',
-  routes: {
-    health: { cache: 'force-cache', next: { revalidate: 60 } },
-  },
-})
-
-export default function Page() {
-  return <main>{cache.tag(contract.routes.health)}</main>
+export default async function Page() {
+  const result = await api.health()
+  return (
+    <main>
+      <span id="local-health">{result.body}</span>
+      <Refresh />
+    </main>
+  )
 }

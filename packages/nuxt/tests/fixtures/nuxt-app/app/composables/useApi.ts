@@ -3,7 +3,9 @@ import { defineClient } from '@hulla/api/client'
 import { contract } from '~~/shared/api/contract'
 
 export function useApi() {
-  const requestFetch = useRequestFetch()
+  // useRequestFetch() may expose only parsed data during SSR.
+  const event = useRequestEvent()
+  const requestFetch = event ? { fetch: event.fetch } : $fetch
   return defineClient(contract, {
     transport: nuxtFetchTransport(requestFetch),
   })

@@ -27,6 +27,10 @@ describe('React Router v7 build integration', () => {
       const build = (await import(pathToFileURL(join(fixture, 'build/server/index.js')).href)) as ServerBuild
       const handler = createRequestHandler(build, 'production')
 
+      const page = await handler(new Request('https://example.com/'))
+      expect(page.status).toBe(200)
+      expect(await page.text()).toContain('id="local-health">ok')
+
       const getResponse = await handler(new Request('https://example.com/api/health'))
       expect(getResponse.status).toBe(200)
       await expect(getResponse.json()).resolves.toBe('ok')

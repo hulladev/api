@@ -1,5 +1,6 @@
-import { defineEventHandler } from 'h3'
+import { defineEventHandler, getCookie } from 'h3'
 
 export default defineEventHandler((event) => {
-  event.context['actor'] = 'Ada'
+  // Fixture session lookup; real applications verify the session here.
+  event.context['actor'] = getCookie(event, 'session') === 'grace' ? 'Grace' : 'Ada'
 })
