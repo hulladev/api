@@ -34,6 +34,7 @@
     "@hulla/api-solid-start": "workspace:*",
     "@hulla/api-sveltekit": "workspace:*",
     "@hulla/api-tanstack-start": "workspace:*",
+    "@hulla/api-websocket": "workspace:*",
     "@orpc/client": "^1.15.0",
     "@orpc/server": "^1.15.0",
     "@trpc/client": "^11.18.0",

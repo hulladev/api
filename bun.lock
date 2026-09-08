@@ -45,6 +45,7 @@
         "@hulla/api-solid-start": "workspace:*",
         "@hulla/api-sveltekit": "workspace:*",
         "@hulla/api-tanstack-start": "workspace:*",
+        "@hulla/api-websocket": "workspace:*",
         "@orpc/client": "^1.15.0",
         "@orpc/server": "^1.15.0",
         "@trpc/client": "^11.18.0",
@@ -433,6 +434,20 @@
         "@tanstack/react-start": "^1.160.0",
       },
     },
+    "packages/websocket": {
+      "name": "@hulla/api-websocket",
+      "version": "2.0.0",
+      "devDependencies": {
+        "@hulla/api": "workspace:*",
+        "@types/node": "^26.2.0",
+        "@types/ws": "^8.18.1",
+        "ws": "^8.21.3",
+        "zod": "^4.4.3",
+      },
+      "peerDependencies": {
+        "@hulla/api": "^2.0.0",
+      },
+    },
   },
   "packages": {
     "@astrojs/compiler-binding": ["@astrojs/compiler-binding@0.4.0", "", { "optionalDependencies": { "@astrojs/compiler-binding-darwin-arm64": "0.4.0", "@astrojs/compiler-binding-darwin-x64": "0.4.0", "@astrojs/compiler-binding-linux-arm64-gnu": "0.4.0", "@astrojs/compiler-binding-linux-arm64-musl": "0.4.0", "@astrojs/compiler-binding-linux-x64-gnu": "0.4.0", "@astrojs/compiler-binding-linux-x64-musl": "0.4.0", "@astrojs/compiler-binding-wasm32-wasi": "0.4.0", "@astrojs/compiler-binding-win32-arm64-msvc": "0.4.0", "@astrojs/compiler-binding-win32-x64-msvc": "0.4.0" } }, "sha512-x2RjDUuWfwLNtc3mjAdSRInwqh/rqbLar9cm/5FOMbHvmYZB7yfKewzSclAxWjIZsypJDXv1lhaP2WG+P8TK3g=="],
@@ -734,6 +749,8 @@
     "@hulla/api-tanstack-query": ["@hulla/api-tanstack-query@workspace:packages/tanstack-query"],
 
     "@hulla/api-tanstack-start": ["@hulla/api-tanstack-start@workspace:packages/tanstack-start"],
+
+    "@hulla/api-websocket": ["@hulla/api-websocket@workspace:packages/websocket"],
 
     "@img/colour": ["@img/colour@1.1.0", "", {}, "sha512-Td76q7j57o/tLVdgS746cYARfSyxk8iEfRxewL9h4OMzYhbW4TAcppl0mT4eyqXddh6L/jwoM75mo7ixa/pCeQ=="],
 
@@ -1382,6 +1399,8 @@
     "@types/trusted-types": ["@types/trusted-types@2.0.7", "", {}, "sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw=="],
 
     "@types/unist": ["@types/unist@3.0.3", "", {}, "sha512-ko/gIFJRv177XgZsZcBwnqJN5x/Gien8qNOn0D5bQU/zAzVf9Zt3BlcUiLqhV9y4ARk0GbT3tnUiPNgnTXzc/Q=="],
+
+    "@types/ws": ["@types/ws@8.18.1", "", { "dependencies": { "@types/node": "*" } }, "sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg=="],
 
     "@typescript/old": ["typescript@6.0.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw=="],
 
