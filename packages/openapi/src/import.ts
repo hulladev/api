@@ -18,6 +18,7 @@ type HTTPMethod = 'get' | 'put' | 'post' | 'delete' | 'patch' | 'query'
 export type OpenAPISchemaCodeContext = {
   readonly location: string
   readonly transport: 'json' | 'text'
+  readonly resolveReference?: (reference: string) => JSONSchema
 }
 
 export type OpenAPISchemaPropertyCode = {
@@ -231,10 +232,20 @@ function numberConstraints(schema: Exclude<JSONSchema, boolean>, base: string): 
   return result
 }
 
-function zodSchema(schema: JSONSchema | ReferenceObject | undefined, context: OpenAPISchemaCodeContext): string {
+function zodSchema(
+  schema: JSONSchema | ReferenceObject | undefined,
+  context: OpenAPISchemaCodeContext & { readonly referenceTrail?: readonly string[] }
+): string {
   if (schema === undefined || schema === true) return context.transport === 'json' ? 'z.json()' : 'z.string()'
   if (schema === false) return 'z.never()'
-  if (isReference(schema)) return componentName(referenceComponentName(schema))
+  if (isReference(schema)) {
+    if (context.transport !== 'text' || context.resolveReference === undefined)
+      return componentName(referenceComponentName(schema))
+    const trail = context.referenceTrail ?? []
+    if (trail.includes(schema.$ref))
+      throw new Error(`${context.location}: recursive text parameter schema ${schema.$ref} is not supported`)
+    return zodSchema(context.resolveReference(schema.$ref), { ...context, referenceTrail: [...trail, schema.$ref] })
+  }
 
   if (schema.const !== undefined) return enumSchema([schema.const], context.transport)
   if (schema.enum !== undefined) return enumSchema(schema.enum, context.transport)
@@ -254,6 +265,7 @@ function zodSchema(schema: JSONSchema | ReferenceObject | undefined, context: Op
   }
 
   const types = Array.isArray(schema.type) ? schema.type : schema.type === undefined ? [] : [schema.type]
+  if (types.length > 0 && types.every((type) => type === 'null')) return 'z.null()'
   const nullable = types.includes('null') || schema['nullable'] === true
   const nonNull = types.filter((type) => type !== 'null')
   if (nonNull.length > 1) {
@@ -285,9 +297,6 @@ function zodSchema(schema: JSONSchema | ReferenceObject | undefined, context: Op
         break
       case 'number':
         result = numberConstraints(schema, 'z.number()')
-        break
-      case 'null':
-        result = 'z.null()'
         break
       case 'object':
         result = zodObjectSchema(schema, context)
@@ -321,7 +330,7 @@ function zodObjectSchema(schema: Exclude<JSONSchema, boolean>, context: OpenAPIS
   if (schema['additionalProperties'] === false) result += '.strict()'
   else if (typeof schema['additionalProperties'] === 'object') {
     result += `.catchall(${zodSchema(schema['additionalProperties'] as JSONSchema, context)})`
-  }
+  } else result += '.catchall(z.json())'
   return result
 }
 
@@ -474,6 +483,7 @@ function parameterSchema(
     const expression = context.schemaGenerator.schema(parameter.schema, {
       location: parameterOwner,
       transport: 'text',
+      resolveReference: (reference) => resolvePointer(context.document, reference) as JSONSchema,
     })
     const required = location === 'path' || parameter.required === true
     properties.push({ name: parameter.name, schema: expression, required })
@@ -564,6 +574,7 @@ function responseCode(context: ImportContext, response: ResponseObject, owner: s
       const expression = context.schemaGenerator.schema(resolved?.schema, {
         location: `${owner} header ${name}`,
         transport: 'text',
+        resolveReference: (reference) => resolvePointer(context.document, reference) as JSONSchema,
       })
       return { name, schema: expression, required: resolved?.required === true }
     })
@@ -746,7 +757,22 @@ export function generateContractFromOpenAPI(
 ): GeneratedOpenAPIContract {
   const diagnostics: OpenAPIDiagnostic[] = []
   const schemaGenerator = options.schemaGenerator ?? zodSchemaCodeGenerator()
-  const context: ImportContext = { document, diagnostics, schemaGenerator }
+  let usesGeneratedSchemas = false
+  const context: ImportContext = {
+    document,
+    diagnostics,
+    schemaGenerator: {
+      ...schemaGenerator,
+      schema(...args) {
+        usesGeneratedSchemas = true
+        return schemaGenerator.schema(...args)
+      },
+      object(...args) {
+        usesGeneratedSchemas = true
+        return schemaGenerator.object(...args)
+      },
+    },
+  }
   if (document.openapi.startsWith('3.0')) {
     diagnostic(
       context,
@@ -774,6 +800,29 @@ export function generateContractFromOpenAPI(
   }
   const operations = collectOperations(document)
   const components = orderedComponents(document.components?.schemas ?? {})
+  const componentNames = new Map<string, string>()
+  for (const { name } of components) {
+    const identifier = schemaGenerator.componentName(name)
+    if (!/^[A-Za-z_$][\w$]*$/.test(identifier)) {
+      diagnostic(
+        context,
+        'error',
+        `components.schemas.${name}`,
+        `Generated component name "${identifier}" is not a valid identifier`
+      )
+    }
+    const previous = componentNames.get(identifier)
+    if (previous !== undefined) {
+      diagnostic(
+        context,
+        'error',
+        `components.schemas.${name}`,
+        `Generated component name "${identifier}" conflicts with component "${previous}"`
+      )
+    }
+    componentNames.set(identifier, name)
+  }
+  if (diagnostics.some(({ severity }) => severity === 'error')) throw new OpenAPIImportError(diagnostics)
   const apiImport = options.apiImport ?? '@hulla/api'
   const componentLines = components.map(({ name, schema, recursive }) =>
     schemaGenerator.componentDeclaration(name, schema, recursive)
@@ -783,11 +832,10 @@ export function generateContractFromOpenAPI(
   )
   const usesRequest = operations.some(({ operation }) => operation.requestBody !== undefined)
   const usesJsonValue = schemaGenerator.requiresJsonValueType === true && components.some(({ recursive }) => recursive)
-  const usesGeneratedSchemas = [...componentLines, ...routeLines].some((line) => line.includes('z.'))
   const apiImports = ['defineContract', ...(usesRequest ? ['request'] : []), 'response', 'route']
   const contractCode = [
     `import { ${apiImports.join(', ')}${usesJsonValue ? ', type JsonValue' : ''} } from ${quote(apiImport)}`,
-    ...(usesGeneratedSchemas ? schemaGenerator.imports : []),
+    ...(usesGeneratedSchemas || components.length > 0 ? schemaGenerator.imports : []),
     '',
     ...componentLines.flatMap((line) => [line, '']),
     'export const contract = defineContract({',

@@ -309,3 +309,175 @@ describe('OpenAPI to contract', () => {
     )
   })
 })
+
+test('generated null-only and nullable-union schemas reject other JSON values', async () => {
+  const { zodSchemaCodeGenerator } = await import('../src/import')
+  const generator = zodSchemaCodeGenerator()
+  const compile = (schema: Parameters<typeof generator.schema>[0]) => {
+    const code = generator.schema(schema, { location: 'test', transport: 'json' })
+    return new Function('z', `return ${code}`)(z) as z.ZodType
+  }
+  for (const schema of [{ type: 'null' }, { type: ['null'] }] as const) {
+    const validator = compile(schema)
+    expect(validator.safeParse(null).success).toBe(true)
+    for (const value of ['text', 1, false, {}, []]) expect(validator.safeParse(value).success).toBe(false)
+  }
+  const nullable = compile({ anyOf: [{ type: 'string' }, { type: 'null' }] })
+  expect(nullable.safeParse(null).success).toBe(true)
+  expect(nullable.safeParse('text').success).toBe(true)
+  expect(nullable.safeParse({ unexpected: true }).success).toBe(false)
+  expect(compile({}).safeParse({ arbitrary: true }).success).toBe(true)
+})
+
+test.each([false, true])('generated text parameters decode across HTTP with references=%s', async (references) => {
+  const { defineServer } = await import('@hulla/api/server')
+  const { fetchAdapter } = await import('@hulla/api/fetch')
+  const number = { type: 'integer', minimum: 1 } as const
+  const boolean = { type: 'boolean' } as const
+  const components = { Count: number, Enabled: boolean }
+  const select = (name: keyof typeof components) =>
+    references ? { $ref: `#/components/schemas/${name}` } : components[name]
+  const generated = generateContractFromOpenAPI({
+    openapi: '3.1.2',
+    info: { title: 'parameters', version: '1' },
+    components: { schemas: components },
+    paths: {
+      '/items/{id}': {
+        get: {
+          operationId: 'items',
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: select('Count') },
+            {
+              name: 'limit',
+              in: 'query',
+              required: true,
+              schema: { anyOf: [select('Count'), { type: 'string', enum: ['all'] }] },
+            },
+            { name: 'x-enabled', in: 'header', required: true, schema: select('Enabled') },
+          ],
+          responses: { 200: { description: 'ok', content: { 'application/json': { schema: { type: 'object' } } } } },
+        },
+      },
+    },
+  })
+  const code = ts
+    .transpileModule(generated.contractCode, {
+      compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ESNext },
+    })
+    .outputText.replace(/^import .*$/gm, '')
+    .replace('export const contract', 'const contract')
+  const handler = new Function(
+    'z',
+    'defineContract',
+    'response',
+    'route',
+    'defineServer',
+    'fetchAdapter',
+    `${code};
+    return fetchAdapter().mount(defineServer(contract).implement({
+      items: ({ params, query, headers }) => ({ status: 200, body: { params, query, headers } })
+    }));
+  `
+  )(z, defineContract, response, route, defineServer, fetchAdapter) as (request: Request) => Promise<Response>
+  const result = await handler(new Request('http://local/items/2?limit=3', { headers: { 'x-enabled': 'true' } }))
+  expect(result.status).toBe(200)
+  expect(await result.json()).toEqual({ params: { id: 2 }, query: { limit: 3 }, headers: { 'x-enabled': true } })
+  expect(
+    (await handler(new Request('http://local/items/0?limit=3', { headers: { 'x-enabled': 'true' } }))).status
+  ).toBe(400)
+})
+
+test('generated object schemas preserve allowed additional JSON fields', async () => {
+  const { zodSchemaCodeGenerator } = await import('../src/import')
+  const generator = zodSchemaCodeGenerator()
+  const compile = (schema: Parameters<typeof generator.schema>[0]) =>
+    new Function('z', `return ${generator.schema(schema, { location: 'test', transport: 'json' })}`)(z) as z.ZodType
+  for (const additionalProperties of [undefined, true, {}]) {
+    for (const properties of [undefined, { known: { type: 'string' } }]) {
+      const validator = compile({
+        type: 'object',
+        ...(properties === undefined ? {} : { properties }),
+        additionalProperties,
+      })
+      const input = { known: 'value', extra: { nested: [1, null, true] } }
+      expect(validator.parse(input)).toEqual(input)
+    }
+  }
+  expect(compile({ type: 'object', additionalProperties: false }).safeParse({ extra: true }).success).toBe(false)
+  const numeric = compile({
+    type: 'object',
+    properties: { known: { type: 'string' } },
+    additionalProperties: { type: 'number' },
+  })
+  expect(numeric.parse({ known: 'value', extra: 3 })).toEqual({ known: 'value', extra: 3 })
+  expect(numeric.safeParse({ known: 'value', extra: 'invalid' }).success).toBe(false)
+})
+
+test.each([
+  { names: ['User-ID', 'User_ID'], message: 'conflicts with component' },
+  { names: ['123'], message: 'not a valid identifier' },
+])('reports unusable generated component names: $names', ({ names, message }) => {
+  expect(() =>
+    generateContractFromOpenAPI({
+      openapi: '3.1.2',
+      info: { title: 'Names', version: '1' },
+      components: { schemas: Object.fromEntries(names.map((name) => [name, { type: 'string' }])) },
+      paths: {
+        '/item': {
+          get: {
+            responses: {
+              200: {
+                description: 'ok',
+                content: { 'application/json': { schema: { $ref: `#/components/schemas/${names[0]}` } } },
+              },
+            },
+          },
+        },
+      },
+    })
+  ).toThrowError(
+    expect.objectContaining({
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({
+          severity: 'error',
+          location: `components.schemas.${names.at(-1)}`,
+          message: expect.stringContaining(message),
+        }),
+      ]),
+    })
+  )
+})
+
+test('custom schema generators retain their imports and produce compilable contracts', async () => {
+  const generated = generateContractFromOpenAPI(
+    {
+      openapi: '3.1.2',
+      info: { title: 'Custom', version: '1' },
+      paths: {
+        '/item': {
+          get: {
+            responses: { 200: { description: 'ok', content: { 'application/json': { schema: { type: 'string' } } } } },
+          },
+        },
+      },
+    },
+    {
+      schemaGenerator: {
+        imports: ['import { z as v } from "zod"'],
+        componentName: (name) => `${name}Schema`,
+        componentDeclaration: (name) => `const ${name}Schema = v.string()`,
+        schema: () => 'v.string()',
+        object: () => 'v.object({})',
+      },
+    }
+  )
+  expect(generated.contractCode).toContain('import { z as v } from "zod"')
+  const directory = await mkdtemp(join(tmpdir(), 'hulla-openapi-custom-'))
+  const path = join(directory, 'api.generated.ts')
+  try {
+    await writeFile(path, generated.contractCode)
+    expect(diagnosticsFor([path])).toEqual([])
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
