@@ -2,6 +2,10 @@
 
 All adapters use the shared route executor for contract input/output validation, context and middleware. Native routers retain host routing semantics.
 
+Custom adapters can provide `AdapterRouteInput.readHeader(name)` for synchronous reads of individual normalized header names. Body media-type checks use it when no explicit `headers` record or parsed-body `contentType` takes precedence. Existing adapters can continue providing only `readHeaders()`. A declared header schema still needs the full record from `headers` or `readHeaders()`; both readers must describe the same request headers. The Fetch adapter materializes and caches that record per request only when it is needed.
+
+Hono, H3 and Elysia use native single-header reads for body checks. Node HTTP, Express, Fastify and Koa share `nodeRequestHeader` and `nodeRequestHeaders` from `@hulla/api-node`, preserving repeated values and own header names while excluding HTTP/2 pseudo-headers. Express and Fastify cache full header records per request when a header schema requires them.
+
 | Boundary | Routing / HEAD | Body ownership and limits | Cancellation |
 |---|---|---|---|
 | Fetch and Fetch-based framework wrappers | Core static-path precedence, then method; explicit HEAD declarations; 404/405 from core | Owned reader: no library-imposed default cap; optional preservation | Native Request signal; returned streams close their producer on cancel |
@@ -46,7 +50,7 @@ passing the portable laws does not prove every host feature.
 | Fetch | [transport-conformance.test.ts](../packages/message-port/tests/transport-conformance.test.ts) | Uses native Request/Response without a network socket |
 | In-process | [transport-conformance.test.ts](../packages/message-port/tests/transport-conformance.test.ts) | No malformed JSON text scenario: input is already an application value |
 | MessagePort | [transport-conformance.test.ts](../packages/message-port/tests/transport-conformance.test.ts) | No malformed JSON text scenario: messages use structured clone |
-| Node HTTP | [conformance.test.ts](../packages/node-http/tests/conformance.test.ts) | Real TCP server |
+| Node HTTP | [conformance.test.ts](../packages/node/tests/conformance.test.ts) | Real TCP server |
 | Express | [conformance.test.ts](../packages/express/tests/conformance.test.ts) | Real TCP server; multipart parser is application-owned |
 | Fastify | [conformance.test.ts](../packages/fastify/tests/conformance.test.ts) | Real TCP server; multipart requires a host plugin |
 | Hono | [conformance.test.ts](../packages/hono/tests/conformance.test.ts) | Native router and Fetch handler |

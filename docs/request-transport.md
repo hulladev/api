@@ -4,6 +4,8 @@
 
 ## URL and header values
 
+Client path parameters cannot encode to `.` or `..`: URL normalization would change the target endpoint. These values are rejected before sending the request.
+
 Path parameters, query fields, and headers cross HTTP as text. Their wire schemas must therefore accept strings; query arrays and tuples accept repeated strings. A one-way schema transform keeps the client textual while giving the handler a richer value:
 
 ```ts

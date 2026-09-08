@@ -24,7 +24,7 @@ The first vertical slice includes:
 - an optional `@hulla/api-message-port` package for workers, Electron, and custom ordered IPC endpoints
 - explicit TanStack Query and SWR client wrappers with no core plugin hooks
 - an advanced `@hulla/api/adapters` server-adapter boundary
-- a dependency-free `@hulla/api-node-http` integration with native request/response context and streaming backpressure
+- a dependency-free `@hulla/api-node/http` integration with native request/response context and streaming backpressure
 - a streaming `@hulla/api-express` server integration for complete implementations and route fragments
 - a native-routing `@hulla/api-fastify` integration with typed request, reply, hooks, and plugin encapsulation
 - a native-routing `@hulla/api-hono` integration with typed Hono context, bindings, and variables
@@ -157,7 +157,7 @@ packages/core/
     validation.ts   Standard Schema execution plans and explicit codecs
   tests/            Contract laws and vertical-slice tests
 packages/openapi/   OpenAPI exporter, importer, typed sidecars, docstrings, and CLI
-packages/node-http/ dependency-free Node.js HTTP server adapter over the catch-all route runtime
+packages/node/      shared Node HTTP helpers and the /http server adapter over the catch-all route runtime
 packages/express/   native-routing Express server adapter over the route runtime
 packages/fastify/   native-routing Fastify server adapter over the route runtime
 packages/hono/      native-routing Hono server adapter over the route runtime

@@ -1,7 +1,15 @@
 # Node.js HTTP
 
-`@hulla/api-node-http` turns a complete `@hulla/api` server implementation or deployable fragment into a Node.js
+`@hulla/api-node/http` turns a complete `@hulla/api` server implementation or deployable fragment into a Node.js
 `RequestListener`. It uses only `node:http` and does not create or start a server.
+
+Install `@hulla/api-node` alongside `@hulla/api`, then import `nodeHttpAdapter` from
+`@hulla/api-node/http`. The package root exports the shared Node header, body, lifetime,
+and response helpers used by framework adapters.
+
+```sh
+bun add @hulla/api @hulla/api-node
+```
 
 ## Prerequisites
 
@@ -33,7 +41,7 @@ fragments.
 
 ```ts
 import { createServer } from 'node:http'
-import { nodeHttpAdapter } from '@hulla/api-node-http'
+import { nodeHttpAdapter } from '@hulla/api-node/http'
 import { implementation } from './api/server'
 
 const handler = nodeHttpAdapter().mount(implementation)
@@ -84,7 +92,7 @@ headers:
 
 ```ts
 import { defineServer } from '@hulla/api/server'
-import { nodeHttpAdapter } from '@hulla/api-node-http'
+import { nodeHttpAdapter } from '@hulla/api-node/http'
 
 const adapter = nodeHttpAdapter()
 const serverDefinition = defineServer(contract, {

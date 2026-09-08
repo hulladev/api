@@ -36,3 +36,11 @@ import { messagePortAdapter, messagePortTransport } from '@hulla/api-message-por
 ```
 
 The same package exports `messagePortEndpoint`, protocol types, and custom IPC endpoint support. Call signatures, the default channel, protocol version, cancellation and stream flow control are unchanged. Fetch and in-process transport remain at `@hulla/api/fetch` and `@hulla/api/in-process`.
+
+## Node package boundary
+
+Install `@hulla/api-node` in place of `@hulla/api-node-http` and import the standalone
+`nodeHttpAdapter` from `@hulla/api-node/http`. Shared helpers previously exported by
+`@hulla/api/adapters/node` now come from `@hulla/api-node`. Express, Fastify, Koa, and
+NestJS install the shared Node package automatically. Fetch remains available at
+`@hulla/api/fetch`.

@@ -115,6 +115,8 @@ hulla-openapi check ./openapi.yaml \
 structured diagnostics; generation stops on errors instead of emitting permissive placeholder schemas. OpenAPI cannot
 reconstruct application-side `@hulla/api` codecs, so imported schemas describe the wire contract.
 
+Imported object schemas preserve additional JSON fields unless `additionalProperties` forbids or constrains them. Component names that produce invalid or duplicate TypeScript identifiers are reported as errors; rename those components and their references before regenerating.
+
 ## Consume an imported contract
 
 The generated contract is a normal runtime contract, so it uses the same client as a code-first contract:
