@@ -9,4 +9,5 @@ export default defineConfig({
   minify: false,
   outDir: 'dist',
   publint: true,
+  tsconfig: 'tsconfig.build.json',
 })

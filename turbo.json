@@ -17,12 +17,14 @@
     },
     "test": {
       "dependsOn": ["^build"],
-      "inputs": ["$TURBO_DEFAULT$", "../../tsconfig.base.json"]
+      "inputs": ["$TURBO_DEFAULT$", "../../tsconfig.base.json"],
+      "env": ["SOLID_START_NODE_BINARY"]
     },
     "test:coverage": {
       "cache": false,
       "dependsOn": ["^build"],
-      "outputs": ["coverage/**"]
+      "outputs": ["coverage/**"],
+      "env": ["SOLID_START_NODE_BINARY"]
     },
     "test:watch": {
       "cache": false,
@@ -35,5 +37,10 @@
     "clean": {
       "cache": false
     }
-  }
+  },
+  "globalDependencies": [
+    "scripts/framework-test-utils.ts",
+    "scripts/adapter-conformance.ts",
+    "scripts/conformance-http.ts"
+  ]
 }

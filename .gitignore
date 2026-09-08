@@ -184,3 +184,6 @@ output/
 # Generated host integration fixtures
 .start/
 .react-router/
+
+# Temporary runtime verification bundles
+examples/.runtime-consumer-*/

@@ -8,7 +8,9 @@
     "packages/react-router/tests/fixtures/**",
     "packages/solid-start/tests/fixtures/**",
     "packages/sveltekit/tests/fixtures/**",
-    "packages/tanstack-start/tests/fixtures/**"
+    "packages/tanstack-start/tests/fixtures/**",
+    "scripts/package-consumers/**",
+    "examples/runtime-hosts/**"
   ],
   "treatConfigHintsAsErrors": true,
   "workspaces": {

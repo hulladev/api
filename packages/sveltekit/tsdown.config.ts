@@ -3,6 +3,7 @@ import { defineConfig } from 'tsdown'
 export default defineConfig({
   clean: true,
   dts: true,
+  tsconfig: 'tsconfig.build.json',
   entry: ['src/remote.ts', 'src/server.ts'],
   deps: { neverBundle: ['$app/server'] },
   fixedExtension: false,

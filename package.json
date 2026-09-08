@@ -22,7 +22,7 @@
     "analyze:size": "bun run build && bun run --cwd benchmarks analyze:size",
     "bench": "bun run build && bun run --cwd benchmarks bench",
     "build": "turbo run build",
-    "check": "bun run fmt && bun run lint && bun run lint:docs && bun run analyze:dead-code && bun run typecheck && bun run test && bun run build && bun run check:exports && bun run --cwd benchmarks check:size",
+    "check": "bun run fmt && bun run lint && bun run lint:docs && bun run analyze:dead-code && bun run typecheck && bun run test && bun run build && bun run check:exports && bun run check:packages && bun run check:runtimes && bun run --cwd benchmarks check:size",
     "clean": "turbo run clean && rm -rf .turbo",
     "commit": "cz",
     "dev": "turbo run dev",
@@ -34,9 +34,12 @@
     "test": "turbo run test",
     "test:coverage": "turbo run test:coverage",
     "test:watch": "turbo run test:watch",
-    "typecheck": "turbo run typecheck",
+    "typecheck": "turbo run typecheck && tsc -p scripts/tsconfig.json",
     "lint:docs": "bun scripts/check-docs.ts",
-    "check:exports": "bun benchmarks/check-exports.ts"
+    "check:exports": "bun benchmarks/check-exports.ts",
+    "check:packages": "bun scripts/check-packages.ts",
+    "check:compatibility": "bun scripts/check-packages.ts",
+    "check:runtimes": "bun scripts/check-runtime-hosts.ts"
   },
   "devDependencies": {
     "@commitlint/cli": "^21.2.2",
