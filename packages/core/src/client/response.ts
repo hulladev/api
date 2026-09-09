@@ -110,21 +110,34 @@ function ownedStream(
   const iterator = Symbol.asyncIterator in source ? source[Symbol.asyncIterator]() : source[Symbol.iterator]()
   let returning: Promise<IteratorResult<unknown>> | undefined
   let closed = false
+  const close = (reason?: unknown) =>
+    (returning ??= (async () => {
+      closed = true
+      try {
+        await response.dispose?.(reason)
+      } finally {
+        await iterator.return?.()
+      }
+      return { done: true as const, value: undefined }
+    })())
   return {
     [Symbol.asyncIterator]() {
       return this
     },
-    next: async () => (closed ? { done: true, value: undefined } : iterator.next()),
-    return: () =>
-      (returning ??= (async () => {
-        closed = true
+    next: async () => {
+      if (closed) return { done: true, value: undefined }
+      try {
+        return await iterator.next()
+      } catch (error) {
         try {
-          await response.dispose?.()
-        } finally {
-          await iterator.return?.()
+          await close(error)
+        } catch {
+          // Cleanup must not replace the producer or decoding failure.
         }
-        return { done: true as const, value: undefined }
-      })()),
+        throw error
+      }
+    },
+    return: () => close(),
   }
 }
 

@@ -61,6 +61,10 @@ The effective endpoints are `GET /api/health`, `GET /api/users/:id`, and `PATCH 
 paths, and route paths compose structurally; object keys such as `users.byId` form the typed server and client call tree
 but do not add URL segments themselves.
 
+Declared base, router, and route paths cannot contain percent signs or control characters. Use path parameters for
+values containing literal percent signs or other characters requiring URL encoding; the client encodes those values
+and the server decodes them once. Pre-encoded path declarations, including encoded dot segments, are rejected at setup.
+
 ## Requests and responses
 
 Route inputs are opt-in. Declare `params`, `query`, `headers`, and `body` only when the endpoint accepts them. A request

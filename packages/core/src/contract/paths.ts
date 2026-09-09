@@ -62,6 +62,16 @@ export function pathParamNames(path: string): readonly string[] {
 }
 
 function assertSafePath(path: string, label: string, allowParameters: boolean): void {
+  if (path.includes('%')) {
+    throw new TypeError(
+      `${label} "${path}" cannot contain percent signs; use path parameters for values requiring percent encoding`
+    )
+  }
+  // Control characters can be stripped or normalized by native URL parsing.
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f\u007f]/.test(path)) {
+    throw new TypeError(`${label} "${path}" cannot contain control characters`)
+  }
   if (path.includes('?')) {
     throw new TypeError(`${label} "${path}" cannot contain a query string; use the route query option`)
   }
