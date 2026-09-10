@@ -1,15 +1,12 @@
 import type { CompiledPathParameters } from '../compiler'
-import { type ExecutionStep, mapExecutionSteps, mapExecutionStep } from '../execution'
+import { mapExecutionStep, mapExecutionSteps, type ExecutionStep } from '../execution'
 import { isRecord, setOwn } from '../object'
 import { compileSchemaExecution } from '../validation'
 
-function parameterGroup(
-  declaration: CompiledPathParameters,
-  value: Readonly<Record<string, unknown>>
-): Record<string, unknown> {
-  const group: Record<string, unknown> = {}
-  for (const name of declaration.names) setOwn(group, name, value[name])
-  return group
+function group(declaration: CompiledPathParameters, value: Readonly<Record<string, unknown>>): Record<string, unknown> {
+  const fields: Record<string, unknown> = {}
+  for (const name of declaration.names) setOwn(fields, name, value[name])
+  return fields
 }
 
 export type PathParameterEncoder = (value: Readonly<Record<string, unknown>>) => ExecutionStep<string>
@@ -17,91 +14,75 @@ export type PathParameterDecoder = (
   value: Readonly<Record<string, string>>
 ) => ExecutionStep<Readonly<Record<string, unknown>>>
 
-/** Compiles application path parameter encoding for a route. */
+/** Produces captured wire parameters once for both direct dispatch and HTTP path rendering. */
+export function compilePathParameterValues(
+  declarations: readonly CompiledPathParameters[]
+): (value: Readonly<Record<string, unknown>>) => ExecutionStep<Readonly<Record<string, string>>> {
+  const fields = declarations.map((declaration) => ({
+    declaration,
+    encode: compileSchemaExecution(declaration.schema, { location: 'params' }).encode,
+  }))
+  return (value) =>
+    mapExecutionStep(
+      mapExecutionSteps(fields, ({ declaration, encode }) =>
+        encode === undefined ? value : encode(group(declaration, value))
+      ),
+      (groups) => {
+        const parameters: Record<string, string> = {}
+        for (let index = 0; index < fields.length; index++) {
+          const values = groups[index]
+          if (!isRecord(values)) throw new TypeError('Encoded route parameters must be an object')
+          for (const name of fields[index]!.declaration.names) {
+            const parameter = values[name]
+            if (typeof parameter !== 'string') throw new TypeError(`Route parameter "${name}" must encode to a string`)
+            if (parameter === '.' || parameter === '..')
+              throw new TypeError(`Route parameter "${name}" cannot be a dot segment`)
+            setOwn(parameters, name, parameter)
+          }
+        }
+        return Object.freeze(parameters)
+      }
+    )
+}
+
+export function compilePathRenderer(path: string): (parameters: Readonly<Record<string, string>>) => string {
+  const segments = path.split('/').map((segment) => (segment.startsWith(':') ? { name: segment.slice(1) } : segment))
+  return (parameters) => {
+    let rendered = ''
+    for (let index = 0; index < segments.length; index++) {
+      const segment = segments[index]!
+      if (index > 0) rendered += '/'
+      rendered += typeof segment === 'string' ? segment : encodeURIComponent(parameters[segment.name]!)
+    }
+    return rendered
+  }
+}
+
 export function compilePathParameterEncoder(
   path: string,
   declarations: readonly CompiledPathParameters[]
 ): PathParameterEncoder {
-  const plans = declarations.map((declaration) => ({
-    declaration,
-    encode: compileSchemaExecution(declaration.schema, { location: 'params' }).encode,
-  }))
-  const groupsByName = new Map<string, number>()
-  for (let index = 0; index < declarations.length; index++) {
-    for (const name of declarations[index]!.names) groupsByName.set(name, index)
-  }
-  const segments = path
-    .split('/')
-    .map((segment) =>
-      segment.startsWith(':') ? { name: segment.slice(1), group: groupsByName.get(segment.slice(1))! } : segment
-    )
-
-  const render = (
-    value: Readonly<Record<string, unknown>>,
-    groups?: readonly Readonly<Record<string, unknown>>[]
-  ): string => {
-    let path = ''
-    for (let index = 0; index < segments.length; index++) {
-      if (index > 0) path += '/'
-      const segment = segments[index]!
-      if (typeof segment === 'string') {
-        path += segment
-        continue
-      }
-      const group = groups === undefined ? value : groups[segment.group]!
-      const parameter = group[segment.name]
-      if (parameter === undefined || parameter === null) {
-        throw new TypeError(`Route parameter "${segment.name}" must be defined`)
-      }
-      if (typeof parameter !== 'string') {
-        throw new TypeError(`Route parameter "${segment.name}" must encode to a string`)
-      }
-      if (parameter === '.' || parameter === '..') {
-        throw new TypeError(`Route parameter "${segment.name}" cannot be a dot segment`)
-      }
-      path += encodeURIComponent(parameter)
-    }
-    return path
-  }
-
-  // Ordinary schemas expose wire types directly. Only codecs need isolated
-  // declaration groups; rendering can read ordinary parameters without copying.
-  if (plans.every((plan) => plan.encode === undefined)) return render
-
-  return (value) =>
-    mapExecutionStep(
-      mapExecutionSteps(plans, ({ declaration, encode }) => {
-        if (encode === undefined) return value
-        return mapExecutionStep(encode(parameterGroup(declaration, value)), (encoded) => {
-          if (!isRecord(encoded)) throw new TypeError('Encoded route parameters must be an object')
-          return encoded
-        })
-      }),
-      (groups) => render(value, groups)
-    )
+  const encode = compilePathParameterValues(declarations)
+  const render = compilePathRenderer(path)
+  return (value) => mapExecutionStep(encode(value), render)
 }
 
-/** Compiles captured wire path parameter decoding for a route. */
 export function compilePathParameterDecoder(declarations: readonly CompiledPathParameters[]): PathParameterDecoder {
-  const plans = declarations.map((declaration) => ({
+  const fields = declarations.map((declaration) => ({
     declaration,
     decode: compileSchemaExecution(declaration.schema, { location: 'params' }).decode,
   }))
-
-  return (value) => {
-    const resolved = mapExecutionSteps(plans, ({ declaration, decode }) => {
-      return mapExecutionStep(decode(parameterGroup(declaration, value)), (decoded) => {
-        if (!isRecord(decoded)) throw new TypeError('Decoded route parameters must be an object')
-        return { declaration, decoded }
-      })
-    })
-
-    return mapExecutionStep(resolved, (groups) => {
-      const decodedValues: Record<string, unknown> = {}
-      for (const { declaration, decoded } of groups) {
-        for (const name of declaration.names) setOwn(decodedValues, name, decoded[name])
+  return (value) =>
+    mapExecutionStep(
+      mapExecutionSteps(fields, ({ declaration, decode }) => decode(group(declaration, value))),
+      (groups) => {
+        const parameters: Record<string, unknown> = {}
+        for (let index = 0; index < fields.length; index++) {
+          const values = groups[index]
+          if (!isRecord(values)) throw new TypeError('Decoded route parameters must be an object')
+          for (const name of fields[index]!.declaration.names) setOwn(parameters, name, values[name])
+        }
+        return parameters
       }
-      return decodedValues
-    })
-  }
+    )
 }

@@ -1,11 +1,8 @@
 import type { CompiledContractRoute } from '../compiler'
-import { getCompositionState } from '../composition'
 import type { Awaitable, RouteMetadata } from '../context'
 import type { Contract } from '../contract'
-import type { CanonicalContractPlan } from '../contract/plan'
-import { compileServerContract, type ServerRoutePlan } from '../contract/server-plan'
 import { isDeclaredError } from '../declared-errors'
-import { isPromiseLike, type ExecutionStep } from '../execution'
+import { isPromiseLike } from '../execution'
 import { dispatchMiddlewareSteps } from '../middleware'
 import { isRecord } from '../object'
 import { ServerRuntimeError } from '../server/errors'
@@ -36,62 +33,49 @@ import type {
 type RuntimeServer = {
   readonly context?: (input: { readonly route: RouteMetadata } & Readonly<Record<string, unknown>>) => Awaitable<object>
   readonly contract: Contract
+  readonly bindings: readonly ServerHandlerBinding[]
 }
 
 type RuntimeHandler = (input: object) => Awaitable<unknown>
 
 type RuntimeRoute = {
-  readonly execute: typeof executeRuntimeRoute
   readonly compiled: CompiledContractRoute
-  readonly decodeInput?: RuntimeInputDecoder
+  readonly decodeInput: RuntimeInputDecoder
   readonly handler: RuntimeHandler
-  readonly hasInput: boolean
   readonly metadata: RouteMetadata
   readonly middlewares: readonly ServerMiddleware<object, Contract>[]
   readonly pattern: readonly string[]
-  readonly readsQuery: boolean
   readonly errors?: RuntimeErrors
   readonly serializeResponse: RuntimeResponseSerializer
 }
 
+const middlewareErrors = {
+  invalidMiddleware: () =>
+    new ServerRuntimeError('invalid-server-response', 500, 'Server middleware must be a function'),
+  multipleNext: () =>
+    new ServerRuntimeError('invalid-server-response', 500, 'Server middleware called next() more than once'),
+}
+
 const emptyContext = Object.freeze({})
 const neverAborted = new AbortController().signal
-const emptyQuery = {}
-const emptyRouteInput = {}
 
-function compileRuntimeRoutes(
-  contractPlan: CanonicalContractPlan<ServerRoutePlan>,
-  registeredBindings: readonly ServerHandlerBinding[],
-  server: RuntimeServer
-): readonly RuntimeRoute[] {
-  const routes: RuntimeRoute[] = []
-  const errors = compileRuntimeErrors(contractPlan)
-  for (let index = 0; index < contractPlan.routes.length; index++) {
-    const plan = contractPlan.routes[index]!
-    const compiled = plan.compiled
-    const binding = registeredBindings[index]!
-
-    const runtime = {
-      execute:
-        server.context === undefined && binding.middlewares.length === 0 && errors === undefined
-          ? executeSimpleRoute
-          : executeRuntimeRoute,
+function compileRuntimeRoutes(contract: Contract, bindings: readonly ServerHandlerBinding[]): readonly RuntimeRoute[] {
+  const errors = compileRuntimeErrors(contract)
+  return bindings.map((binding) => {
+    const compiled = binding.compiled
+    return {
       compiled,
-      ...(plan.hasInput ? { decodeInput: compileRouteInput(plan) } : {}),
+      decodeInput: compileRouteInput(compiled),
       handler: binding.handler as RuntimeHandler,
-      hasInput: plan.hasInput,
-      metadata: plan.metadata,
+      metadata: { key: compiled.key, method: compiled.method, path: compiled.path },
       middlewares: binding.middlewares as readonly ServerMiddleware<object, Contract>[],
-      pattern: plan.pattern,
-      readsQuery: plan.decodeQuery !== undefined,
+      pattern: compiled.path === '/' || compiled.path === '' ? [] : compiled.path.replace(/^\//, '').split('/'),
       ...(errors === undefined ? {} : { errors }),
-      serializeResponse: compileResponseDispatcher(plan.responses),
+      serializeResponse: compileResponseDispatcher(compiled.route.responses),
     }
-    routes.push(runtime)
-  }
-
-  return routes
+  })
 }
+
 type CompiledAdapterImplementation = {
   readonly routes: readonly RuntimeRoute[]
   readonly server: RuntimeServer
@@ -105,71 +89,14 @@ function compileAdapterImplementation(implementation: object): CompiledAdapterIm
   if (cached !== undefined) return cached
 
   const server = implementation as unknown as RuntimeServer
-  const state = getCompositionState<ServerHandlerBinding>(implementation)
-  if (state === undefined) throw new TypeError('Adapter input must be a server implementation')
-  const registeredBindings = state.bindings
-  const selectedRoutes = registeredBindings.map((binding) => binding.compiled)
-  const contractPlan = compileServerContract(server.contract, selectedRoutes)
+  if (!Array.isArray(server.bindings)) throw new TypeError('Adapter input must be a server implementation')
+  const registeredBindings = server.bindings
   const compiled = {
-    routes: compileRuntimeRoutes(contractPlan, registeredBindings, server),
+    routes: compileRuntimeRoutes(server.contract, registeredBindings),
     server,
   }
   compiledAdapterImplementations.set(implementation, compiled)
   return compiled
-}
-
-/** Selected at compilation only when context, middleware and declared errors are absent. */
-function executeSimpleRoute(
-  _server: RuntimeServer,
-  runtime: RuntimeRoute,
-  parameters: Readonly<Record<string, string>>,
-  input: AdapterRouteInput,
-  options: AdapterRuntimeOptions
-): ExecutionStep<AdapterResponse> {
-  const signal = input.signal ?? neverAborted
-  let phase: AdapterPhase = 'request'
-  const failed = (error: unknown) => recoverRouteError(error, phase, runtime, input, options)
-  const invoke = (routeInput: Record<string, unknown>) => {
-    // The generic executor checks abort after its context stage, including after input suspension.
-    phase = 'context'
-    signal.throwIfAborted()
-    phase = 'handler'
-    const shared = { context: emptyContext, signal, response: createServerResponse, route: runtime.metadata }
-    return runtime.handler(runtime.hasInput ? { ...shared, ...routeInput } : shared)
-  }
-  const serialize = (value: unknown) => {
-    phase = 'response'
-    return runtime.serializeResponse(value)
-  }
-  const resume = async (pending: PromiseLike<unknown>, completed: 'request' | 'handler' | 'response') => {
-    try {
-      let value = await pending
-      if (completed === 'request') {
-        value = invoke(value as Record<string, unknown>)
-        if (isPromiseLike(value)) value = await value
-      }
-      if (completed !== 'response') {
-        value = serialize(value)
-        if (isPromiseLike(value)) value = await value
-      }
-      return value as AdapterResponse
-    } catch (error) {
-      return failed(error)
-    }
-  }
-  try {
-    signal.throwIfAborted()
-    const routeInput = runtime.hasInput
-      ? runtime.decodeInput!(parameters, input, runtime.readsQuery ? (input.query ?? emptyQuery) : undefined)
-      : emptyRouteInput
-    if (isPromiseLike(routeInput)) return resume(routeInput, 'request')
-    const value = invoke(routeInput)
-    if (isPromiseLike(value)) return resume(value, 'handler')
-    const result = serialize(value)
-    return isPromiseLike(result) ? resume(result, 'response') : result
-  } catch (error) {
-    return failed(error)
-  }
 }
 
 async function recoverRouteError(
@@ -196,108 +123,66 @@ async function recoverRouteError(
   }
 }
 
-function executeRuntimeRoute(
+async function executeRuntimeRoute(
   server: RuntimeServer,
   runtime: RuntimeRoute,
   parameters: Readonly<Record<string, string>>,
   input: AdapterRouteInput,
   options: AdapterRuntimeOptions
-): ExecutionStep<AdapterResponse> {
+): Promise<AdapterResponse> {
   const signal = input.signal ?? neverAborted
   let phase: AdapterPhase = 'request'
+  try {
+    signal.throwIfAborted()
+    const inputStep = runtime.decodeInput(parameters, input, input.query)
+    const routeInput = isPromiseLike(inputStep) ? await inputStep : inputStep
 
-  const serialize = (result: unknown): ExecutionStep<AdapterResponse> => {
-    phase = 'response'
-    return runtime.errors !== undefined && isDeclaredError(result)
-      ? serializeDeclaredError(runtime.errors, result)
-      : runtime.serializeResponse(result)
-  }
-
-  const invoke = (context: object, routeInput: Record<string, unknown>): ExecutionStep<unknown> => {
+    phase = 'context'
+    const contextStep =
+      server.context === undefined
+        ? emptyContext
+        : server.context({ ...input.contextInput, signal, route: runtime.metadata })
+    const context = isPromiseLike(contextStep) ? await contextStep : contextStep
     if (!isRecord(context)) {
       throw new ServerRuntimeError('invalid-context', 500, 'Context must be an object')
     }
-    const sharedInput =
-      runtime.errors === undefined
-        ? { context, signal, response: createServerResponse, route: runtime.metadata }
-        : { context, signal, errors: runtime.errors.factories, response: createServerResponse, route: runtime.metadata }
-    const handlerInput = runtime.hasInput ? { ...sharedInput, ...routeInput } : sharedInput
-
     signal.throwIfAborted()
+    const sharedInput = {
+      context,
+      signal,
+      response: createServerResponse,
+      route: runtime.metadata,
+      ...(runtime.errors === undefined ? {} : { errors: runtime.errors.factories }),
+    }
+    const handlerInput = { ...sharedInput, ...routeInput }
     phase = 'handler'
-    return runtime.middlewares.length === 0
-      ? runtime.handler(handlerInput)
-      : dispatchMiddlewareSteps(runtime.middlewares, sharedInput, () => runtime.handler(handlerInput), {
-          invalidMiddleware: () =>
-            new ServerRuntimeError('invalid-server-response', 500, 'Server middleware must be a function'),
-          multipleNext: () =>
-            new ServerRuntimeError('invalid-server-response', 500, 'Server middleware called next() more than once'),
-        })
-  }
+    const handlerStep =
+      runtime.middlewares.length === 0
+        ? runtime.handler(handlerInput)
+        : dispatchMiddlewareSteps(
+            runtime.middlewares,
+            sharedInput,
+            () => runtime.handler(handlerInput),
+            middlewareErrors
+          )
 
-  const contextualize = (): ExecutionStep<object> => {
-    phase = 'context'
-    return server.context === undefined
-      ? emptyContext
-      : server.context({ ...input.contextInput, signal, route: runtime.metadata })
-  }
-
-  const failed = async (error: unknown): Promise<AdapterResponse> => {
-    let caughtError = error
-    if (phase === 'handler' && runtime.errors !== undefined && isDeclaredError(error)) {
-      try {
-        phase = 'response'
-        const response = serializeDeclaredError(runtime.errors, error)
-        return isPromiseLike(response) ? await response : response
-      } catch (serializationError) {
-        caughtError = serializationError
-      }
-    }
-    return recoverRouteError(caughtError, phase, runtime, input, options)
-  }
-
-  // Once execution suspends, keep subsequent awaits in one continuation instead
-  // of building a Promise chain across each internal adapter stage.
-  const resume = async (
-    pending: PromiseLike<unknown>,
-    completed: 'request' | 'context' | 'handler' | 'response',
-    routeInput: Record<string, unknown> = emptyRouteInput
-  ): Promise<AdapterResponse> => {
-    try {
-      let value = await pending
-      if (completed === 'request') {
-        routeInput = value as Record<string, unknown>
-        value = contextualize()
-        if (isPromiseLike(value)) value = await value
-      }
-      if (completed === 'request' || completed === 'context') {
-        value = invoke(value as object, routeInput)
-        if (isPromiseLike(value)) value = await value
-      }
-      if (completed !== 'response') {
-        value = serialize(value)
-        if (isPromiseLike(value)) value = await value
-      }
-      return value as AdapterResponse
-    } catch (error) {
-      return failed(error)
-    }
-  }
-
-  // Public adapters establish the Promise boundary after internal composition.
-  try {
-    signal.throwIfAborted()
-    const query = runtime.readsQuery ? (input.query ?? emptyQuery) : undefined
-    const routeInput = runtime.hasInput ? runtime.decodeInput!(parameters, input, query) : emptyRouteInput
-    if (isPromiseLike(routeInput)) return resume(routeInput, 'request')
-    const context = contextualize()
-    if (isPromiseLike(context)) return resume(context, 'context', routeInput)
-    const result = invoke(context, routeInput)
-    if (isPromiseLike(result)) return resume(result, 'handler')
-    const response = serialize(result)
-    return isPromiseLike(response) ? resume(response, 'response') : response
+    const result = isPromiseLike(handlerStep) ? await handlerStep : handlerStep
+    phase = 'response'
+    const responseStep =
+      runtime.errors !== undefined && isDeclaredError(result)
+        ? serializeDeclaredError(runtime.errors, result)
+        : runtime.serializeResponse(result)
+    return isPromiseLike(responseStep) ? await responseStep : responseStep
   } catch (error) {
-    return failed(error)
+    if (phase === 'handler' && runtime.errors !== undefined && isDeclaredError(error)) {
+      phase = 'response'
+      try {
+        return await serializeDeclaredError(runtime.errors, error)
+      } catch (serializationError) {
+        return recoverRouteError(serializationError, phase, runtime, input, options)
+      }
+    }
+    return recoverRouteError(error, phase, runtime, input, options)
   }
 }
 
@@ -322,14 +207,8 @@ export function createAdapterRuntime<
         key: compiled.key,
         method: compiled.method,
         path: compiled.path,
-        execute: (input: AdapterRouteInput) => {
-          const parameters = input.params ?? emptyParameters
-          try {
-            return Promise.resolve(runtime.execute(server, runtime, parameters, input, options))
-          } catch (error) {
-            return Promise.reject(error)
-          }
-        },
+        execute: (input: AdapterRouteInput) =>
+          executeRuntimeRoute(server, runtime, input.params ?? emptyParameters, input, options),
       })
     })
   )
@@ -339,18 +218,18 @@ export function createAdapterRuntime<
 }
 
 /** Creates a catch-all dispatcher by composing the shared matcher with the route-level adapter runtime. */
-export function createAdapterDispatcher<
+export function createAdapterHandler<
   const ContractType extends Contract,
   const Context extends object,
   const AdapterId extends string | undefined,
 >(
   implementation: ServerExecutable<ContractType, Context, AdapterId>,
   options: AdapterRuntimeOptions = {}
-): (input: AdapterDispatchInput) => ExecutionStep<AdapterResponse> {
+): AdapterHandler {
   const { routes, server } = compileAdapterImplementation(implementation)
   const routing = compileRoutingTable(routes)
 
-  const handler = (input: AdapterDispatchInput): ExecutionStep<AdapterResponse> => {
+  const handler = async (input: AdapterDispatchInput): Promise<AdapterResponse> => {
     try {
       if (typeof input.method !== 'string' || typeof input.pathname !== 'string') {
         throw new TypeError('Adapter input must provide a method and pathname')
@@ -363,7 +242,7 @@ export function createAdapterDispatcher<
         })
       }
 
-      return selection.runtime.execute(server, selection.runtime, selection.parameters, input, options)
+      return executeRuntimeRoute(server, selection.runtime, selection.parameters, input, options)
     } catch (error) {
       return recover(error, input)
     }
@@ -388,23 +267,4 @@ export function createAdapterDispatcher<
   }
 
   return handler
-}
-
-/** Creates a Promise-returning dispatcher for external host adapters. */
-export function createAdapterHandler<
-  const ContractType extends Contract,
-  const Context extends object,
-  const AdapterId extends string | undefined,
->(
-  implementation: ServerExecutable<ContractType, Context, AdapterId>,
-  options: AdapterRuntimeOptions = {}
-): AdapterHandler {
-  const dispatch = createAdapterDispatcher(implementation, options)
-  return (input) => {
-    try {
-      return Promise.resolve(dispatch(input))
-    } catch (error) {
-      return Promise.reject(error)
-    }
-  }
 }

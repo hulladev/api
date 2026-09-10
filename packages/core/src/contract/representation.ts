@@ -8,23 +8,6 @@ export type JsonValue =
   | readonly JsonValue[]
   | { readonly [key: string]: JsonValue | undefined }
 
-function isJsonValue(value: unknown, ancestors = new Set<object>()): value is JsonValue {
-  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true
-  if (typeof value === 'number') return Number.isFinite(value)
-  if (typeof value !== 'object') return false
-
-  if (ancestors.has(value)) return false
-  ancestors.add(value)
-
-  const valid = Array.isArray(value)
-    ? value.every((item) => isJsonValue(item, ancestors))
-    : (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null) &&
-      Object.values(value).every((item) => isJsonValue(item, ancestors))
-
-  ancestors.delete(value)
-  return valid
-}
-
 function identitySchema<const Value>(definition: {
   readonly name: string
   readonly check: (value: unknown) => value is Value
@@ -48,10 +31,14 @@ function identitySchema<const Value>(definition: {
   })
 }
 
-export const jsonValueSchema = /* @__PURE__ */ identitySchema({
-  name: 'a JSON value',
-  check: isJsonValue,
-  jsonSchema: {},
+/** Type-only JSON declaration; native transports own serialization and parsing. */
+export const jsonValueSchema: StandardSchemaV1<JsonValue> = Object.freeze({
+  '~standard': Object.freeze({
+    version: 1 as const,
+    vendor: 'hulla',
+    validate: (value: unknown) => ({ value: value as JsonValue }),
+    jsonSchema: { input: () => ({}), output: () => ({}) },
+  }),
 })
 
 export const stringSchema = /* @__PURE__ */ identitySchema({

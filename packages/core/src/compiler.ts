@@ -2,7 +2,7 @@ import type { Contract, ContractRoute } from './contract'
 import type { JoinRoutePaths } from './contract/paths'
 import type { HttpMethod, Route } from './contract/route'
 import type { AnyRouter, RouterChildrenFor } from './contract/router'
-import { compileContractRoutes, getContractState } from './contract/state'
+import { compileContractRoutes } from './contract/state'
 import type { ObjectSchema } from './validation'
 
 export type CompiledPathParameters = {
@@ -22,7 +22,7 @@ export type CompiledContractRoute<
   readonly path: Path
   /** Parameter declarations ordered from the outermost router to the route. */
   readonly pathParameters: readonly CompiledPathParameters[]
-  readonly route: RouteType
+  readonly route: Omit<RouteType, '$contract'>
 }
 
 type StringKey<Value> = Extract<keyof Value, string>
@@ -62,7 +62,7 @@ export type CompiledContract<ContractType extends Contract = Contract> = {
   readonly routes: readonly CompiledContractRouteFor<ContractType>[]
 }
 
-function freezeCompiledRoutes(routes: readonly CompiledContractRoute[]): readonly CompiledContractRoute[] {
+export function freezeCompiledRoutes(routes: readonly CompiledContractRoute[]): readonly CompiledContractRoute[] {
   for (const route of routes) {
     for (const parameters of route.pathParameters) {
       Object.freeze(parameters.names)
@@ -80,13 +80,5 @@ export function compileContract<const ContractType extends Contract>(
   contract: ContractType
 ): CompiledContract<ContractType> {
   const routes = compileContractRoutes(contract)
-  const state = getContractState(contract)
-  if (state.compiled !== undefined) return state.compiled as CompiledContract<ContractType>
-
-  const compiled = Object.freeze({
-    contract,
-    routes: freezeCompiledRoutes(routes),
-  }) as unknown as CompiledContract<ContractType>
-  state.compiled = compiled
-  return compiled
+  return Object.freeze({ contract, routes }) as unknown as CompiledContract<ContractType>
 }

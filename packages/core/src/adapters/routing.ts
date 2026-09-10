@@ -14,10 +14,7 @@ type RoutingNode<Route extends RoutableRoute> = {
 }
 
 export type RoutingTable<Route extends RoutableRoute> = {
-  readonly exact?: Map<string, readonly Route[]>
-  root?: RoutingNode<Route>
-  readonly routes: readonly Route[]
-  readonly single?: Route
+  readonly root: RoutingNode<Route>
 }
 
 type RouteMatch<Route extends RoutableRoute> = {
@@ -118,23 +115,7 @@ function selectCandidates<Route extends RoutableRoute>(
 }
 
 export function compileRoutingTable<Route extends RoutableRoute>(routes: readonly Route[]): RoutingTable<Route> {
-  const hasParameters = routes.some((runtime) => runtime.compiled.pathParameters.length > 0)
-  const single = routes.length === 1 && routes[0]!.compiled.pathParameters.length === 0
-  const exact = single ? undefined : new Map<string, Route[]>()
-  if (exact !== undefined) {
-    for (const runtime of routes) {
-      if (runtime.compiled.pathParameters.length > 0) continue
-      const candidates = exact.get(runtime.compiled.path)
-      if (candidates === undefined) exact.set(runtime.compiled.path, [runtime])
-      else candidates.push(runtime)
-    }
-  }
-
-  return {
-    ...(exact === undefined ? { single: routes[0]! } : { exact }),
-    ...(hasParameters ? { root: compileTree(routes) } : {}),
-    routes,
-  }
+  return { root: compileTree(routes) }
 }
 
 export function selectRoute<Route extends RoutableRoute>(
@@ -142,25 +123,7 @@ export function selectRoute<Route extends RoutableRoute>(
   pathname: string,
   method: string
 ): RouteSelection<Route> {
-  const encoded = pathname.includes('%')
-  const single = table.single
-  if (single !== undefined && !encoded) {
-    if (pathname !== single.compiled.path) return { allowed: [] }
-    return method === single.compiled.method
-      ? { runtime: single, parameters: emptyParameters }
-      : { allowed: [single.compiled.method] }
-  }
-
-  if (!encoded) {
-    const exact = table.exact?.get(pathname)
-    if (exact !== undefined) return selectCandidates(exact, method)
-  }
-
-  if (table.root === undefined) {
-    if (!encoded) return { allowed: [] }
-    table.root = compileTree(table.routes)
-  }
-  const segments = decodePathname(pathname, encoded)
+  const segments = decodePathname(pathname, pathname.includes('%'))
   const node = matchingNode(table.root, segments, 0)
   return node === undefined ? { allowed: [] } : selectCandidates(node.routes, method, segments)
 }

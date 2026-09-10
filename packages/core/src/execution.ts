@@ -1,14 +1,6 @@
 /** A runtime step that may suspend without widening public call signatures. */
 export type ExecutionStep<Value> = Value | PromiseLike<Value>
 
-export type ValueIsAsync<Value> = Extract<Value, PromiseLike<unknown>> extends never ? false : true
-
-export type EitherIsAsync<Left extends boolean, Right extends boolean> = Left extends true
-  ? true
-  : Right extends true
-    ? true
-    : false
-
 export function isPromiseLike<Value>(value: ExecutionStep<Value>): value is PromiseLike<Value> {
   return (
     (typeof value === 'object' || typeof value === 'function') &&
@@ -45,4 +37,32 @@ export function mapExecutionSteps<Input, Output>(
     throw error
   }
   return asynchronous ? Promise.all(started) : (started as Output[])
+}
+
+export type ExecutionField<Arguments extends readonly unknown[]> = readonly [
+  name: 'params' | 'query' | 'configured' | 'headers' | 'body',
+  read: (...args: Arguments) => ExecutionStep<unknown>,
+]
+
+/** Prepares declared fields once; preserves field order and only suspends for an async field. */
+export function compileExecutionFields<Arguments extends readonly unknown[]>(
+  fields: readonly ExecutionField<Arguments>[]
+): (...args: Arguments) => ExecutionStep<Record<string, unknown>> {
+  return (...args) => {
+    const values: Record<string, unknown> = {}
+    const read = (start: number): ExecutionStep<Record<string, unknown>> => {
+      for (let index = start; index < fields.length; index++) {
+        const [name, field] = fields[index]!
+        const value = field(...args)
+        if (isPromiseLike(value))
+          return Promise.resolve(value).then((resolved) => {
+            values[name] = resolved
+            return read(index + 1)
+          })
+        values[name] = value
+      }
+      return values
+    }
+    return read(0)
+  }
 }

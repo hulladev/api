@@ -1,9 +1,12 @@
-import type { CanonicalRequestBodyPlan } from '../contract/plan'
+import type { CompiledContractRoute } from '../compiler'
+import { compilePathParameterDecoder } from '../contract/parameters'
+import { compileQueryDecoder } from '../contract/query'
 import type { QuerySource } from '../contract/query'
+import type { AnyRequestBody } from '../contract/request'
 import { mimeEssence } from '../contract/request'
-import type { ServerRoutePlan } from '../contract/server-plan'
-import { mapExecutionStep, type ExecutionStep, mapExecutionSteps } from '../execution'
+import { compileExecutionFields, type ExecutionField, type ExecutionStep } from '../execution'
 import { ServerRuntimeError } from '../server/errors'
+import { compileSchemaExecution } from '../validation'
 import type { AdapterRouteInput } from './types'
 
 export type RuntimeInputDecoder = (
@@ -23,9 +26,9 @@ function wireHeader(input: AdapterRouteInput, name: string): string | undefined 
   if (input.readHeader !== undefined) return input.readHeader(name)
   return input.readHeaders?.()[name]
 }
-function compileBodyDecoder(plan: CanonicalRequestBodyPlan): (input: AdapterRouteInput) => ExecutionStep<unknown> {
-  const declaration = plan.declaration
-  const decode = plan.schema.decode
+function compileBodyDecoder(declaration: AnyRequestBody): (input: AdapterRouteInput) => ExecutionStep<unknown> {
+  const decode = compileSchemaExecution(declaration.schema, { location: 'body' }).decode
+  const expectedContentType = mimeEssence(declaration.contentType)
   const readError = (cause: unknown) =>
     cause instanceof ServerRuntimeError
       ? cause
@@ -38,11 +41,11 @@ function compileBodyDecoder(plan: CanonicalRequestBodyPlan): (input: AdapterRout
     const provided = input.body
     const contentType = provided?.contentType ?? wireHeader(input, 'content-type') ?? ''
     const received = mimeEssence(contentType)
-    if (received !== plan.expectedContentType) {
+    if (received !== expectedContentType) {
       throw new ServerRuntimeError(
         'unsupported-media-type',
         415,
-        `Expected request content type ${plan.expectedContentType}, received ${received || 'none'}`,
+        `Expected request content type ${expectedContentType}, received ${received || 'none'}`,
         { location: 'body' }
       )
     }
@@ -62,51 +65,21 @@ function compileBodyDecoder(plan: CanonicalRequestBodyPlan): (input: AdapterRout
   }
 }
 
-export function compileRouteInput(plan: ServerRoutePlan): RuntimeInputDecoder {
-  const decodeParams = plan.decodePath
-  const decodeQuery = plan.decodeQuery
-  const decodeHeaders = plan.headers?.decode
-  const decodeBody = plan.body === undefined ? undefined : compileBodyDecoder(plan.body)
-  const fieldCount =
-    Number(decodeParams !== undefined) +
-    Number(decodeQuery !== undefined) +
-    Number(decodeHeaders !== undefined) +
-    Number(decodeBody !== undefined)
+export function compileRouteInput(compiled: CompiledContractRoute): RuntimeInputDecoder {
+  const route = compiled.route
+  const decodeParams =
+    compiled.pathParameters.length === 0 ? undefined : compilePathParameterDecoder(compiled.pathParameters)
+  const decodeQuery = route.query === undefined ? undefined : compileQueryDecoder(route.query)
+  const decodeHeaders =
+    route.headers === undefined ? undefined : compileSchemaExecution(route.headers, { location: 'headers' }).decode
+  const decodeBody = route.body === undefined ? undefined : compileBodyDecoder(route.body)
 
-  if (fieldCount === 1) {
-    if (decodeParams !== undefined) {
-      return (parameters) => mapExecutionStep(decodeParams(parameters), (params) => ({ params }))
-    }
-    if (decodeQuery !== undefined) {
-      return (_parameters, _request, query) =>
-        mapExecutionStep(decodeQuery(query ?? emptyQuery), (queryValue) => ({ query: queryValue }))
-    }
-    if (decodeHeaders !== undefined) {
-      return (_parameters, request) => mapExecutionStep(decodeHeaders(wireHeaders(request)), (headers) => ({ headers }))
-    }
-    return (_parameters, request) => mapExecutionStep(decodeBody!(request), (body) => ({ body }))
-  }
-
-  return (parameters, request, query) => {
-    const resolved = mapExecutionSteps([0, 1, 2, 3], (field) => {
-      switch (field) {
-        case 0:
-          return decodeParams?.(parameters)
-        case 1:
-          return decodeQuery?.(query ?? emptyQuery)
-        case 2:
-          return decodeHeaders?.(wireHeaders(request))
-        default:
-          return decodeBody?.(request)
-      }
-    })
-    return mapExecutionStep(resolved, ([params, queryValue, headers, bodyValue]) => {
-      const input: Record<string, unknown> = {}
-      if (decodeParams !== undefined) input['params'] = params
-      if (decodeQuery !== undefined) input['query'] = queryValue
-      if (decodeHeaders !== undefined) input['headers'] = headers
-      if (decodeBody !== undefined) input['body'] = bodyValue
-      return input
-    })
-  }
+  const fields: ExecutionField<Parameters<RuntimeInputDecoder>>[] = []
+  if (decodeParams !== undefined) fields.push(['params', (parameters) => decodeParams(parameters)])
+  if (decodeQuery !== undefined)
+    fields.push(['query', (_parameters, _request, query) => decodeQuery(query ?? emptyQuery)])
+  if (decodeHeaders !== undefined)
+    fields.push(['headers', (_parameters, request) => decodeHeaders(wireHeaders(request))])
+  if (decodeBody !== undefined) fields.push(['body', (_parameters, request) => decodeBody(request)])
+  return compileExecutionFields(fields)
 }

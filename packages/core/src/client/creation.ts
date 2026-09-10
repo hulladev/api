@@ -1,24 +1,16 @@
 import type { CompiledContractRoute } from '../compiler'
-import { getCompositionState, isScopeDescendant, type CompositionScope } from '../composition'
-import type { Contract, ContractRoute } from '../contract'
-import { compileClientContract } from '../contract/client-plan'
-import {
-  compileContractRoutes,
-  findContractMount,
-  isContractMount,
-  isRouteMount,
-  type ContractMount,
-} from '../contract/state'
-import type { ClientErrorMode, ErrorFactories } from '../declared-errors'
+import type { Contract } from '../contract'
+import { isRouteMount } from '../contract/state'
+import type { ContractSelection } from '../contract/types'
+import { errorFactories, type ClientErrorMode, type ErrorFactories } from '../declared-errors'
 import { isPromiseLike } from '../execution'
-import { dispatchMiddlewareSteps, type MiddlewarePlan, routeMiddlewares } from '../middleware'
+import { dispatchMiddlewareSteps } from '../middleware'
 import { hasOwn, isRecord, setOwn } from '../object'
 import type { ClientContextInput, ClientContractRouteMetadata } from './context'
 import { registerClientRoute } from './integration'
 import type { ClientMiddleware, ClientMiddlewareInput } from './middleware'
 import {
   compileClientRequest,
-  type ClientHeaders,
   type ClientRequestOptions,
   type ClientRequestCreator,
   type ClientTransport,
@@ -31,13 +23,12 @@ import {
   createClientResponse,
   type ClientResponseDecoder,
 } from './response'
+import type { ClientOptions, ClientSource } from './types'
 
-export type ClientRouteBinding = {
-  readonly call: (...args: readonly unknown[]) => Promise<unknown>
-  readonly compiled: CompiledContractRoute
+const middlewareErrors = {
+  invalidMiddleware: () => new TypeError('Client middleware must be a function'),
+  multipleNext: () => new TypeError('Client middleware called next() more than once'),
 }
-
-export type ClientScope = CompositionScope
 
 type EmptyClientContext = Record<string, never>
 const emptyContext = Object.freeze({}) as EmptyClientContext
@@ -45,15 +36,12 @@ type RuntimeRoute = {
   readonly compiled: CompiledContractRoute
   readonly createRequest: ClientRequestCreator
   readonly metadata: ClientContractRouteMetadata
-  readonly responseDecoder?: ClientResponseDecoder
-  readonly responseStatus?: number
-  readonly responses?: ReadonlyMap<number, ClientResponseDecoder>
+  readonly responses: ReadonlyMap<number, ClientResponseDecoder>
   readonly errorFactories?: ErrorFactories<Contract['errors']>
 }
 
 function responseDecoder(runtime: RuntimeRoute, response: ClientTransportResponse): ClientResponseDecoder {
-  const decoder =
-    runtime.responseStatus === response.status ? runtime.responseDecoder : runtime.responses?.get(response.status)
+  const decoder = runtime.responses.get(response.status)
   if (decoder !== undefined) return decoder
   const route = runtime.compiled.route
   throw new ClientResponseError(
@@ -76,25 +64,19 @@ async function executeRoute(
   const contextStep = contextFactory === undefined ? emptyContext : contextFactory({ request, route: runtime.metadata })
   const context = isPromiseLike(contextStep) ? await contextStep : contextStep
   if (!isRecord(context)) throw new TypeError('Client context factory must return an object')
-  const decode = (response: ClientTransportResponse) => {
-    const failed = async (error: unknown): Promise<never> => {
+  const transportAndDecode = async () => {
+    const response = await transport(request)
+    try {
+      const decoded = responseDecoder(runtime, response)(response)
+      return isPromiseLike(decoded) ? await decoded : decoded
+    } catch (error) {
       try {
         await response.dispose?.(error)
       } catch {
-        /* Preserve the primary decode failure. */
+        // Cleanup must not replace the validation or decoding failure.
       }
       throw error
     }
-    try {
-      const result = responseDecoder(runtime, response)(response)
-      return isPromiseLike(result) ? Promise.resolve(result).catch(failed) : result
-    } catch (error) {
-      return failed(error)
-    }
-  }
-  const transportAndDecode = () => {
-    const response = transport(request)
-    return isPromiseLike(response) ? Promise.resolve(response).then(decode) : decode(response)
   }
 
   if (middlewares.length === 0) return transportAndDecode()
@@ -111,10 +93,7 @@ async function executeRoute(
     middlewares,
     middlewareInput,
     transportAndDecode,
-    {
-      invalidMiddleware: () => new TypeError('Client middleware must be a function'),
-      multipleNext: () => new TypeError('Client middleware called next() more than once'),
-    }
+    middlewareErrors
   )
 }
 
@@ -144,125 +123,58 @@ function setClientRoute(target: Record<string, unknown>, key: readonly string[],
   setOwn(parent, routeKey, value)
 }
 
-function displayKey(key: readonly string[]): string {
-  return key.join('.')
-}
-
-export function mountedClientNode(contract: Contract, node: unknown): ContractMount {
-  const mount = findContractMount(contract, node)
-  if (mount === null) throw new TypeError('Client creation node must belong to its client contract')
-  if (mount === undefined) {
-    throw new TypeError('Client node is not mounted in this contract')
-  }
-  return mount
-}
-
 export function buildClientNode(
-  contract: Contract,
-  node: Contract | ContractRoute,
-  mount: ContractMount,
-  transport: ClientTransport,
-  headers: ClientHeaders | undefined,
-  contextFactory: ((input: ClientContextInput) => object | PromiseLike<object>) | undefined,
-  middlewarePlan: MiddlewarePlan<ClientMiddleware<object, Contract>, CompiledContractRoute>,
-  errorMode: ClientErrorMode
-): { readonly bindings: readonly ClientRouteBinding[]; readonly value: object } {
+  source: ClientSource,
+  mount: ContractSelection,
+  options: ClientOptions<object, Contract, ClientErrorMode>
+): object {
+  const { transport, headers, context: contextFactory, errorMode = 'return' } = options
+  const middlewares = options.middleware ?? []
   const tree: Record<string, unknown> = {}
-  const root = isContractMount(mount)
-  const route = isRouteMount(mount, node)
-  const contractPlan = compileClientContract(contract, root ? undefined : mount.routes)
-  const selectedPlans = contractPlan.routes
-  const bindings: ClientRouteBinding[] | undefined = root ? undefined : []
+  const route = isRouteMount(mount, source)
   let errorResponses: ReadonlyMap<number, ClientResponseDecoder> | undefined
-  if (contractPlan.errors.length > 0) {
+  if (Object.keys(mount.errors).length > 0) {
     const decoders = new Map<number, ClientResponseDecoder>()
-    for (const [status, declarations] of contractPlan.errors) {
-      decoders.set(status, compileClientErrorResponse(status, declarations, errorMode))
+    for (const [status, declarations] of Object.entries(mount.errors)) {
+      decoders.set(Number(status), compileClientErrorResponse(Number(status), declarations, errorMode))
     }
     errorResponses = decoders
   }
 
-  for (const plan of selectedPlans) {
-    const compiled = plan.compiled
-    const responseEntries = plan.responses
-    let responseStatus: number | undefined
-    let responseDecoder: ClientResponseDecoder | undefined
-    let responses: ReadonlyMap<number, ClientResponseDecoder> | undefined
-    if (errorResponses === undefined && responseEntries.length === 1) {
-      const [status, response] = responseEntries[0]!
-      responseStatus = status
-      responseDecoder = compileClientResponse(response)
-    } else {
-      const responseMap = new Map(errorResponses)
-      for (const [status, response] of responseEntries) {
-        responseMap.set(status, compileClientResponse(response))
-      }
-      responses = responseMap
+  const factories = errorResponses === undefined ? undefined : errorFactories(mount.errors)
+  for (const compiled of mount.routes) {
+    const routeDefinition = compiled.route
+    const hasInput =
+      compiled.pathParameters.length > 0 ||
+      'query' in routeDefinition ||
+      'headers' in routeDefinition ||
+      'body' in routeDefinition
+    const responseEntries = Object.entries(routeDefinition.responses)
+    const responses = new Map(errorResponses)
+    for (const [status, response] of responseEntries) {
+      responses.set(Number(status), compileClientResponse(response))
     }
     const runtime: RuntimeRoute = {
       compiled,
-      createRequest: compileClientRequest(plan, headers),
-      metadata: plan.metadata as ClientContractRouteMetadata,
-      ...(contractPlan.errors.length === 0 ? {} : { errorFactories: contractPlan.errorFactories }),
-      ...(responses === undefined
-        ? { responseDecoder: responseDecoder!, responseStatus: responseStatus! }
-        : { responses }),
+      createRequest: compileClientRequest(compiled, headers),
+      metadata: { key: compiled.key, method: compiled.method, path: compiled.path } as ClientContractRouteMetadata,
+      ...(factories === undefined ? {} : { errorFactories: factories }),
+      responses,
     }
-    const middlewares = routeMiddlewares(middlewarePlan, compiled)
 
     const call = ((...args: readonly unknown[]) => {
-      const input = (plan.hasInput ? args[0] : {}) as Readonly<Record<string, unknown>>
-      const requestOptions = (plan.hasInput ? args[1] : args[0]) as ClientRequestOptions | undefined
+      const input = (hasInput ? args[0] : {}) as Readonly<Record<string, unknown>>
+      const requestOptions = (hasInput ? args[1] : args[0]) as ClientRequestOptions | undefined
       return executeRoute(runtime, transport, contextFactory, middlewares, input, requestOptions ?? {})
     }) as (...args: readonly unknown[]) => Promise<unknown>
-    registerClientRoute(call, { hasInput: plan.hasInput })
-    bindings?.push({ call, compiled })
-    if (!route) setClientRoute(tree, compiled.key.slice(mount.key.length), call)
+    registerClientRoute(call, { hasInput })
+    if (route) return call
+    setClientRoute(tree, compiled.key.slice(mount.key.length), call)
   }
 
-  if (route) {
-    const call = bindings?.[0]?.call
-    if (call === undefined) throw new TypeError(`Client route "${displayKey(mount.key)}" is not compiled`)
-    return { bindings: bindings ?? [], value: call }
+  const freezeTree = (node: Record<string, unknown>): object => {
+    for (const value of Object.values(node)) if (isRecord(value)) freezeTree(value as Record<string, unknown>)
+    return Object.freeze(node)
   }
-
-  return { bindings: bindings ?? [], value: tree }
-}
-
-export function composeClientFragments(
-  contract: Contract,
-  scope: ClientScope,
-  fragments: readonly object[]
-): Readonly<Record<string, unknown>> {
-  const tree: Record<string, unknown> = {}
-  const registered = new Set<CompiledContractRoute>()
-
-  for (const fragment of fragments) {
-    const state = getCompositionState<ClientRouteBinding, ClientScope>(fragment)
-    if (state === undefined || state.scope.owner !== scope.owner) {
-      throw new TypeError('Client creation fragment belongs to a different client definition')
-    }
-    if (!isScopeDescendant(state.scope, scope)) {
-      throw new TypeError('Client fragment has an incompatible middleware scope')
-    }
-
-    for (const binding of state.bindings) {
-      const key = binding.compiled.key
-      const displayed = displayKey(key)
-      if (registered.has(binding.compiled)) throw new TypeError(`Client route "${displayed}" is created more than once`)
-      registered.add(binding.compiled)
-      setClientRoute(tree, key, binding.call)
-    }
-  }
-
-  const contractRoutes = compileContractRoutes(contract)
-  const missing =
-    registered.size === contractRoutes.length
-      ? []
-      : contractRoutes.filter((route) => !registered.has(route)).map(({ key }) => displayKey(key))
-  if (missing.length > 0) {
-    throw new TypeError(`Missing client ${missing.length === 1 ? 'route' : 'routes'}: ${missing.join(', ')}`)
-  }
-
-  return tree
+  return freezeTree(tree)
 }

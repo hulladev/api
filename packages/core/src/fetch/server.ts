@@ -1,10 +1,9 @@
 import { bodyLimit } from '../adapters/body'
-import { createAdapterDispatcher } from '../adapters/runtime'
+import { createAdapterHandler } from '../adapters/runtime'
 import type { AdapterDispatchInput, AdapterErrorInput, AdapterPhase, AdapterResponse } from '../adapters/types'
 import { readFetchBody, toFetchResponse, writeFetchResponseStep } from '../adapters/web'
 import type { Awaitable } from '../context'
 import type { Contract } from '../contract'
-import { isPromiseLike } from '../execution'
 import {
   assertAdapterContext,
   createServerAdapter,
@@ -126,10 +125,7 @@ export function createFetchHandler<
           })
           return replacement instanceof Response ? replacementResponse(replacement) : undefined
         }
-  const dispatch = createAdapterDispatcher(
-    implementation,
-    onAdapterError === undefined ? {} : { onError: onAdapterError }
-  )
+  const dispatch = createAdapterHandler(implementation, onAdapterError === undefined ? {} : { onError: onAdapterError })
 
   const handler = async (request: Request, handlerContext: HandlerContext) => {
     if (!(request instanceof Request)) throw new TypeError('Fetch handler input must be a Request')
@@ -149,9 +145,9 @@ export function createFetchHandler<
       readHeader: requestHeader,
       readBody: (representation, preserveRequest) => readFetchBody(request, representation, preserveRequest, limit),
     }
-    const response = dispatch(query === undefined ? input : { ...input, query })
+    const response = await dispatch(query === undefined ? input : { ...input, query })
     return writeFetchResponseStep(
-      isPromiseLike(response) ? await response : response,
+      response,
       options.onError === undefined ? undefined : (input) => options.onError?.({ ...input, request, handlerContext })
     )
   }

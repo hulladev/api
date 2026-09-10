@@ -1,14 +1,14 @@
-import type { CanonicalErrorDeclarationPlan, CanonicalResponsePlan } from '../contract/plan'
 import { mimeEssence } from '../contract/request'
 import type { AnyRouteResponse, ResponseBodyValue, ResponseHeaders, RouteResponses } from '../contract/response'
-import { DeclaredError, type ClientErrorMode } from '../declared-errors'
+import { compileResponseSchema, type ResponseSchema } from '../contract/schema'
+import { DeclaredError, type AnyErrorDeclaration, type ClientErrorMode } from '../declared-errors'
 import { annotateAPIErrorIssues, type APIError, type APIErrorIssue, type ClientResponseErrorCode } from '../errors'
-import { isPromiseLike, mapExecutionStep, mapExecutionSteps, type ExecutionStep } from '../execution'
+import { isPromiseLike, mapExecutionStep, type ExecutionStep } from '../execution'
 import { responseHeader } from '../headers'
 import type { ResponseHeaderValues } from '../headers'
 import { isRecord } from '../object'
 import type { StreamFormat } from '../stream'
-import type { SchemaOutput } from '../validation'
+import { compileSchemaExecution, type SchemaOutput } from '../validation'
 import type { ClientTransportResponse } from './request'
 
 export type { ClientResponseErrorCode } from '../errors'
@@ -85,21 +85,13 @@ export class ClientResponseError extends Error implements APIError<ClientRespons
   }
 }
 
-type DecodableStreamPlan = {
-  readonly decode: (value: unknown) => unknown | PromiseLike<unknown>
-  readonly format: StreamFormat<unknown>
-}
-
 export type ClientResponseDecoder = (response: ClientTransportResponse) => ExecutionStep<unknown>
 
-function decodedStream(source: AsyncIterable<Uint8Array>, plan: DecodableStreamPlan): AsyncIterable<unknown> {
-  async function* decode(): AsyncIterable<unknown> {
-    for await (const value of plan.format.decode(source)) {
-      yield plan.decode(value)
-    }
-  }
-
-  return decode()
+async function* decodedStream(
+  source: AsyncIterable<unknown>,
+  decode: (value: unknown) => ExecutionStep<unknown>
+): AsyncIterable<unknown> {
+  for await (const value of source) yield decode(value)
 }
 
 /** Owns cancellation independently of whether a lazy decoder has started. */
@@ -110,6 +102,8 @@ function ownedStream(
   const iterator = Symbol.asyncIterator in source ? source[Symbol.asyncIterator]() : source[Symbol.iterator]()
   let returning: Promise<IteratorResult<unknown>> | undefined
   let closed = false
+  let failed = false
+  let failure: unknown
   const close = (reason?: unknown) =>
     (returning ??= (async () => {
       closed = true
@@ -125,10 +119,13 @@ function ownedStream(
       return this
     },
     next: async () => {
+      if (failed) throw failure
       if (closed) return { done: true, value: undefined }
       try {
         return await iterator.next()
       } catch (error) {
+        failed = true
+        failure = error
         try {
           await close(error)
         } catch {
@@ -158,10 +155,21 @@ function assertContentType(response: ClientTransportResponse, expected: string |
 
 export function compileClientErrorResponse(
   status: number,
-  declarations: readonly CanonicalErrorDeclarationPlan[],
+  declarations: readonly AnyErrorDeclaration[],
   mode: ClientErrorMode
 ): ClientResponseDecoder {
-  const byCode = new Map(declarations.map((plan) => [plan.declaration.code, plan]))
+  const byCode = new Map(
+    declarations.map((declaration) => [
+      declaration.code,
+      {
+        declaration,
+        data:
+          declaration.data === undefined
+            ? undefined
+            : compileSchemaExecution(declaration.data, { location: 'response' }),
+      },
+    ])
+  )
   return async (response) => {
     assertContentType(response, 'application/json')
     const value = await response.readBody('json')
@@ -172,7 +180,9 @@ export function compileClientErrorResponse(
     if (plan === undefined || typeof message !== 'string') {
       throw new ClientResponseError('invalid-error-response', response, `Invalid declared error response ${status}`)
     }
-    const data = plan.data === undefined ? undefined : await plan.data.decode(body!['data'])
+    const decodeData = plan.data?.encode === undefined ? undefined : plan.data.decode
+    const data =
+      plan.data === undefined ? undefined : decodeData === undefined ? body!['data'] : await decodeData(body!['data'])
     if (mode === 'throw') throw new DeclaredError(plan.declaration, data, message)
     return {
       status,
@@ -185,76 +195,45 @@ export function compileClientErrorResponse(
 const cancellableRead = Object.freeze({ cancellable: true as const })
 
 function compileBodyDecoder(
-  plan: CanonicalResponsePlan
+  plan: ResponseSchema
 ): (response: ClientTransportResponse, cancellable?: boolean) => ExecutionStep<unknown> {
-  const definition = plan.definition
-  const read = (
-    response: ClientTransportResponse,
-    kind: Parameters<ClientTransportResponse['readBody']>[0],
-    cancellable: boolean | undefined
-  ) => (cancellable === true ? response.readBody(kind, cancellableRead) : response.readBody(kind))
-  const body = definition.body
-  switch (body.kind) {
-    case 'empty':
-      return (response) => mapExecutionStep(response.dispose?.(), () => undefined)
-    case 'raw':
-      return (response, cancellable) => response.native ?? read(response, 'raw', cancellable)
-    case 'json': {
-      const decode = plan.body!.decode
-      return (response, cancellable) => mapExecutionStep(read(response, 'json', cancellable), decode)
-    }
-    case 'text': {
-      const decode = plan.body!.decode
-      return (response, cancellable) => mapExecutionStep(read(response, 'text', cancellable), decode)
-    }
-    case 'bytes': {
-      const decode = plan.body!.decode
-      return (response, cancellable) => mapExecutionStep(read(response, 'bytes', cancellable), decode)
-    }
-    case 'form-data': {
-      const decode = plan.body!.decode
-      return (response, cancellable) => mapExecutionStep(read(response, 'form-data', cancellable), decode)
-    }
-    case 'stream': {
-      if (!('schema' in body)) {
-        return (response, cancellable) =>
-          mapExecutionStep(read(response, 'stream', cancellable), (source) =>
-            ownedStream(source as AsyncIterable<unknown>, response)
-          )
-      }
-      const decode = plan.body!.decode
-      const streamPlan = { decode, format: body.format as unknown as StreamFormat<unknown> }
-      return (response, cancellable) =>
-        mapExecutionStep(read(response, 'stream', cancellable), (source) =>
-          ownedStream(decodedStream(source as AsyncIterable<Uint8Array>, streamPlan), response)
-        )
-    }
+  const body = plan.definition.body
+  const decode = plan.body?.encode === undefined ? undefined : plan.body.decode
+  return (response, cancellable) => {
+    if (body.kind === 'empty') return mapExecutionStep(response.dispose?.(), () => undefined)
+    if (body.kind === 'raw') return response.native ?? response.readBody('raw')
+    const source = response.readBody(body.kind, cancellable ? cancellableRead : undefined)
+    return mapExecutionStep(source, (value) => {
+      if (body.kind !== 'stream') return decode === undefined ? value : decode(value)
+      const stream =
+        'schema' in body
+          ? (body.format as StreamFormat<unknown>).decode(value as AsyncIterable<Uint8Array>)
+          : (value as AsyncIterable<unknown>)
+      return ownedStream(decode === undefined ? stream : decodedStream(stream, decode), response)
+    })
   }
 }
 
-const responseDecoders = new WeakMap<CanonicalResponsePlan, ClientResponseDecoder>()
+const responseDecoders = new WeakMap<ResponseSchema, ClientResponseDecoder>()
 
-export function compileClientResponse(plan: CanonicalResponsePlan): ClientResponseDecoder {
+export function compileClientResponse(definition: AnyRouteResponse): ClientResponseDecoder {
+  const plan = compileResponseSchema(definition)
   const cached = responseDecoders.get(plan)
   if (cached !== undefined) return cached
 
-  const definition = plan.definition
   const decodeBody = compileBodyDecoder(plan)
-  const decodeHeaders = plan.headers?.decode
+  const decodeHeaders = plan.headers?.encode === undefined ? undefined : plan.headers.decode
   const empty = definition.body.kind === 'empty'
 
   const decode: ClientResponseDecoder = (response) => {
     assertContentType(response, plan.expectedContentType)
     const finish = (headers: unknown, body: unknown) =>
       empty ? { status: response.status, headers } : { status: response.status, headers, body }
-    if (decodeHeaders === undefined)
-      return mapExecutionStep(decodeBody(response), (body) => finish(response.headers, body))
-    let headerStep: ExecutionStep<unknown>
-    return mapExecutionStep(
-      mapExecutionSteps([0, 1], (field) =>
-        field === 0 ? (headerStep = decodeHeaders(response.headers)) : decodeBody(response, isPromiseLike(headerStep))
-      ),
-      ([headers, body]) => finish(headers, body)
+    const headers = decodeHeaders === undefined ? response.headers : decodeHeaders(response.headers)
+    if (!isPromiseLike(headers)) return mapExecutionStep(decodeBody(response), (body) => finish(headers, body))
+    // Once header validation suspends, own both failures and keep the body cancellable.
+    return Promise.all([headers, Promise.resolve().then(() => decodeBody(response, true))]).then(([headers, body]) =>
+      finish(headers, body)
     )
   }
 

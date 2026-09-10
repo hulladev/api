@@ -1,6 +1,7 @@
 import type { Contract, ContractNodeFor } from '../contract'
 import type { ServerContextFactory } from './context'
 import type { CheckedNodeHandlers, ContractHandlerKey, NodeHandlerKey, NodeHandlers, ServerHandlers } from './handlers'
+import type { ServerHandlerBinding } from './implementation'
 import type { ServerMiddleware, ServerMiddlewareCandidate } from './middleware'
 
 declare const serverFragmentKey: unique symbol
@@ -57,6 +58,7 @@ export type ServerImplementation<
   AdapterInput extends object = object,
 > = {
   readonly contract: ContractType
+  readonly bindings: readonly ServerHandlerBinding[]
   readonly handlers: ServerHandlers<ContractType['routes'], Context, ContractType['basePath'], ContractType['errors']>
   readonly context: DefineServerOptions<Context, ContractType, AdapterId, AdapterInput>['context']
   readonly middlewares: readonly ServerMiddleware<Context, ContractType>[]
@@ -72,6 +74,7 @@ export type ServerImplementationFragment<
   AdapterInput extends object = object,
 > = {
   readonly contract: ContractType
+  readonly bindings: readonly ServerHandlerBinding[]
   readonly handlers: Handlers
   readonly node: Node
   readonly context: DefineServerOptions<Context, ContractType, AdapterId, AdapterInput>['context']

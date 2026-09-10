@@ -23,9 +23,10 @@ type MetadataForCompiledRoute<CompiledRoute> = CompiledRoute extends {
   ? RouteMetadata<Key, Method, Path>
   : never
 
-export type ContractRouteMetadata<ContractType extends Contract = Contract> = MetadataForCompiledRoute<
-  CompiledContractRouteFor<ContractType>
->
+export type ContractRouteMetadata<ContractType extends Contract = Contract> =
+  string extends keyof ContractType['routes']
+    ? RouteMetadata
+    : MetadataForCompiledRoute<CompiledContractRouteFor<ContractType>>
 
 export type ContextInput<ContractType extends Contract = Contract, RequestType = unknown> = {
   readonly request: RequestType

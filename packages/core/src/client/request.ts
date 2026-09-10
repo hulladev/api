@@ -1,9 +1,12 @@
-import type { ClientRoutePlan } from '../contract/client-plan'
+import type { CompiledContractRoute } from '../compiler'
+import { compilePathParameterValues, compilePathRenderer } from '../contract/parameters'
+import { compileQueryEncoder } from '../contract/query'
 import type { QueryWireObject } from '../contract/query'
 import { textWireEntries, type TextWireEntries, type RequestBodyKind } from '../contract/request'
-import { type ExecutionStep, mapExecutionSteps, mapExecutionStep } from '../execution'
+import { compileExecutionFields, mapExecutionStep, type ExecutionField, type ExecutionStep } from '../execution'
 import type { ResponseHeaderValues } from '../headers'
 import { setOwn } from '../object'
+import { compileSchemaExecution } from '../validation'
 
 export type ClientRequestOptions = {
   readonly headers?: Readonly<Record<string, string | undefined>>
@@ -28,6 +31,7 @@ export type ClientTransportRequest = {
   readonly key: readonly string[]
   readonly method: string
   readonly path: string
+  readonly params?: Readonly<Record<string, string>>
   readonly query?: QueryWireObject
   readonly headers: Record<string, string>
   readonly body?: ClientTransportBody
@@ -68,14 +72,19 @@ function assignHeaders(
   }
 }
 
+function normalizedHeaders(value: Readonly<Record<string, string | undefined>> | undefined): Record<string, string> {
+  const headers: Record<string, string> = {}
+  assignHeaders(headers, value)
+  return headers
+}
+
 function mergedHeaders(
-  configured: Readonly<Record<string, string | undefined>> | undefined,
+  configured: Readonly<Record<string, string>> | undefined,
   options: Readonly<Record<string, string | undefined>> | undefined,
   routeHeaders: TextWireEntries | undefined,
   contentType: string | undefined
 ): Record<string, string> {
-  const headers: Record<string, string> = {}
-  assignHeaders(headers, configured)
+  const headers: Record<string, string> = { ...configured }
   assignHeaders(headers, options)
   if (routeHeaders !== undefined) {
     for (const [name, value] of routeHeaders) {
@@ -86,25 +95,6 @@ function mergedHeaders(
   }
   if (contentType !== undefined) setOwn(headers, 'content-type', contentType)
   return headers
-}
-
-function transportRequest(
-  plan: ClientRoutePlan,
-  path: string,
-  options: ClientRequestOptions,
-  headers: Record<string, string>,
-  query?: QueryWireObject,
-  body?: ClientTransportBody
-): ClientTransportRequest {
-  return {
-    key: plan.compiled.key,
-    method: plan.compiled.method,
-    path,
-    ...(query === undefined ? {} : { query }),
-    headers,
-    ...(body === undefined ? {} : { body }),
-    ...(options.signal === undefined ? {} : { signal: options.signal }),
-  }
 }
 
 function encodedBody(kind: RequestBodyKind, contentType: string, value: unknown): ClientTransportBody {
@@ -123,95 +113,64 @@ function encodedBody(kind: RequestBodyKind, contentType: string, value: unknown)
   return { kind, value, contentType }
 }
 
-export function compileClientRequest(plan: ClientRoutePlan, configuredHeaders?: ClientHeaders): ClientRequestCreator {
-  const compiled = plan.compiled
-  const encodePath = plan.encodePath
-  const encodeQuery = plan.encodeQuery
-  const encodeHeaders = plan.headers?.encode
-  const hasRouteHeaders = plan.headers !== undefined
-  const encodeBody = plan.body?.schema.encode
-  const hasBody = plan.body !== undefined
-  const staticPath = encodePath === undefined ? compiled.path : undefined
+export function compileClientRequest(
+  compiled: CompiledContractRoute,
+  configuredHeaders?: ClientHeaders
+): ClientRequestCreator {
+  const staticHeaders = typeof configuredHeaders === 'function' ? undefined : normalizedHeaders(configuredHeaders)
+  const route = compiled.route
+  const encodeParams =
+    compiled.pathParameters.length === 0 ? undefined : compilePathParameterValues(compiled.pathParameters)
+  const renderPath = compilePathRenderer(compiled.path)
+  const encodeQuery = route.query === undefined ? undefined : compileQueryEncoder(route.query)
+  const encodeHeaders =
+    route.headers === undefined ? undefined : compileSchemaExecution(route.headers, { location: 'headers' }).encode
+  const body = route.body
+  const encodeBody = body === undefined ? undefined : compileSchemaExecution(body.schema, { location: 'body' }).encode
 
-  const routeHeaders = (value: unknown): ExecutionStep<TextWireEntries> =>
-    encodeHeaders === undefined
-      ? textWireEntries(value, 'headers')
-      : mapExecutionStep(encodeHeaders(value), (encoded) => textWireEntries(encoded, 'headers'))
-  const requestBody = (value: unknown): ExecutionStep<ClientTransportBody> => {
-    const body = plan.body!
-    return encodeBody === undefined
-      ? encodedBody(body.declaration.representation, body.declaration.contentType, value)
-      : mapExecutionStep(encodeBody(value), (encoded) =>
-          encodedBody(body.declaration.representation, body.declaration.contentType, encoded)
-        )
-  }
-
-  if (
-    staticPath !== undefined &&
-    encodeQuery === undefined &&
-    !hasRouteHeaders &&
-    !hasBody &&
-    configuredHeaders === undefined
-  ) {
-    return (_input, options) =>
-      transportRequest(plan, staticPath, options, mergedHeaders(undefined, options.headers, undefined, undefined))
-  }
-
-  if (staticPath !== undefined && encodeQuery === undefined && !hasRouteHeaders && hasBody) {
-    return (input, options) =>
-      mapExecutionStep(requestBody(input['body']), (body) => {
-        const configured = typeof configuredHeaders === 'function' ? configuredHeaders() : configuredHeaders
-        return mapExecutionStep(configured, (resolvedHeaders) =>
-          transportRequest(
-            plan,
-            staticPath,
-            options,
-            mergedHeaders(
-              resolvedHeaders,
-              options.headers,
-              undefined,
-              body.kind === 'form-data' ? undefined : body.contentType
-            ),
-            undefined,
-            body
-          )
-        )
+  const fields: ExecutionField<[Readonly<Record<string, unknown>>]>[] = []
+  if (encodeParams !== undefined)
+    fields.push(['params', (input) => encodeParams(input['params'] as Readonly<Record<string, unknown>>)])
+  if (encodeQuery !== undefined) fields.push(['query', (input) => encodeQuery(input['query'] as never)])
+  if (typeof configuredHeaders === 'function')
+    fields.push(['configured', () => mapExecutionStep(configuredHeaders(), normalizedHeaders)])
+  if (route.headers !== undefined)
+    fields.push([
+      'headers',
+      (input) =>
+        mapExecutionStep(
+          encodeHeaders === undefined
+            ? input['headers']
+            : encodeHeaders(input['headers'] as Readonly<Record<string, unknown>>),
+          (value) => textWireEntries(value, 'headers')
+        ),
+    ])
+  if (body !== undefined)
+    fields.push(['body', (input) => (encodeBody === undefined ? input['body'] : encodeBody(input['body']))])
+  const read = compileExecutionFields(fields)
+  return (input, options) =>
+    mapExecutionStep(read(input), (values) => {
+      const params = values['params'] as Readonly<Record<string, string>> | undefined
+      const query = values['query'] as QueryWireObject | undefined
+      const configured =
+        typeof configuredHeaders === 'function' ? (values['configured'] as Record<string, string>) : staticHeaders
+      const headers = values['headers'] as TextWireEntries | undefined
+      const payload =
+        body === undefined ? undefined : encodedBody(body.representation, body.contentType, values['body'])
+      return Object.freeze({
+        key: compiled.key,
+        method: compiled.method,
+        path: params === undefined ? compiled.path : renderPath(params),
+        ...(params === undefined ? {} : { params }),
+        headers: mergedHeaders(
+          configured,
+          options.headers,
+          headers,
+          payload?.kind === 'form-data' ? undefined : payload?.contentType
+        ),
+        ...(query === undefined ? {} : { query }),
+        ...(payload === undefined ? {} : { body: payload }),
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
       })
-  }
-
-  return (input, options) => {
-    const resolved = mapExecutionSteps([0, 1, 2, 3, 4], (field): ExecutionStep<unknown> => {
-      switch (field) {
-        case 0:
-          return staticPath ?? encodePath!(input['params'] as Readonly<Record<string, unknown>>)
-        case 1:
-          return encodeQuery?.(input['query'] as never)
-        case 2:
-          return typeof configuredHeaders === 'function' ? configuredHeaders() : configuredHeaders
-        case 3:
-          return hasRouteHeaders ? routeHeaders(input['headers']) : undefined
-        default:
-          return hasBody ? requestBody(input['body']) : undefined
-      }
     })
-    type ResolvedValues = readonly [
-      path: string,
-      query: QueryWireObject | undefined,
-      configuredHeaders: Readonly<Record<string, string | undefined>> | undefined,
-      routeHeaders: TextWireEntries | undefined,
-      body: ClientTransportBody | undefined,
-    ]
-    return mapExecutionStep(
-      resolved as unknown as ExecutionStep<ResolvedValues>,
-      ([path, query, configured, route, body]) =>
-        transportRequest(
-          plan,
-          path,
-          options,
-          mergedHeaders(configured, options.headers, route, body?.kind === 'form-data' ? undefined : body?.contentType),
-          query,
-          body
-        )
-    )
-  }
 }

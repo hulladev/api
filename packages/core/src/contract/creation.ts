@@ -1,11 +1,12 @@
 import type { CompiledContractRoute, CompiledPathParameters } from '../compiler'
+import { freezeCompiledRoutes } from '../compiler'
 import { isErrorDeclaration, type AnyErrorDeclaration, type NormalizedErrorStatusMap } from '../declared-errors'
 import { isRecord, setOwn } from '../object'
 import type { ObjectSchema } from '../validation'
 import { assertBasePath, joinRoutePaths, pathParamNames, routePathShape } from './paths'
 import { HTTP_METHODS, type HttpMethod, type Route } from './route'
 import { isRouter, routerRoutes, type AnyRouter } from './router'
-import { getContractState, type ContractMount } from './state'
+import type { ContractSelection } from './types'
 import type { Contract, ContractOptions, ContractRoute, ContractRoutes } from './types'
 
 type RegisteredRoute = {
@@ -15,8 +16,7 @@ type RegisteredRoute = {
 }
 
 type RouteRegistry = {
-  first?: RegisteredRoute
-  routes?: Map<string, RegisteredRoute>
+  routes: Map<string, RegisteredRoute>
 }
 
 const emptyErrors = Object.freeze({}) as Readonly<NormalizedErrorStatusMap>
@@ -41,18 +41,7 @@ function assertRouter(value: unknown, name: string): asserts value is AnyRouter 
 
 function registerRoute(registry: RouteRegistry, name: string, path: string, route: Route): void {
   const registered: RegisteredRoute = { name, method: route.method, path }
-  if (registry.first === undefined) {
-    registry.first = registered
-    return
-  }
-
-  let routes = registry.routes
-  if (routes === undefined) {
-    const first = registry.first
-    routes = new Map([[`${first.method} ${routePathShape(first.path)}`, first]])
-    registry.routes = routes
-  }
-
+  const routes = registry.routes
   const signature = `${route.method} ${routePathShape(path)}`
   const existing = routes.get(signature)
 
@@ -98,7 +87,7 @@ function compileContractRouteDefinitions(
   routes: ContractRoutes,
   errors: NormalizedErrorStatusMap
 ): readonly CompiledContractRoute[] {
-  const registry: RouteRegistry = {}
+  const registry: RouteRegistry = { routes: new Map() }
   const compiledRoutes: CompiledContractRoute[] = []
   const seen = new Set<object>()
 
@@ -116,10 +105,6 @@ function compileContractRouteDefinitions(
       }
       const qualifiedKey = [...keyPrefix, name]
       const qualifiedName = `routes.${qualifiedKey.join('.')}`
-      if (seen.has(value)) {
-        throw new TypeError(`Contract declaration "${qualifiedName}" is mounted more than once`)
-      }
-      seen.add(value)
 
       const ownPath = nestedRouter ? value.$meta.path : value.path
       const ownNames = pathParamNames(ownPath)
@@ -146,6 +131,8 @@ function compileContractRouteDefinitions(
       }
 
       assertRouter(value, qualifiedKey.join('.'))
+      if (seen.has(value)) throw new TypeError(`Cyclic contract router "${qualifiedName}"`)
+      seen.add(value)
       const metadata = value.$meta
       const routerParameters = compilePathParameters(
         metadata.path,
@@ -161,6 +148,7 @@ function compileContractRouteDefinitions(
         routerParameters === undefined ? pathParameters : [...pathParameters, routerParameters],
         nextNames
       )
+      seen.delete(value)
     }
   }
 
@@ -207,36 +195,36 @@ function copyErrors(errors: unknown): Readonly<NormalizedErrorStatusMap> {
   return Object.freeze(copy)
 }
 
-function mountContractRoutes(routes: Readonly<Record<string, unknown>>): ContractRoutes {
-  const mounted: Record<string, ContractRoute> = {}
-  for (const [key, definition] of Object.entries(routes)) setOwn(mounted, key, definition as ContractRoute)
-  return Object.freeze(mounted)
+function selectRoutes(
+  definitions: ContractRoutes,
+  manifest: readonly CompiledContractRoute[],
+  errors: NormalizedErrorStatusMap
+): ContractRoutes {
+  let cursor = 0
+  const visit = (definitions: ContractRoutes, prefix: readonly string[]): ContractRoutes => {
+    const selected: Record<string, ContractRoute> = {}
+    for (const [name, declaration] of Object.entries(definitions)) {
+      if (name === '$contract') throw new TypeError('Contract route name "$contract" is reserved for metadata')
+      const start = cursor
+      const nested = isRouter(declaration)
+      const key = nested ? Object.freeze([...prefix, name]) : manifest[cursor]!.key
+      const node = nested ? { ...visit(routerRoutes(declaration), key), $meta: declaration.$meta } : { ...declaration }
+      if (!nested) cursor++
+      // The manifest and tree share declaration order, so every subtree is a contiguous slice.
+      const metadata: ContractSelection = Object.freeze({
+        key,
+        routes: Object.freeze(manifest.slice(start, cursor)),
+        errors,
+      })
+      Object.defineProperty(node, '$contract', { value: metadata, enumerable: false })
+      if (nested) Object.defineProperty(node, '$meta', { value: declaration.$meta, enumerable: false })
+      setOwn(selected, name, Object.freeze(node) as ContractRoute)
+    }
+    return Object.freeze(selected)
+  }
+  return visit(definitions, [])
 }
 
-function registerContractMounts(
-  definitions: ContractRoutes,
-  compiledRoutes: readonly CompiledContractRoute[],
-  mounts: Map<object, ContractMount>,
-  keyPrefix: readonly string[] = [],
-  startIndex = 0
-): number {
-  let index = startIndex
-  for (const [key, definition] of Object.entries(definitions)) {
-    if (!isRouter(definition)) {
-      const compiled = compiledRoutes[index++]!
-      mounts.set(definition, { key: compiled.key, routes: [compiled] })
-      continue
-    }
-    const nodeKey = Object.freeze([...keyPrefix, key])
-    const subtreeStart = index
-    index = registerContractMounts(routerRoutes(definition), compiledRoutes, mounts, nodeKey, index)
-    mounts.set(definition, {
-      key: nodeKey,
-      routes: compiledRoutes.slice(subtreeStart, index),
-    })
-  }
-  return index
-}
 export function createContract(options: ContractOptions): Contract {
   if (!isRecord(options)) throw new TypeError('Contract options must be an object')
 
@@ -248,19 +236,14 @@ export function createContract(options: ContractOptions): Contract {
     throw new TypeError('Contract routes must be an object')
   }
 
-  const routes = mountContractRoutes(options.routes)
   const errors = copyErrors(options.errors)
 
-  const compiledRoutes = compileContractRouteDefinitions(basePath, routes, errors)
-  const contract = Object.freeze({
+  const compiledRoutes = freezeCompiledRoutes(compileContractRouteDefinitions(basePath, options.routes, errors))
+  const routes = selectRoutes(options.routes, compiledRoutes, errors)
+  return Object.freeze({
     basePath,
     routes,
     errors,
+    $contract: Object.freeze({ key: Object.freeze([]), routes: compiledRoutes, errors }),
   }) as unknown as Contract
-  const state = getContractState(contract)
-  const mounts = new Map<object, ContractMount>([[contract, { key: Object.freeze([]), routes: compiledRoutes }]])
-  registerContractMounts(routes, compiledRoutes, mounts)
-  state.mounts = mounts
-  state.routes = compiledRoutes
-  return contract
 }

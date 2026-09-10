@@ -1,4 +1,4 @@
-import { createAdapterHandler } from '../adapters/runtime'
+import { createAdapterRuntime } from '../adapters/runtime'
 import type { ClientTransport, ClientTransportRequest, ClientTransportResponse } from '../client/request'
 import type { Contract } from '../contract'
 import {
@@ -27,16 +27,19 @@ export function inProcessTransport<const ContractType extends Contract, const Co
 ): ClientTransport {
   assertAdapterContext(implementation.context, 'in-process')
   const usesNativeContext = serverContextAdapterId(implementation.context) !== undefined
-  const dispatch = createAdapterHandler(implementation)
+  const runtime = createAdapterRuntime(implementation)
+  const routes = new Map(runtime.routes.map((route) => [JSON.stringify(route.key), route]))
 
   return async (request): Promise<ClientTransportResponse> => {
     request.signal?.throwIfAborted()
-    const response = await dispatch({
+    const route = routes.get(JSON.stringify(request.key))
+    if (route === undefined || route.method !== request.method)
+      throw new TypeError('In-process invocation does not identify an implemented route')
+    const response = await route.execute({
       request,
       ...(request.signal === undefined ? {} : { signal: request.signal }),
       ...(usesNativeContext ? { contextInput: { request } } : {}),
-      method: request.method,
-      pathname: request.path,
+      ...(request.params === undefined ? {} : { params: request.params }),
       headers: request.headers,
       ...(request.query === undefined ? {} : { query: request.query }),
       ...(request.body === undefined

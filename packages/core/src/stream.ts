@@ -1,9 +1,15 @@
-import type { JsonValue, ResponseBody, ResponseHeaders, RouteResponse } from './contract/response'
-import type { AnySchema, NonSchemaOptions, SchemaInput } from './validation'
+import type {
+  CheckedResponseHeaders,
+  JsonValue,
+  ResponseBody,
+  ResponseHeaders,
+  RouteResponse,
+} from './contract/response'
+import type { AnySchema, NonSchemaOptions, SchemaWireOutput } from './validation'
 
 export type StreamSource<Value> = AsyncIterable<Value> | Iterable<Value>
 export type StreamWireSchema<Wire, Schema extends AnySchema = AnySchema> =
-  SchemaInput<Schema> extends Wire ? Schema : never
+  SchemaWireOutput<Schema> extends Wire ? Schema : never
 
 export type StreamFormatMetadata<Id extends string = string, ContentType extends string = string> = {
   readonly kind: 'stream-format'
@@ -39,7 +45,7 @@ type StreamResponseOptions<
   Headers extends ResponseHeaders | undefined,
   ContentType extends string,
 > = NonSchemaOptions & {
-  readonly headers?: Headers
+  readonly headers?: CheckedResponseHeaders<Headers>
   readonly contentType?: ContentType
 }
 

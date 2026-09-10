@@ -8,6 +8,7 @@ export type {
 export { contractInput, contractNodeKey, defineContract } from './contract'
 export type {
   Contract,
+  ContractSelection,
   ContractNodeFor,
   ContractNodeIdentity,
   ContractNodeKey,
@@ -50,8 +51,8 @@ export type {
   ServerRuntimeErrorCode,
 } from './errors'
 export { QueryTransportError } from './contract/query'
-export { codec, validation } from './validation'
-export type { AsyncSchema, CodecOptions, CodecSchema, IdentitySchema, ObjectSchema, SchemaOutbound } from './validation'
+export { codec } from './validation'
+export type { CodecOptions, CodecSchema, IdentitySchema, ObjectSchema, SchemaOutbound } from './validation'
 export type { RouteInput, RouteInputSchema, RouteInputSource } from './contract/input'
 export { request } from './contract/request'
 export type { AnyRequestBody, RequestBodyDefinition, RequestBodyKind, TextWireObject } from './contract/request'

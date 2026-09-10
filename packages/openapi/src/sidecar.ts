@@ -144,7 +144,7 @@ export type OpenAPIRouteDocumentation<RouteType extends Route, Errors extends No
 
 type RouterDocumentation<RouterType, Errors extends NormalizedErrorStatusMap> = RouterType extends AnyRouter
   ? {
-      readonly [Key in Exclude<Extract<keyof RouterType, string>, '$meta'>]: RouterType[Key] extends Route
+      readonly [Key in Exclude<Extract<keyof RouterType, string>, '$meta' | '$contract'>]: RouterType[Key] extends Route
         ? OpenAPIRouteDocumentation<RouterType[Key], Errors>
         : never
     }

@@ -1,5 +1,6 @@
+import type { JsonValue } from './contract/representation'
 import { isRecord, setOwn } from './object'
-import { isSchema, type AnySchema, type SchemaOutput, type SchemaOutbound } from './validation'
+import { isSchema, type AnySchema, type SchemaOutput, type SchemaOutbound, type SchemaWireOutput } from './validation'
 
 const errorDeclaration = Symbol('hulla.error-declaration')
 
@@ -91,7 +92,13 @@ function createErrorDeclaration<Code extends string>(code: Code, definition: Err
 
 /** Defines a named group of independently reusable, transport-neutral error factories. */
 export function defineErrors<const Definitions extends ErrorDefinitions>(
-  definitions: Definitions
+  definitions: Definitions & {
+    readonly [Code in keyof Definitions]: Definitions[Code]['data'] extends AnySchema
+      ? SchemaWireOutput<Definitions[Code]['data']> extends JsonValue
+        ? Definitions[Code]
+        : never
+      : Definitions[Code]
+  }
 ): DefinedErrors<Definitions> {
   if (!isRecord(definitions)) throw new TypeError('Error definitions must be an object')
   const errors: Record<string, AnyErrorDeclaration> = {}

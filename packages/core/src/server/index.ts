@@ -56,3 +56,5 @@ export type {
   ServerImplementation,
   ServerImplementationFragment,
 } from './types'
+
+export type { ServerHandlerBinding } from './implementation'

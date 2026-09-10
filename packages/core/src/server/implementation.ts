@@ -1,5 +1,4 @@
 import type { CompiledContractRoute } from '../compiler'
-import { getCompositionState, isScopeDescendant, type CompositionScope } from '../composition'
 import type { Contract, ContractRoute, ContractRoutes } from '../contract'
 import { isRouter, routerRoutes, type AnyRouter } from '../contract/router'
 import {
@@ -11,6 +10,7 @@ import {
 } from '../contract/state'
 import { type MiddlewarePlan, routeMiddlewares } from '../middleware'
 import { hasOwn, isRecord, setOwn } from '../object'
+import { getCompositionState, isScopeDescendant, type CompositionScope } from './composition'
 import { ServerImplementationError } from './errors'
 
 export type ServerHandlerBinding = {
@@ -45,7 +45,7 @@ function validateHandlerTree(
   handlers: Readonly<Record<string, unknown>>,
   prefix: readonly string[],
   missing: string[],
-  collector?: HandlerBindingCollector
+  collector: HandlerBindingCollector
 ): void {
   for (const [key, definition] of Object.entries(routes)) {
     const childKey = [...prefix, key]
@@ -72,14 +72,16 @@ function validateHandlerTree(
         [displayed],
         `Server handler "${displayed}" must be a function`
       )
-    } else if (collector !== undefined) {
+    } else {
       const compiled = collector.compiledRoutes[collector.index++]
       if (compiled === undefined) throw new TypeError(`Compiled server route "${displayed}" is missing`)
-      collector.bindings.push({
-        compiled,
-        handler: handler as (input: object) => unknown,
-        middlewares: routeMiddlewares(collector.middlewarePlan, compiled),
-      })
+      collector.bindings.push(
+        Object.freeze({
+          compiled,
+          handler: handler as (input: object) => unknown,
+          middlewares: Object.freeze([...routeMiddlewares(collector.middlewarePlan, compiled)]),
+        })
+      )
     }
   }
 

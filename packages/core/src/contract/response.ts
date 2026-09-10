@@ -3,9 +3,10 @@ import { defineStreamResponse, type FormattedStreamResponseBody, type StreamResp
 import {
   isSchema,
   type AnySchema,
+  type IdentitySchema,
   type NonSchemaOptions,
   type ObjectSchema,
-  type SchemaInput,
+  type SchemaWireOutput,
   type SchemaOutput,
 } from '../validation'
 import { bytesSchema, formDataSchema, jsonValueSchema, stringSchema, type JsonValue } from './representation'
@@ -127,24 +128,25 @@ export type RouteResponseBody<RouteType, Status extends RouteResponseStatus<Rout
     : never
   : never
 
+export type CheckedResponseHeaders<Headers extends ResponseHeaders | undefined> = Headers extends ResponseHeaders
+  ? SchemaWireOutput<Headers> extends Readonly<Record<string, string | readonly string[] | undefined>>
+    ? Headers
+    : never
+  : Headers
+
 type ResponseOptions<Headers extends ResponseHeaders | undefined, ContentType extends string> = NonSchemaOptions & {
-  readonly headers?: Headers
+  readonly headers?: CheckedResponseHeaders<Headers>
   readonly contentType?: ContentType
 }
 
 type EmptyResponseOptions<Headers extends ResponseHeaders | undefined> = {
-  readonly headers?: Headers
+  readonly headers?: CheckedResponseHeaders<Headers>
 }
 
-type CheckedWireSchema<Schema extends AnySchema, Wire> = SchemaInput<Schema> extends Wire ? Schema : never
+type CheckedWireSchema<Schema extends AnySchema, Wire> = SchemaWireOutput<Schema> extends Wire ? Schema : never
 type SchemaResponseBodyKind = Exclude<ResponseBodyKind, 'empty' | 'raw' | 'stream'>
 
-type BodyResponseFactory<
-  Kind extends SchemaResponseBodyKind,
-  Wire,
-  DefaultSchema extends AnySchema,
-  DefaultContentType extends string,
-> = {
+type BodyResponseFactory<Kind extends SchemaResponseBodyKind, Wire, DefaultContentType extends string> = {
   <
     const Schema extends AnySchema,
     const Headers extends ResponseHeaders | undefined = undefined,
@@ -154,11 +156,12 @@ type BodyResponseFactory<
     options?: ResponseOptions<Headers, ContentType>
   ): RouteResponse<ResponseBody<Kind, Schema>, Headers, ContentType>
   <
+    const Value extends Wire = Wire,
     const Headers extends ResponseHeaders | undefined = undefined,
     const ContentType extends string = DefaultContentType,
   >(
     options?: ResponseOptions<Headers, ContentType>
-  ): RouteResponse<ResponseBody<Kind, DefaultSchema>, Headers, ContentType>
+  ): RouteResponse<ResponseBody<Kind, IdentitySchema<Value>>, Headers, ContentType>
 }
 
 function defineDefaultBodyResponse<
@@ -170,7 +173,7 @@ function defineDefaultBodyResponse<
   kind: Kind,
   defaultSchema: DefaultSchema,
   defaultContentType: DefaultContentType
-): BodyResponseFactory<Kind, Wire, DefaultSchema, DefaultContentType> {
+): BodyResponseFactory<Kind, Wire, DefaultContentType> {
   function bodyResponse<
     const Schema extends AnySchema,
     const Headers extends ResponseHeaders | undefined = undefined,
@@ -191,10 +194,10 @@ function defineDefaultBodyResponse<
     })
   }
 
-  return bodyResponse as BodyResponseFactory<Kind, Wire, DefaultSchema, DefaultContentType>
+  return bodyResponse as BodyResponseFactory<Kind, Wire, DefaultContentType>
 }
 
-/** Defaults to any valid JSON value. Pass a schema for a more precise client and server contract. */
+/** Native JSON by default. A type argument supplies static types; a schema explicitly adds validation. */
 export const json = /* @__PURE__ */ defineDefaultBodyResponse<
   'json',
   JsonValue,

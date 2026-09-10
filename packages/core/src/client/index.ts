@@ -6,7 +6,7 @@ export type {
   ClientRouteMetadata,
 } from './context'
 export type { ClientErrorMode, ClientErrorResponseResult } from '../declared-errors'
-export { defineClient } from './definition'
+export { createClient, clientMiddleware } from './definition'
 export { clientRouteIntegration } from './integration'
 export type { ClientRouteIntegration } from './integration'
 export type {
@@ -34,12 +34,12 @@ export type {
 } from './response'
 export type {
   Client,
-  ClientDefinition,
-  ClientFragment,
   ClientRouteCall,
   ClientRouteInput,
   ClientRouteResult,
   ClientRoutes,
-  ClientRoutesForNode,
-  DefineClientOptions,
+  ClientOptions,
+  ClientSource,
+  ClientFor,
+  ClientContractFor,
 } from './types'

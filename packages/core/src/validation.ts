@@ -21,13 +21,7 @@ export type ObjectSchema<
   Output extends Readonly<Record<string, unknown>> = Readonly<Record<string, unknown>>,
 > = StandardSchemaV1<Input, Output>
 
-declare const asyncSchemaType: unique symbol
-
-export type AsyncSchema<Schema extends AnySchema = AnySchema> = Schema & {
-  readonly [asyncSchemaType]: Schema
-}
-
-export type SchemaExecutionPlan<Schema extends AnySchema = AnySchema> = {
+export type SchemaExecutor<Schema extends AnySchema = AnySchema> = {
   readonly decode: (value: unknown) => ExecutionStep<SchemaOutput<Schema>>
   readonly encode?: (value: SchemaOutput<Schema>) => ExecutionStep<SchemaInput<Schema>>
 }
@@ -67,6 +61,13 @@ export type SchemaOutbound<Schema extends AnySchema> = Schema extends {
   ? SchemaOutput<Schema>
   : SchemaInput<Schema>
 
+/** The serialized response value: codec wire input or ordinary schema output. */
+export type SchemaWireOutput<Schema extends AnySchema> = Schema extends {
+  readonly [codecSchemaType]: unknown
+}
+  ? SchemaInput<Schema>
+  : SchemaOutput<Schema>
+
 export type SchemaValidationOptions = {
   readonly location?: APIErrorLocation
 }
@@ -87,8 +88,6 @@ export class SchemaValidationError extends TypeError implements APIError<SchemaV
     if (options.location !== undefined) this.location = options.location
   }
 }
-
-const asyncSchemaSources = new WeakMap<object, AnySchema>()
 
 function isObject(value: unknown): value is Record<PropertyKey, unknown> {
   return typeof value === 'object' && value !== null
@@ -143,7 +142,11 @@ export function codec<const WireSchema extends AnySchema, const ApplicationSchem
       validate: codecValidation(wire, application, options.decode),
       ...(wireStandard.jsonSchema === undefined ? {} : { jsonSchema: wireStandard.jsonSchema }),
     },
-    '~hulla': { version: 1 as const, encode, wire },
+    '~hulla': {
+      version: 1 as const,
+      encode,
+      wire,
+    },
   } as CodecSchema<Wire, Application>
 }
 
@@ -159,15 +162,16 @@ export function isSchema(value: unknown): value is AnySchema {
   )
 }
 
-function schemaSource<Schema extends AnySchema>(schema: Schema): AnySchema {
-  return asyncSchemaSources.get(schema as object) ?? schema
-}
-
 function isHullaCodec<Wire, Application>(
   schema: StandardSchemaV1<Wire, Application>
 ): schema is CodecSchema<Wire, Application> {
   const properties = (schema as Partial<CodecSchema<Wire, Application>>)['~hulla']
-  return isObject(properties) && properties['version'] === 1 && isSchema(properties['encode'])
+  return (
+    isObject(properties) &&
+    properties['version'] === 1 &&
+    isSchema(properties['encode']) &&
+    isSchema(properties['wire'])
+  )
 }
 
 /** @internal Validates an outbound value and resolves it to the schema's application representation. */
@@ -175,26 +179,12 @@ export function validateSchemaOutbound<const Schema extends AnySchema>(
   schema: Schema,
   value: SchemaOutbound<Schema>
 ): StandardSchemaV1.Result<SchemaOutput<Schema>> | PromiseLike<StandardSchemaV1.Result<SchemaOutput<Schema>>> {
-  const source = schemaSource(schema) as StandardSchemaV1<SchemaInput<Schema>, SchemaOutput<Schema>>
+  const source = schema as StandardSchemaV1<SchemaInput<Schema>, SchemaOutput<Schema>>
   if (!isHullaCodec(source)) return source['~standard'].validate(value)
 
   return mapExecutionStep(source['~hulla'].encode['~standard'].validate(value), (encoded) =>
     encoded.issues === undefined ? source['~standard'].validate(encoded.value) : encoded
   )
-}
-
-export function isAsyncSchema(schema: AnySchema): schema is AsyncSchema {
-  return asyncSchemaSources.has(schema as object)
-}
-
-/** Marks a Standard Schema as intentionally asynchronous without mutating the validator-owned object. */
-export function asyncSchema<const Schema extends AnySchema>(schema: Schema): AsyncSchema<Schema> {
-  if (!isSchema(schema)) throw new TypeError('Async validation input must be a Standard Schema')
-  if (isAsyncSchema(schema)) return schema as unknown as AsyncSchema<Schema>
-
-  const wrapper = { '~standard': schema['~standard'] } as AsyncSchema<Schema>
-  asyncSchemaSources.set(wrapper, schema)
-  return wrapper
 }
 
 function validationValue<Output>(result: StandardSchemaV1.Result<Output>, options?: SchemaValidationOptions): Output {
@@ -213,38 +203,34 @@ function validateWithValue<Output>(
     : validationValue(result, options)
 }
 
-const schemaExecutionPlans = new WeakMap<object, Map<APIErrorLocation | undefined, SchemaExecutionPlan>>()
+const schemaExecutors = new WeakMap<object, Map<APIErrorLocation | undefined, SchemaExecutor>>()
 
 /** Compiles schema capability detection and boundary metadata once for repeated execution. */
 export function compileSchemaExecution<const Schema extends AnySchema>(
   schema: Schema,
   options: SchemaValidationOptions = {}
-): SchemaExecutionPlan<Schema> {
+): SchemaExecutor<Schema> {
   if (!isSchema(schema)) throw new TypeError('Schema execution input must be a Standard Schema')
 
-  let plans = schemaExecutionPlans.get(schema as object)
+  let plans = schemaExecutors.get(schema as object)
   if (plans === undefined) {
     plans = new Map()
-    schemaExecutionPlans.set(schema as object, plans)
+    schemaExecutors.set(schema as object, plans)
   }
   const cached = plans.get(options.location)
-  if (cached !== undefined) return cached as unknown as SchemaExecutionPlan<Schema>
+  if (cached !== undefined) return cached as unknown as SchemaExecutor<Schema>
 
-  const source = schemaSource(schema) as StandardSchemaV1<SchemaInput<Schema>, SchemaOutput<Schema>>
-  const asynchronous = isAsyncSchema(schema)
-  const decode = asynchronous
-    ? (value: unknown) => Promise.resolve().then(() => validateWithValue(source, value, options))
-    : (value: unknown) => validateWithValue(source, value, options)
+  const source = schema as StandardSchemaV1<SchemaInput<Schema>, SchemaOutput<Schema>>
+  const decode = (value: unknown) => validateWithValue(source, value, options)
+  const encode: SchemaExecutor<Schema>['encode'] = isHullaCodec(source)
+    ? (value) => validateWithValue(source['~hulla'].encode, value, options)
+    : undefined
 
-  let encode: SchemaExecutionPlan<Schema>['encode']
-  if (isHullaCodec(source)) {
-    encode = asynchronous
-      ? (value) => Promise.resolve().then(() => validateWithValue(source['~hulla'].encode, value, options))
-      : (value) => validateWithValue(source['~hulla'].encode, value, options)
-  }
-
-  const plan = { decode, ...(encode === undefined ? {} : { encode }) } as SchemaExecutionPlan<Schema>
-  plans.set(options.location, plan as unknown as SchemaExecutionPlan)
+  const plan = {
+    decode,
+    ...(encode === undefined ? {} : { encode }),
+  } as SchemaExecutor<Schema>
+  plans.set(options.location, plan as unknown as SchemaExecutor)
   return plan
 }
 
@@ -282,5 +268,3 @@ export function encodeSchema<Wire, Application>(
     return Promise.reject(error)
   }
 }
-
-export const validation = { async: asyncSchema } as const

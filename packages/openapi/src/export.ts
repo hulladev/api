@@ -9,7 +9,7 @@ import {
 } from '@hulla/api'
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { extractOpenAPIDocstrings, type OpenAPIDocstring, type OpenAPIDocstrings } from './docstrings'
-import { standardSchemaInput } from './schema'
+import { standardSchemaRepresentation } from './schema'
 import type {
   DefinedOpenAPI,
   IncludedOpenAPIRouteDocumentation,
@@ -189,7 +189,7 @@ function schemaParameters(
   documentation: RuntimeParameterDocumentation | undefined,
   owner: string
 ): ParameterObject[] {
-  const jsonSchema = schemaObject(standardSchemaInput(schema, owner), owner)
+  const jsonSchema = schemaObject(standardSchemaRepresentation(schema, owner), owner)
   const properties = jsonSchema.properties
   if (properties === undefined) throw new Error(`${owner} must convert to a JSON Schema object with properties`)
   const required = new Set(jsonSchema.required ?? [])
@@ -206,7 +206,10 @@ function pathParameters(
   const parameters: ParameterObject[] = []
   for (const declaration of compiled.pathParameters) {
     const declarationOwner = `${owner} path parameters at ${declaration.path}`
-    const jsonSchema = schemaObject(standardSchemaInput(declaration.schema, declarationOwner), declarationOwner)
+    const jsonSchema = schemaObject(
+      standardSchemaRepresentation(declaration.schema, declarationOwner),
+      declarationOwner
+    )
     const required = new Set(jsonSchema.required ?? [])
     for (const name of declaration.names) {
       parameters.push(
@@ -239,7 +242,7 @@ function requestBody(
         : body.representation === 'json'
           ? ({} as const)
           : undefined
-  const schema = documentation?.schema ?? standardSchemaInput(body.schema, `${owner} request body`, fallback)
+  const schema = documentation?.schema ?? standardSchemaRepresentation(body.schema, `${owner} request body`, fallback)
   const examples = exampleObjects(documentation?.examples)
   const media: MediaTypeObject = {
     schema,
@@ -258,7 +261,7 @@ function responseHeaders(
   documentation: RuntimeParameterDocumentation | undefined,
   owner: string
 ): ResponseObject['headers'] {
-  const jsonSchema = schemaObject(standardSchemaInput(schema, owner), owner)
+  const jsonSchema = schemaObject(standardSchemaRepresentation(schema, owner, undefined, 'output'), owner)
   const properties = jsonSchema.properties
   if (properties === undefined) throw new Error(`${owner} must convert to a JSON Schema object with properties`)
   const required = new Set(jsonSchema.required ?? [])
@@ -305,7 +308,7 @@ function responseObject(
       const schema =
         documentation.schema ??
         ('schema' in body
-          ? standardSchemaInput(body.schema, `${owner} body`, fallback)
+          ? standardSchemaRepresentation(body.schema, `${owner} body`, fallback, 'output')
           : (() => {
               throw new Error(`${owner} needs an explicit OpenAPI response schema`)
             })())
@@ -343,7 +346,9 @@ function errorResponseObject(
       properties: {
         code: { const: declaration.code },
         message: { type: 'string' },
-        ...(data === undefined ? {} : { data: standardSchemaInput(data, `${owner} ${declaration.code} data`) }),
+        ...(data === undefined
+          ? {}
+          : { data: standardSchemaRepresentation(data, `${owner} ${declaration.code} data`, undefined, 'output') }),
       },
       required: data === undefined ? ['code', 'message'] : ['code', 'message', 'data'],
       additionalProperties: false,

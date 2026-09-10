@@ -1,10 +1,10 @@
 import type { CompiledContractRoute } from '../compiler'
-import { registerComposition } from '../composition'
 import type { Awaitable, ContextFactory, ContextFrom } from '../context'
 import type { Contract, ContractRoute } from '../contract'
 import { isContractMount } from '../contract/state'
 import { appendMiddlewarePlan, assertMiddleware, createMiddlewarePlan, type MiddlewarePlan } from '../middleware'
 import { isRecord } from '../object'
+import { registerComposition } from './composition'
 import type {
   ServerContextAdapterId,
   ServerContextAdapterInput,
@@ -53,7 +53,15 @@ function createDefinition<
 
   const compose = ((...fragments: readonly object[]) => {
     const { handlers, bindings } = composeServerFragments(contract, scope, fragments)
-    const implementation = { contract, handlers, context, middlewares: middlewarePlan.all }
+    const implementation = Object.freeze({
+      contract,
+      handlers,
+      bindings,
+      context,
+      middlewares: middlewarePlan.all,
+    })
+    Object.freeze(bindings)
+    Object.freeze(implementation)
     registerComposition(implementation, scope, bindings)
     return implementation
   }) as ServerDefinition<ContractType, Context, AdapterId, AdapterInput>['compose']
@@ -84,16 +92,20 @@ function createDefinition<
       ? {
           contract,
           handlers,
+          bindings,
           context,
           middlewares: middlewarePlan.all,
         }
       : {
           contract,
           handlers,
+          bindings,
           node,
           context,
           middlewares: middlewarePlan.all,
         }
+    Object.freeze(bindings)
+    Object.freeze(implementation)
     registerComposition(implementation, scope, bindings)
     return implementation
   }) as ServerDefinition<ContractType, Context, AdapterId, AdapterInput>['implement']

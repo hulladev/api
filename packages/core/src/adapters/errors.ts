@@ -1,8 +1,9 @@
-import type { CanonicalContractPlan, CanonicalErrorDeclarationPlan } from '../contract/plan'
-import { type AnyErrorDeclaration, type DeclaredError } from '../declared-errors'
+import type { Contract } from '../contract'
+import { errorFactories, type AnyErrorDeclaration, type DeclaredError } from '../declared-errors'
 import { isAPIError, toAPIProblem, type APIProblem } from '../errors'
-import { mapExecutionStep, type ExecutionStep } from '../execution'
+import type { ExecutionStep } from '../execution'
 import { ServerRuntimeError } from '../server/errors'
+import { compileSchemaExecution } from '../validation'
 import type { AdapterPhase, AdapterResponse } from './types'
 
 type DeclaredErrorSerializer = (error: DeclaredError<string, unknown>) => ExecutionStep<AdapterResponse>
@@ -12,8 +13,9 @@ export type RuntimeErrors = {
   readonly serializers: ReadonlyMap<AnyErrorDeclaration, DeclaredErrorSerializer>
 }
 
-function compileDeclaredErrorSerializer(status: number, plan: CanonicalErrorDeclarationPlan): DeclaredErrorSerializer {
-  const data = plan.data
+function compileDeclaredErrorSerializer(status: number, declaration: AnyErrorDeclaration): DeclaredErrorSerializer {
+  const data =
+    declaration.data === undefined ? undefined : compileSchemaExecution(declaration.data, { location: 'response' })
   const finalize = (error: DeclaredError<string, unknown>, encodedData?: unknown): AdapterResponse => ({
     status,
     headers: { 'content-type': 'application/json' },
@@ -26,23 +28,24 @@ function compileDeclaredErrorSerializer(status: number, plan: CanonicalErrorDecl
       },
     },
   })
-  if (data === undefined) return (error) => finalize(error)
-  return (error) => {
-    const encoded =
-      data.encode === undefined ? mapExecutionStep(data.decode(error.data), () => error.data) : data.encode(error.data)
-    return mapExecutionStep(encoded, (value) => finalize(error, value))
+  return async (error) => {
+    let value = error.data
+    if (data !== undefined) {
+      value = await (data.encode ?? data.decode)(value)
+    }
+    return finalize(error, value)
   }
 }
 
-export function compileRuntimeErrors(plan: CanonicalContractPlan): RuntimeErrors | undefined {
-  if (plan.errors.length === 0) return undefined
+export function compileRuntimeErrors(contract: Contract): RuntimeErrors | undefined {
+  if (Object.keys(contract.errors).length === 0) return undefined
   const serializers = new Map<AnyErrorDeclaration, DeclaredErrorSerializer>()
-  for (const [status, declarations] of plan.errors) {
+  for (const [status, declarations] of Object.entries(contract.errors)) {
     for (const declaration of declarations) {
-      serializers.set(declaration.declaration, compileDeclaredErrorSerializer(status, declaration))
+      serializers.set(declaration, compileDeclaredErrorSerializer(Number(status), declaration))
     }
   }
-  return { factories: plan.errorFactories, serializers }
+  return { factories: errorFactories(contract.errors), serializers }
 }
 
 export function serializeDeclaredError(

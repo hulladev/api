@@ -1,4 +1,4 @@
-import { isSchema, type AnySchema, type NonSchemaOptions, type SchemaInput } from '../validation'
+import { isSchema, type AnySchema, type IdentitySchema, type NonSchemaOptions, type SchemaInput } from '../validation'
 import { bytesSchema, formDataSchema, jsonValueSchema, stringSchema, type JsonValue } from './representation'
 
 type QueryWireValue = string | readonly string[] | undefined
@@ -49,19 +49,14 @@ type RequestBodyOptions<ContentType extends string> = NonSchemaOptions & {
 
 type CheckedWireSchema<Schema extends AnySchema, Wire> = SchemaInput<Schema> extends Wire ? Schema : never
 
-type RequestBodyFactory<
-  Kind extends RequestBodyKind,
-  Wire,
-  DefaultSchema extends AnySchema,
-  DefaultContentType extends string,
-> = {
+type RequestBodyFactory<Kind extends RequestBodyKind, Wire, DefaultContentType extends string> = {
   <const Schema extends AnySchema, const ContentType extends string = DefaultContentType>(
     schema: CheckedWireSchema<Schema, Wire>,
     options?: RequestBodyOptions<ContentType>
   ): RequestBodyDefinition<Kind, Schema, ContentType>
-  <const ContentType extends string = DefaultContentType>(
+  <const Value extends Wire = Wire, const ContentType extends string = DefaultContentType>(
     options?: RequestBodyOptions<ContentType>
-  ): RequestBodyDefinition<Kind, DefaultSchema, ContentType>
+  ): RequestBodyDefinition<Kind, IdentitySchema<Value>, ContentType>
 }
 
 function defineRequestBodyFactory<
@@ -73,7 +68,7 @@ function defineRequestBodyFactory<
   representation: Kind,
   defaultSchema: DefaultSchema,
   defaultContentType: DefaultContentType
-): RequestBodyFactory<Kind, Wire, DefaultSchema, DefaultContentType> {
+): RequestBodyFactory<Kind, Wire, DefaultContentType> {
   function requestBody<const Schema extends AnySchema, const ContentType extends string = DefaultContentType>(
     schemaOrOptions?: Schema | RequestBodyOptions<ContentType>,
     explicitOptions?: RequestBodyOptions<ContentType>
@@ -90,7 +85,7 @@ function defineRequestBodyFactory<
     })
   }
 
-  return requestBody as RequestBodyFactory<Kind, Wire, DefaultSchema, DefaultContentType>
+  return requestBody as RequestBodyFactory<Kind, Wire, DefaultContentType>
 }
 
 export const json = /* @__PURE__ */ defineRequestBodyFactory<

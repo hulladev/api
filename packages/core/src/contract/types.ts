@@ -1,37 +1,61 @@
+import type { CompiledContractRoute } from '../compiler'
 import type { ErrorStatusMap, NormalizedErrorStatusMap } from '../declared-errors'
 import type { Route } from './route'
 import type { AnyRouter, RouterRoutes } from './router'
-
-declare const contractNodeType: unique symbol
 
 export type ContractRoute = Route | AnyRouter
 
 export type ContractRoutes = Readonly<Record<string, ContractRoute>>
 
-export type ContractNodeIdentity<Key extends readonly string[]> = {
-  readonly [contractNodeType]?: Key
+/** Public selection metadata. Contains declarations and schemas, never request state. */
+export type ContractSelection<
+  Key extends readonly string[] = readonly string[],
+  Errors extends NormalizedErrorStatusMap = NormalizedErrorStatusMap,
+> = {
+  readonly key: Key
+  readonly routes: readonly CompiledContractRoute[]
+  readonly errors: Readonly<Errors>
 }
 
-type MountedRouter<Definition extends AnyRouter, Key extends readonly string[]> = Definition &
-  ContractNodeIdentity<Key> & {
+export type ContractNodeIdentity<
+  Key extends readonly string[],
+  Errors extends NormalizedErrorStatusMap = NormalizedErrorStatusMap,
+> = {
+  readonly $contract: ContractSelection<Key, Errors>
+}
+
+type MountedRouter<
+  Definition extends AnyRouter,
+  Key extends readonly string[],
+  Errors extends NormalizedErrorStatusMap,
+> = Definition &
+  ContractNodeIdentity<Key, Errors> & {
     readonly [Child in keyof RouterRoutes<Definition>]: Child extends keyof Definition
-      ? MountedContractRoute<Extract<Definition[Child], ContractRoute>, readonly [...Key, Child & string]>
+      ? MountedContractRoute<Extract<Definition[Child], ContractRoute>, readonly [...Key, Child & string], Errors>
       : never
   }
 
-type MountedContractRoute<Definition extends ContractRoute, Key extends readonly string[]> = Definition extends Route
-  ? Definition & ContractNodeIdentity<Key>
+type MountedContractRoute<
+  Definition extends ContractRoute,
+  Key extends readonly string[],
+  Errors extends NormalizedErrorStatusMap,
+> = Definition extends Route
+  ? Definition & ContractNodeIdentity<Key, Errors>
   : Definition extends AnyRouter
-    ? MountedRouter<Definition, Key>
+    ? MountedRouter<Definition, Key, Errors>
     : never
 
-export type MountedContractRoutes<Routes extends ContractRoutes> = {
-  readonly [Key in keyof Routes]: MountedContractRoute<Routes[Key], readonly [Key & string]>
+export type MountedContractRoutes<
+  Routes extends ContractRoutes,
+  Errors extends NormalizedErrorStatusMap = NormalizedErrorStatusMap,
+> = {
+  readonly [Key in keyof Routes]: MountedContractRoute<Routes[Key], readonly [Key & string], Errors>
 }
 
-type ContractRoutesFor<Routes extends ContractRoutes> = string extends keyof Routes
-  ? Readonly<Routes>
-  : Readonly<MountedContractRoutes<Routes>>
+type ContractRoutesFor<
+  Routes extends ContractRoutes,
+  Errors extends NormalizedErrorStatusMap,
+> = string extends keyof Routes ? Readonly<Routes> : Readonly<MountedContractRoutes<Routes, Errors>>
 
 export type Contract<
   BasePath extends string = string,
@@ -39,16 +63,16 @@ export type Contract<
   Errors extends NormalizedErrorStatusMap = NormalizedErrorStatusMap,
 > = {
   readonly basePath: BasePath
-  readonly routes: ContractRoutesFor<Routes>
+  readonly routes: ContractRoutesFor<Routes, Errors>
   readonly errors: Readonly<Errors>
-} & ContractNodeIdentity<readonly []>
+} & ContractNodeIdentity<readonly [], Errors>
 
 type NestedContractNode<Definition> = Definition extends AnyRouter
   ?
       | Definition
       | {
-          [Key in Exclude<keyof Definition, '$meta' | typeof contractNodeType>]: NestedContractNode<Definition[Key]>
-        }[Exclude<keyof Definition, '$meta' | typeof contractNodeType>]
+          [Key in Exclude<keyof Definition, '$meta' | '$contract'>]: NestedContractNode<Definition[Key]>
+        }[Exclude<keyof Definition, '$meta' | '$contract'>]
   : Definition
 
 export type ContractNodeFor<ContractType extends Contract> =
@@ -58,7 +82,7 @@ export type ContractNodeFor<ContractType extends Contract> =
     }[keyof ContractType['routes']]
 
 export type ContractNodeKey<Node> = Node extends {
-  readonly [contractNodeType]?: infer Key extends readonly string[]
+  readonly $contract: { readonly key: infer Key extends readonly string[] }
 }
   ? Key
   : never
