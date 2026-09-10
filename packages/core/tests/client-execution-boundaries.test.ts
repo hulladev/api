@@ -1,6 +1,6 @@
 import { expect, test, vi } from 'vitest'
 import { defineContract, response, route } from '../src'
-import { defineClient } from '../src/client'
+import { createClient } from '../src/client'
 
 test.each([false, true])(
   'closes a failed stream and preserves its error when cleanup fails=%s',
@@ -25,7 +25,7 @@ test.each([false, true])(
       return: finish,
     }
     const contract = defineContract({ routes: { item: route.get('/', { responses: { 200: response.stream() } }) } })
-    const client = defineClient(contract, {
+    const client = createClient(contract, {
       transport: () => ({
         status: 200,
         headers: { 'content-type': 'application/octet-stream' },
@@ -36,7 +36,7 @@ test.each([false, true])(
     const result = await client.item()
     const iterator = result.body[Symbol.asyncIterator]()
     await expect(iterator.next()).rejects.toBe(primary)
-    await expect(iterator.next()).resolves.toMatchObject({ done: true })
+    await expect(iterator.next()).rejects.toBe(primary)
     const cleanupError = await Promise.resolve(iterator.return!()).then(
       () => undefined,
       (error: Error) => error.message
@@ -65,8 +65,10 @@ test.each([false, true])('preserves decoding errors and cleanup with middleware=
       dispose,
       readBody: asynchronous ? async () => fail() : fail,
     }
-    const base = defineClient(contract, { transport: asynchronous ? async () => wire : () => wire })
-    const client = middleware ? base.use(base.middleware(({ next }) => next())) : base
+    const client = createClient(contract, {
+      middleware: middleware ? [({ next }) => next()] : [],
+      transport: asynchronous ? async () => wire : () => wire,
+    })
     const result = client.item()
     expect(result).toBeInstanceOf(Promise)
     await expect(result).rejects.toBe(primary)
@@ -80,8 +82,10 @@ test.each([false, true])(
     const contract = defineContract({ routes: { item: route.get('/', { responses: { 200: response.json() } }) } })
     const readBody = vi.fn<() => unknown>(() => ({ ok: true }))
     const dispose = vi.fn<(reason?: unknown) => void>()
-    const base = defineClient(contract, { transport: async () => ({ status: 418, headers: {}, readBody, dispose }) })
-    const client = middleware ? base.use(base.middleware(({ next }) => next())) : base
+    const client = createClient(contract, {
+      middleware: middleware ? [({ next }) => next()] : [],
+      transport: async () => ({ status: 418, headers: {}, readBody, dispose }),
+    })
     await expect(client.item()).rejects.toMatchObject({ code: 'unexpected-status' })
     expect(readBody).not.toHaveBeenCalled()
     expect(dispose).toHaveBeenCalledOnce()

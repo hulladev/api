@@ -1,10 +1,10 @@
 import { command, form, query } from '$app/server'
 import { implementation } from '$lib/server/api'
 import { svelteKitRemoteTransport } from '@hulla/api-sveltekit/remote'
-import { defineClient } from '@hulla/api/client'
+import { createClient } from '@hulla/api/client'
 import { contract, renameInput } from '../api/contract'
 
-const api = defineClient(contract, {
+const api = createClient(contract, {
   transport: svelteKitRemoteTransport(implementation),
 })
 

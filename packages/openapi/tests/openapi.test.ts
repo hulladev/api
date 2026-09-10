@@ -119,6 +119,39 @@ describe('contract to OpenAPI', () => {
     })
   })
 
+  test('exports request input and response output representations', async () => {
+    const numeric = z.string().transform(Number).pipe(z.number())
+    const headers = z.object({ 'x-count': z.number().transform(String).pipe(z.string()) })
+    const failures = defineErrors({ BAD: { data: numeric } })
+    const contract = defineContract({
+      errors: { 400: failures.BAD },
+      routes: {
+        convert: route.post('/convert', {
+          body: numeric,
+          responses: { 200: response.json(numeric, { headers }) },
+        }),
+      },
+    })
+    const document = await createOpenAPIDocument(
+      defineOpenAPI(contract, {
+        info: { title: 'Directions', version: '1' },
+        routes: {
+          convert: {
+            responses: {
+              200: { description: 'Converted' },
+              400: { description: 'Failure' },
+            },
+          },
+        },
+      })
+    )
+    const operation = document.paths['/convert']?.post
+    expect(operation?.requestBody).toHaveProperty('content.application/json.schema.type', 'string')
+    expect(operation?.responses['200']).toHaveProperty('content.application/json.schema.type', 'number')
+    expect(operation?.responses['200']).toHaveProperty('headers.x-count.schema.type', 'string')
+    expect(operation?.responses['400']).toHaveProperty('content.application/json.schema.properties.data.type', 'number')
+  })
+
   test('preserves Standard JSON Schema conversion through @hulla/api codecs', async () => {
     const date = codec(z.string().datetime(), z.date(), {
       decode: (value) => new Date(value),

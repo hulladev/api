@@ -1,7 +1,7 @@
 import { describe, expect, expectTypeOf, test, vi } from 'vitest'
 import { z } from 'zod'
 import { createAdapterHandler } from '../src/adapters'
-import { defineClient } from '../src/client'
+import { createClient } from '../src/client'
 import { defineContract } from '../src/contract'
 import { response } from '../src/contract/response'
 import { route } from '../src/contract/route'
@@ -82,7 +82,7 @@ describe('declared errors', () => {
         always() ? errors.ITEM_NOT_FOUND({ data: { id: 'item-1' } }) : response(200, 'ok'),
       thrown: ({ response }) => response(200, 'ok'),
     })
-    const client = defineClient(contract, { transport: inProcessTransport(implementation) })
+    const client = createClient(contract, { transport: inProcessTransport(implementation) })
     const result = await client.returned()
 
     expect(result).toEqual({
@@ -101,7 +101,7 @@ describe('declared errors', () => {
         always() ? errors.ITEM_NOT_FOUND({ data: { id: 'item-1' } }) : response(200, 'ok'),
       thrown: ({ response }) => response(200, 'ok'),
     })
-    const client = defineClient(contract, {
+    const client = createClient(contract, {
       transport: inProcessTransport(implementation),
       errorMode: 'throw',
     })
@@ -114,4 +114,23 @@ describe('declared errors', () => {
     const success = await client.thrown()
     expectTypeOf(success.status).toEqualTypeOf<200>()
   })
+})
+
+test('throw mode ignores undeclared error data', async () => {
+  const errors = defineErrors({ DENIED: { message: 'Denied' } })
+  const contract = defineContract({
+    errors: { 403: errors.DENIED },
+    routes: {
+      get: route.get('/', { responses: { 200: response.empty() } }),
+    },
+  })
+  const client = createClient(contract, {
+    errorMode: 'throw',
+    transport: () => ({
+      status: 403,
+      headers: { 'content-type': 'application/json' },
+      readBody: () => ({ code: 'DENIED', message: 'Denied', data: { undeclared: true } }),
+    }),
+  })
+  await expect(client.get()).rejects.toMatchObject({ code: 'DENIED', data: undefined })
 })

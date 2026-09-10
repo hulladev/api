@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { z } from 'zod'
-import { defineClient } from '../src/client'
+import { createClient } from '../src/client'
 import { defineContract } from '../src/contract'
 import { response } from '../src/contract/response'
 import { route } from '../src/contract/route'
@@ -39,7 +39,7 @@ describe('inProcessTransport', () => {
         },
       },
     })
-    const client = defineClient(contract, { transport: inProcessTransport(implementation) })
+    const client = createClient(contract, { transport: inProcessTransport(implementation) })
 
     await expect(
       client.organizations.members.create({

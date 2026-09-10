@@ -4,14 +4,11 @@ import {
   compileContract,
   contractInput,
   defineContract,
-  defineErrors,
   response,
   route,
   router,
   type CompiledContractRouteFor,
 } from '../src'
-import { compileClientContract } from '../src/contract/client-plan'
-import { compileServerContract } from '../src/contract/server-plan'
 
 const organizationParams = z.object({ organizationId: z.string() })
 const userParams = z.object({ userId: z.string() })
@@ -56,11 +53,11 @@ describe('contract compiler', () => {
     const listUsers = compiled.routes[1]!
     const getUser = compiled.routes[2]!
 
-    expect(listUsers.route).toBe(contract.routes.organizations.listUsers)
+    expect(listUsers.route).toEqual(contract.routes.organizations.listUsers)
     expect(listUsers.pathParameters).toEqual([
       { path: '/organizations/:organizationId', names: ['organizationId'], schema: organizationParams },
     ])
-    expect(getUser.route).toBe(contract.routes.organizations.getUser)
+    expect(getUser.route).toEqual(contract.routes.organizations.getUser)
     expect(getUser.pathParameters).toEqual([
       { path: '/organizations/:organizationId', names: ['organizationId'], schema: organizationParams },
       { path: '/users/:userId', names: ['userId'], schema: userParams },
@@ -71,15 +68,18 @@ describe('contract compiler', () => {
 
   test('preserves correlated route keys, paths, methods, and declarations in its public type', () => {
     type Entry = CompiledContractRouteFor<typeof contract>
+    expectTypeOf<Extract<'$contract', keyof Entry['route']>>().toEqualTypeOf<never>()
     type Health = Extract<Entry, { readonly key: readonly ['health'] }>
     type GetUser = Extract<Entry, { readonly key: readonly ['organizations', 'getUser'] }>
 
     expectTypeOf<Health['method']>().toEqualTypeOf<'GET'>()
     expectTypeOf<Health['path']>().toEqualTypeOf<'/api/health'>()
-    expectTypeOf<Health['route']>().toEqualTypeOf<(typeof contract.routes)['health']>()
+    expectTypeOf<Health['route']>().toEqualTypeOf<Omit<(typeof contract.routes)['health'], '$contract'>>()
     expectTypeOf<GetUser['method']>().toEqualTypeOf<'GET'>()
     expectTypeOf<GetUser['path']>().toEqualTypeOf<'/api/organizations/:organizationId/users/:userId'>()
-    expectTypeOf<GetUser['route']>().toEqualTypeOf<(typeof contract.routes.organizations)['getUser']>()
+    expectTypeOf<GetUser['route']>().toEqualTypeOf<
+      Omit<(typeof contract.routes.organizations)['getUser'], '$contract'>
+    >()
   })
 
   test('flattens recursive routers and accumulates every ancestor parameter', async () => {
@@ -180,66 +180,9 @@ describe('contract compiler', () => {
     expect(nestedInput['~standard'].validate(input)).toEqual({ value: input })
   })
 
-  test('caches compilation by immutable contract identity', () => {
-    expect(compileContract(contract)).toBe(compileContract(contract))
+  test('reuses the public immutable manifest', () => {
+    expect(compileContract(contract).routes).toBe(contract.$contract.routes)
     expect(compileContract(defineContract({ routes: { health } }))).not.toBe(compileContract(contract))
-  })
-
-  test('compiles directional wire operations while sharing schema plans', async () => {
-    const sharedResponse = response.json(z.object({ id: z.string() }))
-    const failures = defineErrors({ INVALID_USER: { message: 'Invalid user' } })
-    const plannedContract = defineContract({
-      errors: { 400: failures.INVALID_USER },
-      routes: {
-        create: route.post('/users/:id', {
-          params: z.object({ id: z.string() }),
-          query: z.object({ source: z.string() }),
-          headers: z.object({ authorization: z.string() }),
-          body: z.object({ name: z.string() }),
-          responses: { 201: sharedResponse },
-        }),
-      },
-    })
-
-    const plan = compileClientContract(plannedContract)
-    const plannedRoute = plan.routes[0]!
-
-    expect(compileClientContract(plannedContract)).toBe(plan)
-    expect(plannedRoute.compiled).toBe(compileContract(plannedContract).routes[0])
-    expect(plannedRoute.hasInput).toBe(true)
-    expect(plannedRoute.encodePath).toBeTypeOf('function')
-    const serverRoute = compileServerContract(plannedContract).routes[0]!
-    expect(serverRoute.pattern).toEqual(['users', ':id'])
-    expect(await plannedRoute.encodePath!({ id: 'space /✓' })).toBe('/users/space%20%2F%E2%9C%93')
-    expect(await serverRoute.decodePath!({ id: 'space /✓' })).toEqual({ id: 'space /✓' })
-    expect(serverRoute.responses[0]?.[1]).toBe(plannedRoute.responses[0]?.[1])
-    expect(serverRoute.body?.schema).toBe(plannedRoute.body?.schema)
-    expect(plannedRoute.encodeQuery).toBeTypeOf('function')
-    const query = await plannedRoute.encodeQuery!({ source: 'a & b' })
-    expect(await serverRoute.decodeQuery!(query)).toEqual({ source: 'a & b' })
-    expect(plannedRoute.headers).toBeDefined()
-    expect(plannedRoute.body).toBeDefined()
-    expect(plan.errors[0]?.[0]).toBe(400)
-  })
-
-  test('compiles only selected fragment routes without replacing the complete cached plan', () => {
-    const failures = defineErrors({ INVALID_REQUEST: { message: 'Invalid request' } })
-    const plannedContract = defineContract({
-      errors: { 400: failures.INVALID_REQUEST },
-      routes: {
-        health: route.get('/health', { responses: { 200: response.text() } }),
-        inspect: route.get('/inspect', { responses: { 200: response.text() } }),
-      },
-    })
-
-    const selected = compileClientContract(plannedContract, [compileContract(plannedContract).routes[1]!])
-    const complete = compileClientContract(plannedContract)
-
-    expect(selected.routes.map((plan) => plan.compiled.key)).toEqual([['inspect']])
-    expect(complete.routes.map((plan) => plan.compiled.key)).toEqual([['health'], ['inspect']])
-    expect(compileClientContract(plannedContract)).toBe(complete)
-    expect(selected.routes[0]).toBe(complete.routes[1])
-    expect(selected.errors).toBe(complete.errors)
   })
 
   test('preserves prototype-like route keys safely', () => {
@@ -261,6 +204,6 @@ describe('contract compiler', () => {
   })
 
   test('rejects malformed runtime input', () => {
-    expect(() => compileContract({} as never)).toThrowError('Compiled contract input must be a contract definition')
+    expect(() => compileContract({} as never)).toThrowError('Expected a contract or selected contract node')
   })
 })

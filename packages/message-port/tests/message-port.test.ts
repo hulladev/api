@@ -3,7 +3,7 @@ import { defineContract } from '@hulla/api'
 import { request } from '@hulla/api'
 import { response } from '@hulla/api'
 import { route } from '@hulla/api'
-import { defineClient } from '@hulla/api/client'
+import { createClient } from '@hulla/api/client'
 import { fetchAdapter } from '@hulla/api/fetch'
 import { defineServer } from '@hulla/api/server'
 import { describe, expect, expectTypeOf, test, vi } from 'vitest'
@@ -52,7 +52,7 @@ describe('messagePortTransport', () => {
     })
     const server = adapter.mount(implementation)
     const transport = messagePortTransport(channel.port2)
-    const client = defineClient(contract, { transport })
+    const client = createClient(contract, { transport })
 
     try {
       await Promise.all([server.ready, transport.ready])
@@ -104,7 +104,7 @@ describe('messagePortTransport', () => {
     const channel = new MessageChannel()
     const server = messagePortAdapter(channel.port1).mount(implementation)
     const transport = messagePortTransport(channel.port2)
-    const client = defineClient(contract, { transport })
+    const client = createClient(contract, { transport })
 
     try {
       const data = new FormData()
@@ -148,7 +148,7 @@ describe('messagePortTransport', () => {
     const channel = new MessageChannel()
     const server = messagePortAdapter(channel.port1).mount(implementation)
     const transport = messagePortTransport(channel.port2)
-    const client = defineClient(contract, { transport })
+    const client = createClient(contract, { transport })
 
     try {
       const result = await client.download()
@@ -200,7 +200,7 @@ describe('messagePortTransport', () => {
     })
     const server = adapter.mount(implementation)
     const transport = messagePortTransport(channel.port2)
-    const client = defineClient(contract, { transport })
+    const client = createClient(contract, { transport })
     const controller = new AbortController()
 
     try {
@@ -232,7 +232,7 @@ describe('messagePortTransport', () => {
     })
     const server = messagePortAdapter(electronPort(channel.port1)).mount(implementation)
     const transport = messagePortTransport(electronPort(channel.port2))
-    const client = defineClient(contract, { transport })
+    const client = createClient(contract, { transport })
 
     try {
       await expect(client.health()).resolves.toMatchObject({ status: 200, body: 'ok' })
@@ -267,7 +267,7 @@ describe('messagePortTransport', () => {
     const implementation = defineServer(contract).implement({ health: () => ({ status: 204 }) })
     const server = messagePortAdapter(endpoint(0), { channel: 'desktop-ipc' }).mount(implementation)
     const transport = messagePortTransport(endpoint(1), { channel: 'desktop-ipc' })
-    const client = defineClient(contract, { transport })
+    const client = createClient(contract, { transport })
 
     try {
       await expect(client.health()).resolves.toEqual({ status: 204, headers: {} })
@@ -318,7 +318,7 @@ test.each(['abort', 'remote-close'] as const)(
     const transport = messagePortTransport(channel.port2)
     const controller = new AbortController()
     try {
-      const client = defineClient(contract, { transport })
+      const client = createClient(contract, { transport })
       const result = await client.download({ signal: controller.signal })
       const iterator = result.body[Symbol.asyncIterator]()
       expect(await iterator.next()).toEqual({ done: false, value: new Uint8Array([1]) })

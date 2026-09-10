@@ -1,5 +1,5 @@
-import { defineContract, response, route } from '@hulla/api'
-import { defineClient } from '@hulla/api/client'
+import { codec, defineContract, response, route } from '@hulla/api'
+import { createClient } from '@hulla/api/client'
 import { createFetch } from 'ofetch'
 import { describe, expect, test, vi } from 'vitest'
 import { z } from 'zod'
@@ -51,7 +51,7 @@ describe('Nuxt fetch transport', () => {
     const fetcher = createFetch({
       fetch: async () => Response.json({ message: 'Name is unavailable' }, { status: 422 }),
     })
-    const client = defineClient(contract, { transport: nuxtFetchTransport(fetcher) })
+    const client = createClient(contract, { transport: nuxtFetchTransport(fetcher) })
 
     await expect(client.rename({ body: { name: 'Ada' } })).resolves.toEqual({
       status: 422,
@@ -62,7 +62,7 @@ describe('Nuxt fetch transport', () => {
 
   test('uses a relative request-aware raw fetch and preserves repeated query fields', async () => {
     const request = requestFetch(() => Response.json({ ok: true }))
-    const client = defineClient(contract, { transport: nuxtFetchTransport(request.fetcher) })
+    const client = createClient(contract, { transport: nuxtFetchTransport(request.fetcher) })
 
     await expect(client.search({ query: { tag: ['typed', 'nuxt'], term: 'hulla api' } })).resolves.toEqual({
       status: 200,
@@ -82,7 +82,7 @@ describe('Nuxt fetch transport', () => {
 
   test('retains non-success statuses and sends the encoded contract body', async () => {
     const request = requestFetch(() => Response.json({ message: 'Name is unavailable' }, { status: 422 }))
-    const client = defineClient(contract, {
+    const client = createClient(contract, {
       transport: nuxtFetchTransport(request.fetcher, { baseUrl: '/internal' }),
     })
 
@@ -102,7 +102,7 @@ describe('Nuxt fetch transport', () => {
 
   test('passes abort signals through and rejects an already aborted call', async () => {
     const request = requestFetch(() => Response.json({ ok: true }))
-    const client = defineClient(contract, { transport: nuxtFetchTransport(request.fetcher) })
+    const client = createClient(contract, { transport: nuxtFetchTransport(request.fetcher) })
     const active = new AbortController()
 
     await client.search({ query: { tag: ['one'], term: 'active' } }, { signal: active.signal })
@@ -132,7 +132,7 @@ test('uses native request-scoped fetch without discarding failure status or resp
   const fetcher = vi.fn<(url: string, options: RequestInit) => Promise<Response>>(async () =>
     Response.json({ message: 'Name is unavailable' }, { status: 422, headers: { 'x-request-id': 'one' } })
   )
-  const client = defineClient(contract, { transport: nuxtFetchTransport({ fetch: fetcher }) })
+  const client = createClient(contract, { transport: nuxtFetchTransport({ fetch: fetcher }) })
   const result = await client.rename({ body: { name: 'Ada' } })
   expect(result).toMatchObject({
     status: 422,
@@ -156,27 +156,28 @@ test.each(['status', 'content-type'] as const)('cancels an unread Nuxt response 
     status: failure === 'status' ? 500 : 200,
     headers: { 'content-type': failure === 'content-type' ? 'text/plain' : 'application/json' },
   })
-  const client = defineClient(contract, { transport: nuxtFetchTransport({ fetch: async () => native }) })
+  const client = createClient(contract, { transport: nuxtFetchTransport({ fetch: async () => native }) })
   await expect(client.rename({ body: { name: 'Ada' } })).rejects.toMatchObject({
     code: failure === 'status' ? 'unexpected-status' : 'content-type-mismatch',
   })
   expect(cancel).toHaveBeenCalledTimes(1)
 })
 
-test('cancels an active Nuxt body read when asynchronous header validation fails', async () => {
+test('cancels an active Nuxt body read when asynchronous header codec decoding fails', async () => {
   const cancel = vi.fn<() => void>()
   let rejectHeaders!: (error: Error) => void
-  const headers = z.object({}).transform(
-    async () =>
+  const headers = codec(z.object({}), z.object({}), {
+    encode: (value) => value,
+    decode: () =>
       new Promise<never>((_resolve, reject) => {
         rejectHeaders = reject
-      })
-  )
+      }),
+  })
   const api = defineContract({
     routes: { get: route.get('/', { responses: { 200: response.json(z.object({ ok: z.boolean() }), { headers }) } }) },
   })
   const native = new Response(new ReadableStream({ cancel }), { headers: { 'content-type': 'application/json' } })
-  const client = defineClient(api, { transport: nuxtFetchTransport({ fetch: async () => native }) })
+  const client = createClient(api, { transport: nuxtFetchTransport({ fetch: async () => native }) })
   const call = client.get()
   await vi.waitFor(() => expect(native.body!.locked).toBe(true))
   const failure = new Error('invalid headers')
@@ -189,7 +190,7 @@ test('preserves separate Set-Cookie values for SSR callers', async () => {
   const cookies = ['session=one; Path=/; HttpOnly', 'refresh=two; Path=/; HttpOnly']
   const headers = new Headers()
   for (const cookie of cookies) headers.append('set-cookie', cookie)
-  const client = defineClient(contract, {
+  const client = createClient(contract, {
     transport: nuxtFetchTransport({ fetch: async () => Response.json({ name: 'Ada' }, { headers }) }),
   })
   expect((await client.rename({ body: { name: 'Ada' } })).headers['set-cookie']).toEqual(cookies)

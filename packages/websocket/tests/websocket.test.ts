@@ -1,6 +1,6 @@
 import { once } from 'node:events'
 import { defineContract, request, response, route } from '@hulla/api'
-import { defineClient } from '@hulla/api/client'
+import { createClient } from '@hulla/api/client'
 import { inProcessTransport } from '@hulla/api/in-process'
 import { defineServer } from '@hulla/api/server'
 import { expect, expectTypeOf, test } from 'vitest'
@@ -70,7 +70,7 @@ test('uses the native WebSocket client and preserves native context, fragments a
     })
     expect(() => inProcessTransport(fragment as never)).toThrow('Server requires the websocket adapter')
     peers.mount(adapter.mount(fragment))
-    const client = defineClient(contract, { transport: peers.transport })
+    const client = createClient(contract, { transport: peers.transport })
     const result = await Promise.all([client.echo({ body: 'first' }), client.echo({ body: 'second' })])
     expect(result.map((value) => value.body)).toEqual([
       { body: 'first', method: 'POST' },
@@ -93,7 +93,7 @@ test('fails pending calls on disconnect, aborts server work and never replays re
       return { status: 200, body: 'cancelled' }
     })
     peers.mount(webSocketAdapter(peers.socket).mount(fragment))
-    const client = defineClient(contract, { transport: peers.transport })
+    const client = createClient(contract, { transport: peers.transport })
     const pending = client.wait().catch((error: unknown) => error)
     await expect.poll(() => signal).toBeDefined()
     peers.socket.terminate()
@@ -122,7 +122,7 @@ test('propagates a socket disconnect into an active response stream and finalize
       })(),
     }))
     peers.mount(webSocketAdapter(peers.socket).mount(fragment))
-    const result = await defineClient(contract, { transport: peers.transport }).stream()
+    const result = await createClient(contract, { transport: peers.transport }).stream()
     const iterator = result.body[Symbol.asyncIterator]()
     expect((await iterator.next()).value).toEqual(new Uint8Array([1]))
     peers.socket.terminate()
@@ -154,7 +154,7 @@ test('pulls exactly one producer chunk per consumer next and releases listeners 
     }))
     const mounted = webSocketAdapter(peers.socket).mount(fragment)
     peers.mount(mounted)
-    const result = await defineClient(contract, { transport: peers.transport }).stream()
+    const result = await createClient(contract, { transport: peers.transport }).stream()
     expect(produced).toBe(0)
     const iterator = result.body[Symbol.asyncIterator]()
     await iterator.next()
@@ -178,7 +178,7 @@ test('rejects malformed protocol frames and exposes the terminal error', async (
     peers.socket.send('{not-json')
     expect(await peers.transport.closed).toMatchObject({ code: 'invalid-message' })
     await expect(
-      defineClient(contract, { transport: peers.transport }).echo({ body: 'ignored' })
+      createClient(contract, { transport: peers.transport }).echo({ body: 'ignored' })
     ).rejects.toMatchObject({ code: 'invalid-message' })
   } finally {
     await peers.close()
@@ -201,7 +201,7 @@ test('cancels while connecting and does not send the call when the socket eventu
   const socket = new ConnectingSocket()
   const transport: WebSocketTransport = webSocketTransport(socket)
   const abort = new AbortController()
-  const pending = defineClient(contract, { transport }).echo({ body: 'never' }, { signal: abort.signal })
+  const pending = createClient(contract, { transport }).echo({ body: 'never' }, { signal: abort.signal })
   abort.abort(new Error('cancel before open'))
   await expect(pending).rejects.toThrow('cancel before open')
   socket.open()
@@ -213,7 +213,7 @@ test('cancels while connecting and does not send the call when the socket eventu
 test('closing before open rejects readiness and outstanding calls without owning socket closure', async () => {
   const socket = new ConnectingSocket()
   const transport = webSocketTransport(socket)
-  const pending = defineClient(contract, { transport })
+  const pending = createClient(contract, { transport })
     .echo({ body: 'never' })
     .catch((error: unknown) => error)
   await transport.close()
@@ -258,7 +258,7 @@ test('retains a falsy abort reason for subsequent stream reads', async () => {
       )
     )
     const abort = new AbortController()
-    const result = await defineClient(contract, { transport: peers.transport }).stream({ signal: abort.signal })
+    const result = await createClient(contract, { transport: peers.transport }).stream({ signal: abort.signal })
     const iterator = result.body[Symbol.asyncIterator]()
     await iterator.next()
     abort.abort(null)

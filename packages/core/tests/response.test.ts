@@ -119,7 +119,7 @@ describe('response declaration', () => {
     expect(() => select(declaration, 204)).toThrowError('Route response 204 does not declare a complete body schema')
   })
 
-  test('validates the intrinsic response representations without Zod', async () => {
+  test('uses native JSON values and checks non-JSON representations without Zod', async () => {
     const json = response.json()
     const text = response.text()
     const bytes = response.bytes()
@@ -128,9 +128,8 @@ describe('response declaration', () => {
     await expect(decodeSchema(json.body.schema, { nested: [true, null, 1] })).resolves.toEqual({
       nested: [true, null, 1],
     })
-    await expect(decodeSchema(json.body.schema, { value: undefined })).rejects.toBeInstanceOf(TypeError)
-    await expect(decodeSchema(json.body.schema, Number.POSITIVE_INFINITY)).rejects.toBeInstanceOf(TypeError)
-    await expect(decodeSchema(json.body.schema, 1n as never)).rejects.toBeInstanceOf(TypeError)
+    await expect(decodeSchema(json.body.schema, { value: undefined })).resolves.toEqual({ value: undefined })
+    await expect(decodeSchema(json.body.schema, Number.POSITIVE_INFINITY)).resolves.toBe(Infinity)
     await expect(decodeSchema(text.body.schema, 1)).rejects.toBeInstanceOf(TypeError)
     await expect(decodeSchema(bytes.body.schema, new Blob())).rejects.toBeInstanceOf(TypeError)
     await expect(decodeSchema(formData.body.schema, {})).rejects.toBeInstanceOf(TypeError)

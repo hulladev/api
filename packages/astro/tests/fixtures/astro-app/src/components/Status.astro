@@ -1,10 +1,10 @@
 ---
 import { astroInProcessTransport } from '@hulla/api-astro'
-import { defineClient } from '@hulla/api/client'
+import { createClient } from '@hulla/api/client'
 import { contract } from '../api/contract'
 import { implementation } from '../api/server'
 
-const api = defineClient(contract, {
+const api = createClient(contract, {
   transport: astroInProcessTransport(implementation, Astro),
 })
 const result = await api.health()

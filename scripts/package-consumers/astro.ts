@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { defineContract, response, route } from '@hulla/api'
 import { astroAdapter, astroInProcessTransport, type AstroContext } from '@hulla/api-astro'
-import { defineClient } from '@hulla/api/client'
+import { createClient } from '@hulla/api/client'
 import { defineServer } from '@hulla/api/server'
 import type { APIRoute } from 'astro'
 const contract = defineContract({ routes: { health: route.get('/health', { responses: { 200: response.text() } }) } })
@@ -18,5 +18,5 @@ const context = {
 const result = await handler(context)
 assert.equal(result.status, 200)
 assert.equal(await result.text(), '/health')
-const api = defineClient(contract, { transport: astroInProcessTransport(implementation, context) })
+const api = createClient(contract, { transport: astroInProcessTransport(implementation, context) })
 assert.equal((await api.health()).body, '/health')

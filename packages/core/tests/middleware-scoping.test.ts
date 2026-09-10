@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { createAdapterHandler } from '../src/adapters'
-import { defineClient } from '../src/client'
+import { createClient, clientMiddleware } from '../src/client'
 import { defineContract } from '../src/contract'
 import { response } from '../src/contract/response'
 import { route } from '../src/contract/route'
@@ -57,7 +57,7 @@ describe('middleware scoping', () => {
           },
         },
       })
-    const client = defineClient(contract, { transport: inProcessTransport(implementation) })
+    const client = createClient(contract, { transport: inProcessTransport(implementation) })
 
     await client.health()
     expect(calls).toEqual(['global:health', 'handler:health'])
@@ -77,42 +77,23 @@ describe('middleware scoping', () => {
     expect(implementation.middlewares).toEqual([global, users, profile])
   })
 
-  test('uses the same contract-node scoping syntax on the client', async () => {
-    const implementation = defineServer(contract).implement({
-      health: ({ response }) => response(200, 'ok'),
-      users: {
-        list: ({ response }) => response(200, 'users'),
-        profile: ({ response }) => response(200, 'profile'),
-      },
-    })
+  test('applies middleware in construction order to a selected client', async () => {
     const calls: string[] = []
-    const base = defineClient(contract, { transport: inProcessTransport(implementation) })
-    const global = base.middleware(({ next, route }) => {
+    const global = clientMiddleware(contract, ({ next, route }) => {
       calls.push(`global:${route.key.join('.')}`)
       return next()
     })
-    const users = base.middleware(({ next, route }) => {
+    const users = clientMiddleware(contract, ({ next, route }) => {
       calls.push(`users:${route.key.join('.')}`)
       return next()
     })
-    const profile = base.middleware(({ next, route }) => {
-      calls.push(`profile:${route.key.join('.')}`)
-      return next()
+    const client = createClient(contract.routes.users, {
+      transport: () => ({ status: 200, headers: { 'content-type': 'text/plain' }, readBody: () => 'ok' }),
+      middleware: [global, users],
     })
-    const definition = base.use(global).use(contract.routes.users, users).use(contract.routes.users.profile, profile)
-    const client = definition
-
-    await client.health()
-    expect(calls).toEqual(['global:health'])
-
-    calls.length = 0
-    await client.users.list()
-    expect(calls).toEqual(['global:users.list', 'users:users.list'])
-
-    calls.length = 0
-    await client.users.profile()
-    expect(calls).toEqual(['global:users.profile', 'users:users.profile', 'profile:users.profile'])
-    expect(definition.middlewares).toEqual([global, users, profile])
+    await client.profile()
+    expect(calls).toEqual(['global:users.profile', 'users:users.profile'])
+    expect(Object.keys(client)).toEqual(['list', 'profile'])
   })
 
   test('keeps fragment-based middleware scoping compatible', async () => {
@@ -128,7 +109,7 @@ describe('middleware scoping', () => {
       profile: ({ response }) => response(200, 'profile'),
     })
     const implementation = base.compose(health, userHandlers)
-    const client = defineClient(contract, { transport: inProcessTransport(implementation) })
+    const client = createClient(contract, { transport: inProcessTransport(implementation) })
 
     await client.health()
     expect(calls).toEqual([])
@@ -145,14 +126,16 @@ describe('middleware scoping', () => {
       },
     })
     const calls: string[] = []
-    const base = defineClient(contract, { transport: inProcessTransport(implementation) })
-    const usersMiddleware = base.middleware(({ next }) => {
+    const usersMiddleware = clientMiddleware(contract, ({ next }) => {
       calls.push('users')
       return next()
     })
-    const health = base.select(contract.routes.health)
-    const users = base.use(usersMiddleware).select(contract.routes.users)
-    const client = base.compose(health, users)
+    const health = createClient(contract.routes.health, { transport: inProcessTransport(implementation) })
+    const users = createClient(contract.routes.users, {
+      transport: inProcessTransport(implementation),
+      middleware: [usersMiddleware],
+    })
+    const client = { health, users }
 
     await client.health()
     expect(calls).toEqual([])
@@ -177,7 +160,7 @@ describe('middleware scoping', () => {
           profile: ({ response }) => response(200, 'profile'),
         },
       })
-    const client = defineClient(contract, { transport: inProcessTransport(implementation) })
+    const client = createClient(contract, { transport: inProcessTransport(implementation) })
 
     await client.users.profile()
     expect(calls).toEqual(['middleware', 'middleware'])
@@ -204,7 +187,7 @@ describe('middleware scoping', () => {
           profile: ({ response }) => response(200, 'profile'),
         },
       })
-    const client = defineClient(contract, { transport: inProcessTransport(implementation) })
+    const client = createClient(contract, { transport: inProcessTransport(implementation) })
 
     await client.users.list()
     expect(calls).toEqual(['scoped', 'global'])
@@ -245,20 +228,23 @@ describe('middleware scoping', () => {
         },
       })
 
-    const client = defineClient(contract, { transport: inProcessTransport(implementation) })
-    const clientGlobal = client.middleware(async ({ next }) => {
+    const clientGlobal = clientMiddleware(contract, async ({ next }) => {
       calls.push('client-global:before')
       const result = await next()
       calls.push('client-global:after')
       return result
     })
-    const clientUsers = client.middleware(async ({ next }) => {
+    const clientUsers = clientMiddleware(contract, async ({ next }) => {
       calls.push('client-users:before')
       const result = await next()
       calls.push('client-users:after')
       return result
     })
-    const api = client.use(clientGlobal).use(contract.routes.users, clientUsers)
+    const transport = inProcessTransport(implementation)
+    const api = {
+      health: createClient(contract.routes.health, { transport, middleware: [clientGlobal] }),
+      users: createClient(contract.routes.users, { transport, middleware: [clientGlobal, clientUsers] }),
+    }
 
     await api.users.profile()
     expect(calls).toEqual([
@@ -316,10 +302,10 @@ describe('middleware scoping', () => {
     expect(profileBranch.middlewares).toEqual([users, profile])
     expect(globalBranch.middlewares).toEqual([users, global])
 
-    const baseClient = defineClient(contract, { transport: inProcessTransport(implement(base)) })
-    const usersClient = defineClient(contract, { transport: inProcessTransport(implement(usersOnly)) })
-    const profileClient = defineClient(contract, { transport: inProcessTransport(implement(profileBranch)) })
-    const globalClient = defineClient(contract, { transport: inProcessTransport(implement(globalBranch)) })
+    const baseClient = createClient(contract, { transport: inProcessTransport(implement(base)) })
+    const usersClient = createClient(contract, { transport: inProcessTransport(implement(usersOnly)) })
+    const profileClient = createClient(contract, { transport: inProcessTransport(implement(profileBranch)) })
+    const globalClient = createClient(contract, { transport: inProcessTransport(implement(globalBranch)) })
 
     await baseClient.users.profile()
     expect(calls).toEqual([])
@@ -336,50 +322,26 @@ describe('middleware scoping', () => {
     expect(calls).toEqual(['users', 'global'])
   })
 
-  test('keeps parent and sibling middleware plans immutable on the client', async () => {
-    const implementation = defineServer(contract).implement({
-      health: ({ response }) => response(200, 'ok'),
-      users: {
-        list: ({ response }) => response(200, 'users'),
-        profile: ({ response }) => response(200, 'profile'),
-      },
-    })
+  test('snapshots the middleware list when constructing a client', async () => {
     const calls: string[] = []
-    const base = defineClient(contract, { transport: inProcessTransport(implementation) })
-    const users = base.middleware(({ next }) => {
-      calls.push('users')
+    const first = clientMiddleware(contract, ({ next }) => {
+      calls.push('first')
       return next()
     })
-    const profile = base.middleware(({ next }) => {
-      calls.push('profile')
+    const second = clientMiddleware(contract, ({ next }) => {
+      calls.push('second')
       return next()
     })
-    const global = base.middleware(({ next }) => {
-      calls.push('global')
-      return next()
-    })
-    const usersOnly = base.use(contract.routes.users, users)
-    const profileBranch = usersOnly.use(contract.routes.users.profile, profile)
-    const globalBranch = usersOnly.use(global)
-
-    expect(base.middlewares).toEqual([])
-    expect(usersOnly.middlewares).toEqual([users])
-    expect(profileBranch.middlewares).toEqual([users, profile])
-    expect(globalBranch.middlewares).toEqual([users, global])
-
-    await base.users.profile()
-    expect(calls).toEqual([])
-    await usersOnly.users.profile()
-    expect(calls).toEqual(['users'])
+    const middleware = [first]
+    const transport = () => ({ status: 200, headers: { 'content-type': 'text/plain' }, readBody: () => 'ok' })
+    const original = createClient(contract, { transport, middleware })
+    middleware.push(second)
+    const sibling = createClient(contract, { transport, middleware })
+    await original.health()
+    expect(calls).toEqual(['first'])
     calls.length = 0
-    await profileBranch.users.profile()
-    expect(calls).toEqual(['users', 'profile'])
-    calls.length = 0
-    await globalBranch.health()
-    expect(calls).toEqual(['global'])
-    calls.length = 0
-    await globalBranch.users.profile()
-    expect(calls).toEqual(['users', 'global'])
+    await sibling.health()
+    expect(calls).toEqual(['first', 'second'])
   })
 
   test('preserves route-scoped middleware through server fragments and enforces scope ancestry', async () => {
@@ -400,7 +362,7 @@ describe('middleware scoping', () => {
       profile: ({ response }) => response(200, 'profile'),
     })
     const implementation = base.compose(health, userHandlers)
-    const api = defineClient(contract, { transport: inProcessTransport(implementation) })
+    const api = createClient(contract, { transport: inProcessTransport(implementation) })
 
     await api.health()
     expect(calls).toEqual(['global'])
@@ -411,41 +373,6 @@ describe('middleware scoping', () => {
     const unscopedHealth = base.implement(contract.routes.health, ({ response }) => response(200, 'ok'))
     expect(() => branch.compose(unscopedHealth, userHandlers)).toThrowError(
       'Server fragment has an incompatible middleware scope'
-    )
-  })
-
-  test('preserves route-scoped middleware through client fragments and enforces scope ancestry', async () => {
-    const implementation = defineServer(contract).implement({
-      health: ({ response }) => response(200, 'ok'),
-      users: {
-        list: ({ response }) => response(200, 'users'),
-        profile: ({ response }) => response(200, 'profile'),
-      },
-    })
-    const calls: string[] = []
-    const base = defineClient(contract, { transport: inProcessTransport(implementation) })
-    const global = base.middleware(({ next }) => {
-      calls.push('global')
-      return next()
-    })
-    const users = base.middleware(({ next }) => {
-      calls.push('users')
-      return next()
-    })
-    const branch = base.use(global).use(contract.routes.users, users)
-    const health = branch.select(contract.routes.health)
-    const userCalls = branch.select(contract.routes.users)
-    const api = base.compose(health, userCalls)
-
-    await api.health()
-    expect(calls).toEqual(['global'])
-    calls.length = 0
-    await api.users.list()
-    expect(calls).toEqual(['global', 'users'])
-
-    const unscopedHealth = base.select(contract.routes.health)
-    expect(() => branch.compose(unscopedHealth, userCalls)).toThrowError(
-      'Client fragment has an incompatible middleware scope'
     )
   })
 
@@ -487,20 +414,20 @@ describe('middleware scoping', () => {
       },
     })
     const transport = inProcessTransport(clientImplementation)
-    const client = defineClient(contract, {
+    const client = createClient(contract, {
+      middleware: [
+        async ({ next }) => {
+          await next()
+          return next()
+        },
+      ],
       transport: async (request) => {
         clientTransportCalls++
         return transport(request)
       },
     })
-    const duplicateClientNext = client.middleware(async ({ next }) => {
-      await next()
-      return next()
-    })
+    await expect(client.health()).rejects.toThrowError('Client middleware called next() more than once')
 
-    await expect(client.use(duplicateClientNext).health()).rejects.toThrowError(
-      'Client middleware called next() more than once'
-    )
     expect(clientTransportCalls).toBe(1)
   })
 
@@ -527,7 +454,7 @@ describe('middleware scoping', () => {
         return response(200, 'private')
       },
     })
-    const gatedClient = defineClient(gatedContract, { transport: inProcessTransport(implementation) })
+    const gatedClient = createClient(gatedContract, { transport: inProcessTransport(implementation) })
 
     await expect(gatedClient.public()).resolves.toMatchObject({ status: 200, body: 'public' })
     await expect(gatedClient.private()).resolves.toMatchObject({
@@ -546,17 +473,26 @@ describe('middleware scoping', () => {
     })
     let transportCalls = 0
     const transport = inProcessTransport(clientImplementation)
-    const client = defineClient(contract, {
+    const client = createClient(contract, {
       transport: async (request) => {
         transportCalls++
         return transport(request)
       },
     })
     const blocked = new Error('Client request blocked')
-    const blockUsers = client.middleware(async () => {
+    const blockUsers = clientMiddleware(contract, async () => {
       throw blocked
     })
-    const api = client.use(contract.routes.users, blockUsers)
+    const api = {
+      health: client.health,
+      users: createClient(contract.routes.users, {
+        transport: (request) => {
+          transportCalls++
+          return transport(request)
+        },
+        middleware: [blockUsers],
+      }),
+    }
 
     await expect(api.health()).resolves.toMatchObject({ status: 200, body: 'ok' })
     await expect(api.users.profile()).rejects.toBe(blocked)
@@ -565,14 +501,10 @@ describe('middleware scoping', () => {
 
   test('rejects foreign middleware targets and keeps the root target out of the typed API', () => {
     const foreignContract = defineContract({
-      routes: { health: route.get('/health', { responses: { 200: response.text() } }) },
+      routes: { health: route.get('/foreign', { responses: { 200: response.text() } }) },
     })
     const server = defineServer(contract)
     const serverMiddleware = server.middleware(({ next }) => next())
-    const client = defineClient(contract, {
-      transport: () => ({ status: 200, headers: {}, readBody: () => 'ok' }),
-    })
-    const clientMiddleware = client.middleware(({ next }) => next())
 
     expect(() =>
       (server.use as (node: unknown, middleware: typeof serverMiddleware) => unknown)(
@@ -580,28 +512,15 @@ describe('middleware scoping', () => {
         serverMiddleware
       )
     ).toThrowError('Server node is not mounted in this contract')
-    expect(() =>
-      (client.use as (node: unknown, middleware: typeof clientMiddleware) => unknown)(
-        foreignContract.routes.health,
-        clientMiddleware
-      )
-    ).toThrowError('Client node is not mounted in this contract')
     const serverUse = server.use as (...values: readonly unknown[]) => unknown
-    const clientUse = client.use as (...values: readonly unknown[]) => unknown
     expect(() => serverUse()).toThrowError('Server middleware must be a function')
     expect(() => serverUse(contract.routes.users)).toThrowError('Server middleware must be a function')
     expect(() => serverUse(contract.routes.users, serverMiddleware, serverMiddleware)).toThrowError(
       'Server middleware must be a function'
     )
-    expect(() => clientUse()).toThrowError('Client middleware must be a function')
-    expect(() => clientUse(contract.routes.users)).toThrowError('Client middleware must be a function')
-    expect(() => clientUse(contract.routes.users, clientMiddleware, clientMiddleware)).toThrowError(
-      'Client middleware must be a function'
-    )
     const invalidTypes = () => {
       // @ts-expect-error The root contract is represented by use(middleware), not a scoped target.
       server.use(contract, serverMiddleware)
-      client.use(foreignContract.routes.health, clientMiddleware)
     }
     expectTypeOf(invalidTypes).toBeFunction()
   })

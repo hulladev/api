@@ -4,7 +4,7 @@ import { defineContract, response, route } from '../src'
 import { createAdapterHandler } from '../src/adapters'
 import { fetchAdapter } from '../src/fetch'
 import { defineServer } from '../src/server'
-import { asyncSchema } from '../src/validation'
+import { asynchronousSchema as asyncSchema } from './helpers/schema'
 
 describe('adapter execution boundaries', () => {
   test('composes every combination of synchronous and asynchronous stages', async () => {

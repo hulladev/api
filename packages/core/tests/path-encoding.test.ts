@@ -1,7 +1,7 @@
 import { expect, test, vi } from 'vitest'
 import { z } from 'zod'
 import { defineContract, response, route, router } from '../src'
-import { defineClient } from '../src/client'
+import { createClient } from '../src/client'
 import { fetchAdapter, fetchTransport } from '../src/fetch'
 import { defineServer } from '../src/server'
 
@@ -33,7 +33,7 @@ test('round-trips literal percent values and encoded separators through path par
       item: ({ params }) => ({ status: 200, body: params.id }),
     })
   )
-  const client = defineClient(contract, {
+  const client = createClient(contract, {
     transport: fetchTransport({ baseUrl: 'https://example.test', fetch: handler }),
   })
   for (const id of ['%', '%25', '%GG', '%2e%2e', 'a/b', '雪']) {
@@ -53,7 +53,7 @@ test.each(['get', 'delete'] as const)('%s rejects dot path parameters before sen
   const fetch = vi.fn<(request: Request) => Response>(
     () => new Response('ok', { headers: { 'content-type': 'text/plain' } })
   )
-  const client = defineClient(contract, { transport: fetchTransport({ baseUrl: 'https://example.test/api', fetch }) })
+  const client = createClient(contract, { transport: fetchTransport({ baseUrl: 'https://example.test/api', fetch }) })
   for (const id of ['.', '..']) {
     await expect(client.item({ params: { id } })).rejects.toThrow('cannot be a dot segment')
   }

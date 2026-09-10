@@ -1,5 +1,5 @@
 import { defineContract, response, route } from '@hulla/api'
-import { defineClient } from '@hulla/api/client'
+import { createClient } from '@hulla/api/client'
 import { fetchAdapter } from '@hulla/api/fetch'
 import { defineServer } from '@hulla/api/server'
 import { describe, expect, test, vi } from 'vitest'
@@ -47,7 +47,7 @@ describe('SvelteKit remote-function transport', () => {
     })
     const getRequestEvent = vi.fn<() => SvelteKitRequestEvent>(() => event)
     const transport = createSvelteKitRemoteTransport(implementation, getRequestEvent)
-    const client = defineClient(contract, { transport })
+    const client = createClient(contract, { transport })
 
     await expect(client.profile()).resolves.toEqual({
       status: 200,
@@ -72,7 +72,7 @@ describe('SvelteKit remote-function transport', () => {
     const getRequestEvent = vi.fn<() => SvelteKitRequestEvent>(() => {
       throw new Error('request event should not be read')
     })
-    const client = defineClient(queryContract, {
+    const client = createClient(queryContract, {
       transport: createSvelteKitRemoteTransport(implementation, getRequestEvent),
     })
 
@@ -89,11 +89,11 @@ describe('SvelteKit remote-function transport', () => {
       status: 200,
       body: { actor: 'fragment', requestMethod: 'none' },
     }))
-    const client = defineClient(contract, {
+    const client = createClient(contract.routes.profile, {
       transport: createSvelteKitRemoteTransport(fragment, () => {
         throw new Error('request event should not be read')
       }),
-    }).select(contract.routes.profile)
+    })
 
     await expect(client()).resolves.toEqual({
       status: 200,

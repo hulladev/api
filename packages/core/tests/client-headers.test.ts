@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import { z } from 'zod'
 import { defineContract, response, route } from '../src'
-import { defineClient, type ClientTransportRequest } from '../src/client'
+import { createClient, type ClientTransportRequest } from '../src/client'
 import { codec } from '../src/validation'
 
 const headers = z.record(z.string(), z.string().optional())
@@ -12,7 +12,7 @@ test('merges header sources in order, including removals and prototype-named fie
     routes: { call: route.get('/', { headers, responses: { 204: response.empty() } }) },
   })
   const requests: ClientTransportRequest[] = []
-  const client = defineClient(contract, {
+  const client = createClient(contract, {
     headers: { 'X-Token': 'configured', 'X-Remove': 'configured' },
     transport: (request) => {
       requests.push(request)
@@ -54,7 +54,7 @@ test('snapshots route header getters before an asynchronous body finishes', asyn
     routes: { call: route.post('/', { body, headers, responses: { 204: response.empty() } }) },
   })
   const requests: ClientTransportRequest[] = []
-  const client = defineClient(contract, {
+  const client = createClient(contract, {
     transport: (request) => {
       requests.push(request)
       return emptyResponse
@@ -86,7 +86,7 @@ test('validates asynchronously encoded header values before transport', async ()
   const contract = defineContract({
     routes: { call: route.get('/', { headers: encodedHeaders, responses: { 204: response.empty() } }) },
   })
-  const client = defineClient(contract, {
+  const client = createClient(contract, {
     transport: () => {
       sent = true
       return emptyResponse

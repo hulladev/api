@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { once } from 'node:events'
 import { defineContract, request, response, route } from '@hulla/api'
 import { webSocketAdapter, webSocketTransport } from '@hulla/api-websocket'
-import { defineClient } from '@hulla/api/client'
+import { createClient } from '@hulla/api/client'
 import { defineServer } from '@hulla/api/server'
 import { WebSocketServer, type WebSocket as AcceptedSocket } from 'ws'
 const contract = defineContract({
@@ -25,7 +25,7 @@ const mounted = adapter.mount(
     }),
   }).implement({ echo: ({ body }) => ({ status: 200, body }) })
 )
-export const client = defineClient(contract, { transport })
+export const client = createClient(contract, { transport })
 try {
   await Promise.all([mounted.ready, transport.ready])
   assert.deepEqual((await client.echo({ body: new Uint8Array([0, 128, 255]) })).body, new Uint8Array([0, 128, 255]))

@@ -110,13 +110,20 @@ describe('Cloudflare Workers integration', () => {
 
   test('keeps native error context isolated for concurrent calls sharing a Request', async () => {
     const releases = new Map<string, () => void>()
+    let handlersStarted!: () => void
+    const started = new Promise<void>((resolve) => {
+      handlersStarted = resolve
+    })
     const adapter = cloudflareAdapter<Env>()
     const implementation = defineServer(contract, {
       context: adapter.context(({ env }) => ({ token: env.API_TOKEN })),
     }).implement({
       health: () => ({ status: 200, body: 'ok' }),
       fail: async ({ context }): Promise<{ readonly body: 'ok'; readonly status: 200 }> => {
-        await new Promise<void>((resolve) => releases.set(context.token, resolve))
+        await new Promise<void>((resolve) => {
+          releases.set(context.token, resolve)
+          if (releases.size === 2) handlersStarted()
+        })
         throw new Error(context.token)
       },
     })
@@ -128,9 +135,10 @@ describe('Cloudflare Workers integration', () => {
 
     const first = handler(request, { API_TOKEN: 'first' }, executionContext('first'))
     const second = handler(request, { API_TOKEN: 'second' }, executionContext('second'))
-    releases.get('first')?.()
+    await started
+    releases.get('first')!()
     await expect(first.then((response) => response.json())).resolves.toEqual({ token: 'first' })
-    releases.get('second')?.()
+    releases.get('second')!()
     await expect(second.then((response) => response.json())).resolves.toEqual({ token: 'second' })
   })
 

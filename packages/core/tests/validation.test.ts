@@ -3,15 +3,12 @@ import * as v from 'valibot'
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
 import {
-  asyncSchema,
   codec,
   compileSchemaExecution,
   decodeSchema,
   encodeSchema,
   isSchema,
   SchemaValidationError,
-  validation,
-  type AsyncSchema,
   type SchemaInput,
   type SchemaOutbound,
   type SchemaOutput,
@@ -56,7 +53,7 @@ describe('Standard Schema validation', () => {
     expect(body.decode('value')).toBe('value')
   })
 
-  test('marks asynchronous schemas without mutating validator-owned objects', async () => {
+  test('accepts asynchronous Standard Schemas directly', async () => {
     const schema: StandardSchemaV1<string> = {
       '~standard': {
         version: 1,
@@ -65,13 +62,8 @@ describe('Standard Schema validation', () => {
           typeof value === 'string' ? { value } : { issues: [{ message: 'Expected a string' }] },
       },
     }
-    const marked = validation.async(schema)
-
-    expect(marked).not.toBe(schema)
-    expect(Object.keys(marked)).toEqual(['~standard'])
-    expect(asyncSchema(marked)).toBe(marked)
-    await expect(decodeSchema(marked, 'hello')).resolves.toBe('hello')
-    expectTypeOf(marked).toEqualTypeOf<AsyncSchema<typeof schema>>()
+    await expect(decodeSchema(schema, 'hello')).resolves.toBe('hello')
+    await expect(decodeSchema(schema, 42 as never)).rejects.toMatchObject({ code: 'schema-validation' })
   })
 
   test('recognizes schemas structurally', () => {

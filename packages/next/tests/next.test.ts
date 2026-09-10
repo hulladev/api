@@ -1,5 +1,5 @@
 import { defineContract, response, route, router } from '@hulla/api'
-import { defineClient } from '@hulla/api/client'
+import { createClient } from '@hulla/api/client'
 import { inProcessTransport } from '@hulla/api/in-process'
 import { defineServer } from '@hulla/api/server'
 import { NextRequest } from 'next/server'
@@ -89,7 +89,7 @@ describe('Next.js integration', () => {
         },
       },
     })
-    const client = defineClient(contract, {
+    const client = createClient(contract, {
       transport: cache.fetchTransport({
         baseUrl: 'https://api.example.com',
         fetch: fetcher,

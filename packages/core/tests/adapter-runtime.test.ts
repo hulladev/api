@@ -7,7 +7,8 @@ import { response } from '../src/contract/response'
 import { route } from '../src/contract/route'
 import { fetchAdapter } from '../src/fetch'
 import { defineServer } from '../src/server'
-import { asyncSchema, type ObjectSchema } from '../src/validation'
+import type { ObjectSchema } from '../src/validation'
+import { asynchronousSchema as asyncSchema } from './helpers/schema'
 
 function createAdapterTestRuntime() {
   const contract = defineContract({
@@ -70,17 +71,17 @@ describe('adapter server runtime', () => {
   })
 
   test('preserves prototype-named response headers', async () => {
-    const headersSchema: ObjectSchema = {
+    const headersSchema: ObjectSchema<Record<string, string>, Record<string, string>> = {
       '~standard': {
         version: 1,
         vendor: 'test',
         validate: (value) =>
           typeof value === 'object' && value !== null && !Array.isArray(value)
-            ? { value: value as Readonly<Record<string, unknown>> }
+            ? { value: value as Record<string, string> }
             : { issues: [{ message: 'Expected headers' }] },
       },
     }
-    const headers: Record<string, unknown> = {}
+    const headers: Record<string, string> = {}
     Object.defineProperty(headers, '__proto__', { enumerable: true, value: 'preserved' })
     const contract = defineContract({
       routes: {

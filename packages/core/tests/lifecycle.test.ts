@@ -2,15 +2,16 @@ import { execFileSync } from 'node:child_process'
 import { describe, expect, test, vi } from 'vitest'
 import { z } from 'zod'
 import { defineContract, response, route, router } from '../src'
-import { defineClient } from '../src/client'
+import { createClient } from '../src/client'
 import { fetchAdapter, fetchTransport } from '../src/fetch'
 import { inProcessTransport } from '../src/in-process'
 import { defineServer } from '../src/server'
+import { codec } from '../src/validation'
 
 const origin = 'https://lifecycle.test'
 
 describe('request lifetime and executable client scopes', () => {
-  test('observes partial async request startup without an orphan rejection or handler execution', () => {
+  test('stops validation at the first failed field without orphan rejections or handler execution', () => {
     const root = new URL('../src/', import.meta.url).pathname
     const zod = new URL('../node_modules/zod/index.js', import.meta.url).pathname
     const output = execFileSync(
@@ -37,7 +38,7 @@ describe('request lifetime and executable client scopes', () => {
       ],
       { encoding: 'utf8' }
     )
-    expect(JSON.parse(output)).toEqual({ failures: [], reported: ['primary sync failure'], calls: 0, status: 500 })
+    expect(JSON.parse(output)).toEqual({ failures: [], reported: ['earlier async failure'], calls: 0, status: 400 })
   })
 
   test('reports native serialization failures exactly once and tolerates a rejected observer', async () => {
@@ -80,7 +81,7 @@ describe('request lifetime and executable client scopes', () => {
   test('disposes a response rejected before ownership is handed to the application', async () => {
     const cancel = vi.fn<(...args: unknown[]) => void>()
     const contract = defineContract({ routes: { get: route.get('/', { responses: { 200: response.json() } }) } })
-    const client = defineClient(contract, {
+    const client = createClient(contract, {
       transport: fetchTransport({
         baseUrl: origin,
         fetch: () => new Response(new ReadableStream({ cancel }), { headers: { 'content-type': 'text/html' } }),
@@ -108,7 +109,7 @@ describe('request lifetime and executable client scopes', () => {
       inProcessTransport(implementation),
       fetchTransport({ baseUrl: origin, fetch: fetchAdapter().mount(implementation) }),
     ]) {
-      const client = defineClient(contract, { transport })
+      const client = createClient(contract, { transport })
       for (const values of [['one'], ['one', 'two']]) {
         expect((await client.get({ query: { tags: values } })).body.getAll('tag')).toEqual(values)
       }
@@ -144,22 +145,26 @@ describe('request lifetime and executable client scopes', () => {
     expect(invoked).not.toHaveBeenCalled()
   })
 
-  test('branches immutable client middleware scopes and selects stable fragments', async () => {
+  test('constructs independent selected clients with endpoint names that match former controls', async () => {
     const contract = defineContract({
       routes: { users: router('/users', { routes: { use: route.get('/', { responses: { 200: response.text() } }) } }) },
     })
     const implementation = defineServer(contract).implement({ users: { use: () => ({ status: 200, body: 'ok' }) } })
-    const base = defineClient(contract, { transport: inProcessTransport(implementation) })
+    const base = createClient(contract, { transport: inProcessTransport(implementation) })
     const calls: string[] = []
-    const branch = base.use(({ next }) => {
-      calls.push('branch')
-      return next()
+    const branch = createClient(contract.routes.users, {
+      transport: inProcessTransport(implementation),
+      middleware: [
+        ({ next }) => {
+          calls.push('branch')
+          return next()
+        },
+      ],
     })
-    expect(branch.users).toBe(branch.select(contract.routes.users))
     await base.users.use()
-    await branch.users.use()
+    await branch.use()
     expect(calls).toEqual(['branch'])
-    await base.compose(branch.select(contract.routes.users)).users.use()
+    await branch.use()
     expect(calls).toEqual(['branch', 'branch'])
     expect(Object.keys(base)).toEqual(['users'])
   })
@@ -175,7 +180,7 @@ describe('request lifetime and executable client scopes', () => {
         return { status: 200, body: params.id }
       },
     })
-    const client = defineClient(contract, { transport: inProcessTransport(implementation) })
+    const client = createClient(contract, { transport: inProcessTransport(implementation) })
     const ids = Array.from({ length: 32 }, (_, index) => String(index))
     expect(
       (
@@ -185,18 +190,23 @@ describe('request lifetime and executable client scopes', () => {
   })
 })
 
-test('cancels a body already being read when concurrent header validation fails', async () => {
+test('cancels a body already being read when concurrent header codec decoding fails', async () => {
   const cancel = vi.fn<(...args: unknown[]) => void>()
   const contract = defineContract({
     routes: {
       get: route.get('/', {
         responses: {
-          200: response.json(z.any(), { headers: z.object({ token: z.string().refine(async () => false) }) }),
+          200: response.json(z.any(), {
+            headers: codec(z.object({ token: z.string() }), z.object({ token: z.string().refine(async () => false) }), {
+              encode: (value) => value,
+              decode: (value) => value,
+            }),
+          }),
         },
       }),
     },
   })
-  const client = defineClient(contract, {
+  const client = createClient(contract, {
     transport: fetchTransport({
       baseUrl: origin,
       fetch: () =>
@@ -220,7 +230,7 @@ test('preserves repeated Set-Cookie response headers across in-process and Fetch
     inProcessTransport(implementation),
     fetchTransport({ baseUrl: origin, fetch: fetchAdapter().mount(implementation) }),
   ]) {
-    const result = await defineClient(contract, { transport }).get()
+    const result = await createClient(contract, { transport }).get()
     expect(result.headers['set-cookie']).toEqual(['session=a; HttpOnly', 'theme=dark'])
     expect(result.headers['x-name']).toBe('test')
   }
@@ -244,7 +254,7 @@ test.each(['opaque', 'formatted'] as const)(
           }),
         },
       })
-      const client = defineClient(contract, { transport: fetchTransport({ baseUrl: origin, fetch: () => native }) })
+      const client = createClient(contract, { transport: fetchTransport({ baseUrl: origin, fetch: () => native }) })
       const result = await client.get()
       const iterator = result.body[Symbol.asyncIterator]()
       const pending = start ? iterator.next() : undefined
@@ -261,7 +271,7 @@ test.each([200, 204] as const)('releases unread bodies on empty response status 
   const cancel = vi.fn<() => void>()
   const native = new Response(status === 200 ? new ReadableStream({ cancel }) : null, { status })
   const contract = defineContract({ routes: { get: route.get('/', { responses: { [status]: response.empty() } }) } })
-  const client = defineClient(contract, { transport: fetchTransport({ baseUrl: origin, fetch: () => native }) })
+  const client = createClient(contract, { transport: fetchTransport({ baseUrl: origin, fetch: () => native }) })
   expect(await client.get()).toEqual({ status, headers: {} })
   expect(cancel).toHaveBeenCalledTimes(status === 200 ? 1 : 0)
 })
@@ -269,7 +279,7 @@ test.each([200, 204] as const)('releases unread bodies on empty response status 
 test('retains synchronous in-process stream iteration', async () => {
   const contract = defineContract({ routes: { get: route.get('/', { responses: { 200: response.stream() } }) } })
   const implementation = defineServer(contract).implement({ get: () => ({ status: 200, body: [new Uint8Array([1])] }) })
-  const client = defineClient(contract, { transport: inProcessTransport(implementation) })
+  const client = createClient(contract, { transport: inProcessTransport(implementation) })
   const chunks = []
   for await (const chunk of (await client.get()).body) chunks.push(chunk)
   expect(chunks).toEqual([new Uint8Array([1])])

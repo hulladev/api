@@ -2,10 +2,10 @@ import { expect, test, vi } from 'vitest'
 import { z } from 'zod'
 import { defineContract, response, route } from '../src'
 import { createAdapterHandler } from '../src/adapters'
-import { defineClient } from '../src/client'
+import { createClient } from '../src/client'
 import { fetchTransportResponse } from '../src/fetch/client'
 import { defineServer } from '../src/server'
-import { asyncSchema } from '../src/validation'
+import { asynchronousSchema as asyncSchema } from './helpers/schema'
 
 test('Fetch headers preserve snapshot, repeated cookies and stable record identity', () => {
   const native = Response.json(
@@ -32,7 +32,7 @@ test('decoded response headers remain enumerable and preserve metadata', async (
     routes: { item: route.get('/', { responses: { 200: response.json(z.object({ ok: z.boolean() })) } }) },
   })
   const wire = fetchTransportResponse(Response.json({ ok: true }, { headers: { 'x-id': 'value' } }))
-  const client = defineClient(contract, { transport: () => wire })
+  const client = createClient(contract, { transport: () => wire })
   const result = await client.item()
   expect(result.body).toEqual({ ok: true })
   expect(Object.keys(result)).toEqual(['status', 'headers', 'body'])
@@ -44,7 +44,7 @@ test('wrong content type cancels an unread response', async () => {
   const cancel = vi.fn<() => void>()
   const native = new Response(new ReadableStream({ cancel }), { headers: { 'content-type': 'text/plain' } })
   const contract = defineContract({ routes: { item: route.get('/', { responses: { 200: response.json() } }) } })
-  const client = defineClient(contract, { transport: () => fetchTransportResponse(native) })
+  const client = createClient(contract, { transport: () => fetchTransportResponse(native) })
   await expect(client.item()).rejects.toMatchObject({ code: 'content-type-mismatch' })
   expect(cancel).toHaveBeenCalledOnce()
 })

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { MessageChannel } from 'node:worker_threads'
 import { defineContract, response, route } from '@hulla/api'
 import { messagePortAdapter, messagePortTransport } from '@hulla/api-message-port'
-import { defineClient } from '@hulla/api/client'
+import { createClient } from '@hulla/api/client'
 import { defineServer } from '@hulla/api/server'
 const contract = defineContract({ routes: { health: route.get('/health', { responses: { 200: response.text() } }) } })
 const channel = new MessageChannel()
@@ -10,7 +10,7 @@ const server = messagePortAdapter(channel.port1).mount(
   defineServer(contract).implement({ health: () => ({ status: 200, body: 'ok' }) })
 )
 const transport = messagePortTransport(channel.port2)
-export const client = defineClient(contract, { transport })
+export const client = createClient(contract, { transport })
 try {
   await Promise.all([server.ready, transport.ready])
   assert.equal((await client.health()).body, 'ok')

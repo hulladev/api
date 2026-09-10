@@ -1,5 +1,5 @@
 import { defineContract, defineErrors, request, response, route } from '@hulla/api'
-import { defineClient, type ClientTransport } from '@hulla/api/client'
+import { createClient, type ClientTransport } from '@hulla/api/client'
 import { defineServer } from '@hulla/api/server'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { z } from 'zod'
@@ -122,7 +122,7 @@ export function adapterConformance(options: ConformanceOptions): void {
     afterEach(async () => {
       await host?.close()
     })
-    const client = () => defineClient(contract, { transport: host.transport })
+    const client = () => createClient(contract, { transport: host.transport })
     /* oxlint-disable vitest/expect-expect, vitest/no-conditional-tests, vitest/valid-title, vitest/no-disabled-tests -- The shared registrar receives assertions and reports explicit host capability exclusions. */
     const supported = (name: string, support: Support, run: () => Promise<void>) => {
       if (support === true) test(name, run)
@@ -180,7 +180,7 @@ export function adapterConformance(options: ConformanceOptions): void {
         status: 404,
         body: { code: 'MISSING', message: 'Missing item', data: { id: 'absent' } },
       })
-      const throwing = defineClient(contract, { transport: host.transport, errorMode: 'throw' })
+      const throwing = createClient(contract, { transport: host.transport, errorMode: 'throw' })
       await expect(throwing.missing()).rejects.toMatchObject({ code: 'MISSING', data: { id: 'absent' } })
     })
     supported('rejects malformed JSON before invoking the handler and recovers', options.malformedJson, async () => {

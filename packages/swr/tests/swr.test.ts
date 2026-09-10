@@ -1,5 +1,5 @@
 import { defineContract, response, route, router } from '@hulla/api'
-import { defineClient } from '@hulla/api/client'
+import { createClient } from '@hulla/api/client'
 import { fetchTransport } from '@hulla/api/fetch'
 import { describe, expect, expectTypeOf, test, vi } from 'vitest'
 import { z } from 'zod'
@@ -28,7 +28,7 @@ describe('SWR integration', () => {
     const fetcher = vi.fn<(request: Request) => Promise<Response>>(async (request) =>
       request.url.endsWith('/health') ? json('ok') : json({ id: request.url.split('/').at(-1) })
     )
-    const client = defineClient(contract, {
+    const client = createClient(contract, {
       transport: fetchTransport({ baseUrl: 'https://api.example.com', fetch: fetcher }),
     })
     const swr = createSWR(client)
@@ -66,7 +66,7 @@ describe('SWR integration', () => {
   })
 
   test('requires query input while supporting no-input routes', async () => {
-    const client = defineClient(contract, {
+    const client = createClient(contract, {
       transport: fetchTransport({ baseUrl: 'https://api.example.com', fetch: async () => json('ok') }),
     })
     const swr = createSWR(client)
@@ -85,7 +85,7 @@ describe('SWR integration', () => {
 
 test('uses SWR structural keys and isolates cache mutations by namespace', async () => {
   const { unstable_serialize, mutate } = await import('swr')
-  const client = defineClient(contract, {
+  const client = createClient(contract, {
     transport: fetchTransport({ baseUrl: 'https://cache.test', fetch: async () => json({ id: 'one' }) }),
   })
   const first = createSWR(client, { prefix: ['tenant-a'] })

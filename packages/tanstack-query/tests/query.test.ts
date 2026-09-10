@@ -1,5 +1,5 @@
 import { defineContract, response, route, router } from '@hulla/api'
-import { defineClient } from '@hulla/api/client'
+import { createClient } from '@hulla/api/client'
 import { fetchTransport } from '@hulla/api/fetch'
 import { describe, expect, expectTypeOf, test, vi } from 'vitest'
 import { z } from 'zod'
@@ -29,7 +29,7 @@ describe('TanStack Query integration', () => {
     const fetcher = vi.fn<(request: Request) => Promise<Response>>(async (request) =>
       request.url.endsWith('/health') ? json('ok') : json({ id: request.url.split('/').at(-1) })
     )
-    const client = defineClient(contract, {
+    const client = createClient(contract, {
       transport: fetchTransport({ baseUrl: 'https://api.example.com', fetch: fetcher }),
     })
     const tanstack = createTanStackQuery(client)
@@ -76,7 +76,7 @@ describe('TanStack Query integration', () => {
   test('requires query input and forwards cancellation through request options', async () => {
     const controller = new AbortController()
     const fetcher = vi.fn<(_request: Request) => Promise<Response>>(async () => json({ id: 'user-1' }))
-    const client = defineClient(contract, {
+    const client = createClient(contract, {
       transport: fetchTransport({ baseUrl: 'https://api.example.com', fetch: fetcher }),
     })
     const tanstack = createTanStackQuery(client)
@@ -97,7 +97,7 @@ describe('TanStack Query integration', () => {
 test('uses real cache namespaces, structural input identity and scoped invalidation', async () => {
   const { QueryClient } = await import('@tanstack/query-core')
   const fetcher = vi.fn<() => Promise<Response>>(async () => json({ id: 'one' }))
-  const client = defineClient(contract, {
+  const client = createClient(contract, {
     transport: fetchTransport({ baseUrl: 'https://cache.test', fetch: fetcher }),
   })
   const first = createTanStackQuery(client, { prefix: ['tenant-a'] })

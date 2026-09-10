@@ -1,5 +1,5 @@
 import { defineContract, response, route, router } from '@hulla/api'
-import { defineClient } from '@hulla/api/client'
+import { createClient } from '@hulla/api/client'
 import { inProcessTransport } from '@hulla/api/in-process'
 import { defineServer } from '@hulla/api/server'
 import { describe, expect, expectTypeOf, test, vi } from 'vitest'
@@ -178,7 +178,7 @@ describe('Astro integration', () => {
       headers: { cookie: 'session=session-1', referer: 'https://example.com/profile' },
     })
     const nativeContext = astroContext(islandRequest, { locals: { actor: 'Ada' } })
-    const api = defineClient(contract, {
+    const api = createClient(contract, {
       transport: astroInProcessTransport(implementation, nativeContext),
     })
 
@@ -199,12 +199,12 @@ describe('Astro integration', () => {
       status: 200,
       body: 'ok',
     }))
-    const api = defineClient(contract, {
+    const api = createClient(contract.routes.health, {
       transport: astroInProcessTransport(
         implementation,
         astroContext(new Request('https://example.com/_server-islands/Health'))
       ),
-    }).select(contract.routes.health)
+    })
     const controller = new AbortController()
     controller.abort(new Error('cancelled'))
 

@@ -55,13 +55,13 @@ test.each([false, true])(
   }
 )
 
-test('renders ordinary parameters without changing values or interpreting prototype names', () => {
+test('renders ordinary parameters without changing values or interpreting prototype names', async () => {
   const schema = z.object({ id: z.string() })
   const encode = compilePathParameterEncoder('/items/:id/:__proto__/:constructor', [
     { path: '/items/:id/:__proto__/:constructor', names: ['id', '__proto__', 'constructor'], schema },
   ])
   const input = Object.freeze(JSON.parse('{"id":"雪 / %","__proto__":"safe","constructor":"value"}'))
-  expect(encode(input)).toBe('/items/%E9%9B%AA%20%2F%20%25/safe/value')
+  expect(await encode(input)).toBe('/items/%E9%9B%AA%20%2F%20%25/safe/value')
   for (const id of [undefined, null, 42, '.', '..']) {
     expect(() => encode({ ...input, id })).toThrow(/Route parameter/)
   }

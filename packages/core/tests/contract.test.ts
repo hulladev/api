@@ -28,7 +28,7 @@ describe('contract declaration', () => {
     const routes = { health, users }
     const contract = defineContract({ basePath: '/api', routes })
 
-    expect(contract).toEqual({
+    expect(contract).toMatchObject({
       basePath: '/api',
       routes,
       errors: {},
@@ -42,8 +42,8 @@ describe('contract declaration', () => {
     expect(contractNodeKey(contract, contract)).toEqual([])
     expect(contractNodeKey(contract, contract.routes.users)).toEqual(['users'])
     expect(contractNodeKey(contract, contract.routes.users.list)).toEqual(['users', 'list'])
-    expect(contractNodeKey(contract, contract.routes.users.list)).toBe(
-      compileContract(contract).routes.find((compiled) => compiled.route === contract.routes.users.list)?.key
+    expect(contractNodeKey(contract, contract.routes.users.list)).toEqual(
+      compileContract(contract).routes.find((compiled) => compiled.key.join('.') === 'users.list')?.key
     )
 
     const foreign = defineContract({

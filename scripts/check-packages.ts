@@ -261,13 +261,13 @@ try {
     const runtimeEntries = entrypoints.filter((entry) => entry !== '@hulla/api-sveltekit/remote')
     const verify = `import assert from 'node:assert/strict';
 import { defineContract, response, route } from '@hulla/api';
-import { defineClient } from '@hulla/api/client';
+import { createClient } from '@hulla/api/client';
 import { defineServer } from '@hulla/api/server';
 import { fetchAdapter, fetchTransport } from '@hulla/api/fetch';
 for (const entry of ${JSON.stringify(runtimeEntries)}) assert(Object.keys(await import(entry)).length > 0, entry);
 const contract = defineContract({ routes: { health: route.get('/health', { responses: { 200: response.text() } }) } });
 const implementation = defineServer(contract).implement({ health: () => ({ status: 200, body: 'ok' }) });
-const client = defineClient(contract, { transport: fetchTransport({ baseUrl: 'http://consumer.test', fetch: fetchAdapter().mount(implementation) }) });
+const client = createClient(contract, { transport: fetchTransport({ baseUrl: 'http://consumer.test', fetch: fetchAdapter().mount(implementation) }) });
 assert.equal((await client.health()).body, 'ok');
 `
     await writeFile(join(consumer, 'verify.mjs'), verify)

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
 import { defineContract, request, response, route } from '@hulla/api'
 import { expressAdapter } from '@hulla/api-express'
-import { defineClient } from '@hulla/api/client'
+import { createClient } from '@hulla/api/client'
 import { fetchTransport } from '@hulla/api/fetch'
 import { defineServer } from '@hulla/api/server'
 import express from 'express'
@@ -33,7 +33,7 @@ try {
   const address = server.address()
   assert(address && typeof address !== 'string')
   const baseUrl = `http://127.0.0.1:${address.port}`
-  const api = defineClient(contract, { transport: fetchTransport({ baseUrl }) })
+  const api = createClient(contract, { transport: fetchTransport({ baseUrl }) })
   const result = await api.echo({ body: { ok: true } })
   assert.deepEqual(result.body, { body: { ok: true }, method: 'POST' })
   assert.deepEqual(result.headers['set-cookie'], ['a=1', 'b=2'])

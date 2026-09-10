@@ -24,7 +24,7 @@ const dateTime = z.codec(z.iso.datetime(), z.date(), {
   encode: (value) => value.toISOString(),
 })
 
-const user = z.object({ id: z.string(), organizationId: z.string(), createdAt: dateTime })
+const user = z.object({ id: z.string(), organizationId: z.string(), createdAt: z.iso.datetime() })
 const apiError = response.json(z.object({ code: z.enum(['CONFLICT', 'UNAUTHORIZED']), message: z.string().optional() }))
 const sharedErrors = defineErrors({ UNAUTHORIZED: { message: 'Authentication required' } })
 
@@ -220,19 +220,20 @@ describe('defineServer', () => {
     )
   })
 
-  test('rejects mounting one declaration more than once', () => {
+  test('mounts a reused declaration with independent public selections', () => {
     const byId = route.get('/:id', {
       params: z.object({ id: z.string() }),
       responses: { 200: response.text() },
     })
-    expect(() =>
-      defineContract({
-        routes: {
-          users: router('/users', { routes: { byId } }),
-          admins: router('/admins', { routes: { byId } }),
-        },
-      })
-    ).toThrowError('Contract declaration "routes.admins.byId" is mounted more than once')
+    const mounted = defineContract({
+      routes: {
+        users: router('/users', { routes: { byId } }),
+        admins: router('/admins', { routes: { byId } }),
+      },
+    })
+    expect(mounted.routes.users.byId.$contract.key).toEqual(['users', 'byId'])
+    expect(mounted.routes.admins.byId.$contract.key).toEqual(['admins', 'byId'])
+    expect(mounted.$contract.routes.map(({ path }) => path)).toEqual(['/users/:id', '/admins/:id'])
   })
 
   test('allows one declaration to be shared by independent contracts', () => {
@@ -240,8 +241,8 @@ describe('defineServer', () => {
     const first = defineContract({ routes: { first: shared } })
     const second = defineContract({ routes: { second: shared } })
 
-    expect(first.routes.first).toBe(shared)
-    expect(second.routes.second).toBe(shared)
+    expect(first.routes.first.$contract.routes[0]!.route).toBe(shared)
+    expect(second.routes.second.$contract.routes[0]!.route).toBe(shared)
   })
 
   test('rejects invalid handler results at compile time', () => {
