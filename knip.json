@@ -10,6 +10,7 @@
     "packages/sveltekit/tests/fixtures/**",
     "packages/tanstack-start/tests/fixtures/**",
     "scripts/package-consumers/**",
+    "benchmarks/results/**",
     "examples/runtime-hosts/**"
   ],
   "treatConfigHintsAsErrors": true,

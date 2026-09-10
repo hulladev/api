@@ -2,7 +2,7 @@
   "name": "@hulla/api-workspace",
   "version": "2.0.0",
   "private": true,
-  "description": "Greenfield workspace for the directional @hulla/api contract runtime",
+  "description": "Workspace for the @hulla/api typed HTTP contract ecosystem",
   "license": "MIT",
   "author": {
     "name": "Samuel Hulla",
