@@ -1,16 +1,13 @@
 # Client authoring
 
-`defineClient()` creates a transport-neutral client authoring scope. Start with the shared contract from
-[contract authoring](./contract-authoring.md); the same module can be imported by server and client code. The returned scope is immediately callable. `select(node)` selects one route or recursive router fragment.
-Top-level subtrees are materialized on first access and cached within that scope.
-There is no extra `routes`, `api`, or procedure namespace. An executable client receives one transport in its options:
+`createClient(contractOrSelection, options)` returns a plain tree of endpoint functions, or a single function when given a route. Start with the shared contract from [contract authoring](./contract-authoring.md). Construction prepares the selected routes once; every call returns a promise. Middleware is supplied in the options.
 
 ```ts
-import { defineClient } from '@hulla/api/client'
+import { createClient } from '@hulla/api/client'
 import { fetchTransport } from '@hulla/api/fetch'
 import { contract } from './contract'
 
-const client = defineClient(contract, {
+const client = createClient(contract, {
   transport: fetchTransport({ baseUrl: 'https://api.example.com' }),
 })
 
@@ -68,61 +65,44 @@ changing the underlying client.
 
 ## Context and middleware
 
-Client context follows the server context model. A context factory runs once per request with the schema-encoded neutral invocation and exact route metadata:
+A context factory runs once per call with the encoded request and route metadata. Middleware runs in array order and wraps transport execution and response decoding:
 
 ```ts
-const base = defineClient(contract, {
+export const client = createClient(contract, {
   transport: fetchTransport({ baseUrl: 'https://api.example.com' }),
-  context: ({ request, route }) => ({
-    accessToken: session.accessToken,
-    requestPath: request.path,
-    routeKey: route.key,
-  }),
+  context: ({ request }) => ({ accessToken: session.accessToken, path: request.path }),
+  middleware: [async ({ context, next, request }) => {
+    request.headers.authorization = `Bearer ${context.accessToken}`
+    return next()
+  }],
 })
 ```
 
-The returned object may contain lazy memoized functions when only some middleware paths need expensive data. This keeps request lifetime and caching explicit without eagerly fetching every possible context value.
+Context can contain memoized functions when a value is expensive and only some middleware needs it. Request headers are mutable. Route identity, method, and path are fixed before middleware; URL rewriting belongs in the transport. Middleware may reject a call or return a typed contract-level error through `errors` or `response`. Calling `next()` twice is an error.
 
-Middleware receives one options object, matching server and procedure middleware. `middleware()` defines a reusable middleware value, `use()` returns a derived scope, and every call on that scope uses its captured middleware:
+Use the standalone `clientMiddleware(contract, handler)` typing helper for reusable middleware. It exposes portable route metadata and the selected contract's declared errors. Inline middleware also infers the context from construction options.
+
+## Selecting clients for separate modules
+
+Pass the required contract node directly to construction:
 
 ```ts
-const authenticate = base.middleware(async ({ context, next, request }) => {
-  request.headers.authorization = `Bearer ${context.accessToken}`
-  return next()
+export const health = createClient(contract.routes.health, {
+  transport,
+  middleware: [logRequests],
+})
+export const organizations = createClient(contract.routes.organizations, {
+  transport,
+  middleware: [logRequests, authenticate],
 })
 
-export const client = base.use(authenticate)
+// Optional application namespace.
+export const client = { health, organizations }
 ```
 
-Pass a mounted contract router or route as the first argument to scope one middleware without changing the generated client shape:
+Selections retain inherited paths, parameter schemas, and declared errors through public `$contract` metadata. Each constructor owns its context factory and a snapshot of its middleware array. Construction never modifies another client.
 
-```ts
-export const client = base
-  .use(logRequests)
-  .use(contract.routes.organizations, authenticate)
-
-```
-
-`use(middleware)` applies globally, `use(router, middleware)` applies below that router, and `use(route, middleware)` applies only to that route. Registrations run in declaration order. Separately registering the same middleware in overlapping scopes runs it once per matching registration; there is no function-identity deduplication.
-
-Middleware wraps the complete transport operation, including response decoding. It can prepare the neutral invocation, perform logging or tracing before and after `next()`, and reject a call. Transport-native customization belongs in the transport configuration; for Fetch this includes injecting a compatible `fetch` function.
-
-Client middleware can also stop every route with a contract-level error through its typed `response(status, body, headers?)` helper. Responses without declared header schemas receive an empty header record by default.
-
-## Client fragments
-
-Fragments remain useful when a route or router client must be exported or deployed independently. They are directly callable and retain their authoring scope when composed:
-
-```ts
-const observed = base.use(logRequests)
-
-const health = observed.select(contract.routes.health)
-const organizations = observed.use(authenticate).select(contract.routes.organizations)
-
-export const client = observed.compose(health, organizations)
-```
-
-Here both fragments use `logRequests`, while only the organization routes use `authenticate`. `compose(...fragments)` requires complete route coverage and rejects duplicates, fragments from another client definition, and fragments that do not inherit the composition scope middleware. A route fragment is its route call, and a router fragment is its callable subtree, so either can also be used independently.
+Clients can cover any subset of endpoints. There is no client builder or recomposition operation. Endpoint names such as `use`, `select`, and `compose` are ordinary names. A selected route is a function; a selected router is a tree of functions. Server composition remains exhaustive because an implementation must supply its selected handlers. Selection does not automatically split JavaScript bundles; use real module boundaries for code splitting.
 
 For framework-specific client placement, server-only import guards, and native server-function patterns, see [hybrid rendering](./hybrid-rendering.md).
 
@@ -151,12 +131,12 @@ When the client and server share one JavaScript process, use the same client API
 ```ts
 import { inProcessAdapter } from '@hulla/api/in-process'
 
-const client = defineClient(contract, {
+const client = createClient(contract, {
   transport: inProcessAdapter().mount(implementation),
 })
 ```
 
-This still runs contract encoding, server validation, middleware, and response decoding, but skips native Fetch object construction. It is suitable for colocated SSR, tests, and same-process application boundaries—not for communication between separate processes.
+This still runs contract encoding, server validation, middleware, and response decoding, but dispatches by contract key directly and skips HTTP route matching and native Fetch object construction. It is suitable for colocated SSR, tests, and same-process application boundaries—not for communication between separate processes.
 
 Use `inProcessAdapter().context()` for the server definition only when its context factory needs the encoded
 `ClientTransportRequest`. Otherwise keep the server portable so the same implementation can be mounted through another
@@ -166,4 +146,20 @@ For Web Workers, Node worker threads, Electron ports, or a custom ordered deskto
 [`@hulla/api-message-port` transport](./message-port.md). It preserves the same client call surface across a process or
 worker boundary and adds request cancellation and pull-driven response streaming.
 
-Use an `@hulla/api/procedure` procedure only when its validation, context, or middleware provides concrete value. Otherwise use an ordinary function. Client creation does not add custom route implementations or change the generated call surface.
+Use ordinary functions for application logic. Use a selected in-process client when local calls need contract validation and middleware. Client creation does not add custom route implementations or change the generated call surface.
+
+## Response validation
+
+Validation follows the contract declaration, with no client-wide mode. `response.json<User>()` uses native JSON parsing and supplies compile-time types; it does not check the shape at runtime. `response.json(userSchema)` validates and applies the schema's declared transforms on the server, then sends the resulting output. `response.json(userCodec)` additionally encodes application values on the server and decodes them on the client. The client does not rerun ordinary response schemas. It trusts the server contract, while still checking status, content type, and transport parsing. Codec responses explicitly validate and decode on the client.
+
+Static `headers` objects are captured and normalized when the client is constructed. Supply `headers: () => currentHeaders` when values must change per call.
+
+For very large contracts exported from a library that emits `.d.ts` files, give the client an explicit public type:
+
+```ts
+import { createClient, type ClientFor } from '@hulla/api/client'
+
+export const client: ClientFor<typeof contract> = createClient(contract, { transport })
+```
+
+This preserves endpoint types while allowing TypeScript to name the contract instead of expanding the complete inferred client. The 1,000-route diagnostic reaches TypeScript's inferred declaration serialization limit (`TS7056`) without this annotation; ordinary type checking still succeeds. Selected clients remain useful for keeping application modules focused.

@@ -58,11 +58,11 @@ Hono only hosts the server implementation. A browser, mobile application, or ano
 through the ordinary typed Fetch client:
 
 ```ts
-import { defineClient } from '@hulla/api/client'
+import { createClient } from '@hulla/api/client'
 import { fetchTransport } from '@hulla/api/fetch'
 import { contract } from './api/contract'
 
-export const api = defineClient(contract, {
+export const api = createClient(contract, {
   transport: fetchTransport({ baseUrl: 'https://api.example.com' }),
 })
 

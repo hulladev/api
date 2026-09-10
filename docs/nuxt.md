@@ -97,7 +97,7 @@ Create the client inside a Nuxt composable so `useRequestEvent()` captures the c
 
 ```ts
 // app/composables/useApi.ts
-import { defineClient } from '@hulla/api/client'
+import { createClient } from '@hulla/api/client'
 import { nuxtFetchTransport } from '@hulla/api-nuxt/client'
 import { contract } from '~~/shared/api/contract'
 
@@ -105,7 +105,7 @@ export function useApi() {
   const event = useRequestEvent()
   const requestFetch = event ? { fetch: event.fetch } : $fetch
 
-  return defineClient(contract, {
+  return createClient(contract, {
     transport: nuxtFetchTransport(requestFetch),
   })
 }
@@ -203,13 +203,13 @@ Inside another server route, use that event's native `fetch` function. Nitro for
 and can dispatch an internal relative route without a network round trip:
 
 ```ts
-import { defineClient } from '@hulla/api/client'
+import { createClient } from '@hulla/api/client'
 import { nuxtFetchTransport } from '@hulla/api-nuxt/client'
 import { defineEventHandler } from 'h3'
 import { contract } from '~~/shared/api/contract'
 
 export default defineEventHandler(async (event) => {
-  const api = defineClient(contract, {
+  const api = createClient(contract, {
     transport: nuxtFetchTransport({ fetch: event.fetch }),
   })
   return api.users.byId({ params: { id: 'user-1' } })

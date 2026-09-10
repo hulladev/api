@@ -111,4 +111,17 @@ Each helper also has a representation-appropriate identity schema when the schem
 
 ## Adapter boundary
 
-Adapters provide already-extracted native path strings, flat query values, headers, and the selected body representation. Repeated query keys become arrays before Standard Schema validation. The shared execution plan validates those values without constructing a Fetch `Request`; framework adapters therefore keep their native request and response lifecycle while reusing the same codec and validator execution.
+Adapters provide already-extracted native path strings, flat query values, headers, and the selected body representation. Repeated query keys become arrays before Standard Schema validation. The shared executor validates those values without constructing a Fetch `Request`; framework adapters therefore keep their native request and response lifecycle while reusing the same codec and validator execution.
+
+## Typed native JSON
+
+```ts
+body: request.json<{ name: string }>()
+responses: { 200: response.json<{ id: string; name: string }>() }
+```
+
+A type argument adds compile-time types only. No recursive shape validation or coercion runs. JSON serialization and parsing follow the native transport, including omission of undefined object fields; malformed JSON still fails parsing. In-process calls pass values directly and do not simulate JSON serialization. Use JSON-compatible values across transports.
+
+Pass a Standard Schema when runtime validation is required. Its transforms are explicit conversion instructions. Use a codec when both applications should share a richer representation. No global validation toggle changes these declarations.
+
+Ordinary response schemas validate and transform on the server before serialization. The client receives their parsed output without rerunning the schema. For example, `response.json(z.date().transform(date => date.toISOString()))` accepts a Date from the handler and returns a string to the client. Use an explicit codec when the client should receive a Date. This rule also applies to response headers, formatted stream items, and declared error data. See [value round trips](./value-round-trips.md).

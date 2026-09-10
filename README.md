@@ -1,6 +1,6 @@
 # @hulla/api
 
-Greenfield implementation of a small directional contract layer for TypeScript APIs. Contracts accept any Standard Schema directly for one-way validation and expose an explicit validator-neutral codec when client and server should share an application value. Client and server authoring stay transport-neutral; optional transports include `@hulla/api/fetch`, `@hulla/api/in-process`, and the separately installed `@hulla/api-message-port` and `@hulla/api-websocket` packages.
+A typed HTTP contract library and integration ecosystem for TypeScript APIs. Contracts accept any Standard Schema directly for one-way validation and expose an explicit validator-neutral codec when client and server should share an application value. Client and server authoring stay transport-neutral; optional transports include `@hulla/api/fetch`, `@hulla/api/in-process`, and the separately installed `@hulla/api-message-port` and `@hulla/api-websocket` packages.
 
 The active workspace contains the batteries-included [`@hulla/api`](./packages/core) package. Zod, Valibot, and other Standard Schema implementations remain application dependencies. The previous implementation remains in [`legacy`](./legacy) for behavioral reference and is excluded from the active workspace.
 
@@ -14,7 +14,7 @@ bun run bench       # compare the standalone runtime matrix and write a detailed
 bun run check       # CI-equivalent verification
 ```
 
-The first vertical slice includes:
+The ecosystem includes:
 
 - `defineContract`, `router`, and method-specific route declarations
 - a canonical immutable compiled route manifest for runtimes, adapters, and generators
@@ -43,7 +43,6 @@ The first vertical slice includes:
 - a SvelteKit `@hulla/api-sveltekit` integration for catch-all endpoints and zero-hop remote functions with native request-event context
 - a Nuxt `@hulla/api-nuxt` integration for Nitro catch-all routes and request-aware `useAsyncData` clients
 - an Astro `@hulla/api-astro` integration for catch-all endpoints and zero-hop SSR/server-island calls
-- optional `@hulla/api/procedure` functions with exact sync/async return types, validation, context, and middleware
 - normalized contract problems and bidirectional codec coverage across every HTTP representation
 - bidirectional OpenAPI generation with typed development-only documentation sidecars and optional JSDoc extraction
 
@@ -53,11 +52,11 @@ Server adapters do not change the client API. Create the contract-shaped client 
 consumer, then call its routes from that application's loader, resource, query, or state layer:
 
 ```ts
-import { defineClient } from '@hulla/api/client'
+import { createClient } from '@hulla/api/client'
 import { fetchTransport } from '@hulla/api/fetch'
 import { contract } from './api/contract'
 
-const api = defineClient(contract, {
+const api = createClient(contract, {
   transport: fetchTransport({ baseUrl: 'https://api.example.com' }),
 })
 
@@ -72,6 +71,8 @@ The result is a status-discriminated union of the responses declared by that rou
 outside the client: Solid Router, TanStack Router, Next.js, TanStack Query, SWR, or another consumer continues to own
 loading state, caching, mutations, hydration, and invalidation.
 
+JSON declarations make runtime work explicit: `response.json<User>()` supplies static types and uses native JSON; `response.json(userSchema)` validates and transforms on the server; `response.json(userCodec)` converts and validates. Request bodies follow the same pattern with `request.json()`. Type arguments alone do not validate data.
+
 See [`docs/architecture.md`](./docs/architecture.md) for the boundary and request call graph,
 [`docs/contract-authoring.md`](./docs/contract-authoring.md) for declaring the shared HTTP contract, and
 [`docs/server-authoring.md`](./docs/server-authoring.md) for the modular server implementation API. The text-first
@@ -80,8 +81,7 @@ request model, flat and repeated query behavior, and codecs are documented in
 boundary are covered in [`docs/client-authoring.md`](./docs/client-authoring.md).
 Worker, Electron, and custom desktop IPC setup is covered in
 [`docs/message-port.md`](./docs/message-port.md).
-Standalone procedure composition and route-derived schema helpers are covered in
-[`docs/procedures.md`](./docs/procedures.md).
+Use ordinary functions for application logic. Use a selected in-process client when local calls need the HTTP contract lifecycle.
 Explicit TanStack Query/SWR client integrations are covered in
 [`docs/plugins.md`](./docs/plugins.md).
 Structured operational errors, Standard Schema issue compatibility, and protocol problem conversion are covered in
@@ -121,65 +121,30 @@ Nuxt/Nitro server routes, `useAsyncData`, request-aware fetching, native H3 cont
 Astro endpoints, native render context, colocated SSR calls, and deferred server islands are covered in
 [`docs/astro.md`](./docs/astro.md).
 
-## Package layout
+## Core layout
+
+The [architecture guide](./docs/architecture.md) explains the request lifecycle and ownership boundaries.
 
 ```text
-packages/core/
-  src/
-    context.ts      shared context and route metadata primitives
-    compiler.ts     canonical flat contract manifest for runtimes and integrations
-    contract.ts     API and route declarations
-    errors.ts       shared structured errors and protocol problem conversion
-    execution.ts    sync-preserving execution steps and mapping
-    input.ts        shared route input type derivation
-    middleware.ts   shared middleware primitives and runtime guards
-    object.ts       safe record and tree utilities
-    parameters.ts   shared client/server path parameter transport
-    query.ts        schema-neutral flat query transport
-    request.ts      request representations and MIME normalization
-    representation.ts shared intrinsic wire schemas
-    response.ts     response representation declarations
-    procedure.ts    optional validated application functions
-    fetch/          Fetch transport and Request/Response adapter subpath
-    message-port/   MessagePort and ordered IPC client/server transport
-    client/         transport-neutral client authoring and execution
-    server/
-      index.ts      public server authoring entry point
-      context.ts    server context primitives
-      middleware.ts direct middleware continuations and contract-error types
-      response.ts   status-discriminated handler and middleware results
-      types.ts      handler-tree, fragment, and implementation types
-      definition.ts context, middleware scope, and complete-tree assembly
-      errors.ts     internal server and validation errors
-    adapters/
-      index.ts      low-level adapter entry point
-      runtime.ts    shared route execution and catch-all matching
-    validation.ts   Standard Schema execution plans and explicit codecs
-  tests/            Contract laws and vertical-slice tests
-packages/openapi/   OpenAPI exporter, importer, typed sidecars, docstrings, and CLI
-packages/node/      shared Node HTTP helpers and the /http server adapter over the catch-all route runtime
-packages/express/   native-routing Express server adapter over the route runtime
-packages/fastify/   native-routing Fastify server adapter over the route runtime
-packages/hono/      native-routing Hono server adapter over the route runtime
-packages/h3/        native-routing H3 v2 server adapter over the route runtime
-packages/elysia/    native-routing Elysia server adapter over the route runtime
-packages/cloudflare/ Cloudflare Module Worker and Pages Functions adapters over the Fetch runtime
-packages/aws-lambda/ AWS Lambda HTTP API v2 and Function URL adapter
-packages/azure-functions/ Azure Functions v4 HTTP trigger adapter
-packages/google-cloud-functions/ Google Cloud Run functions HTTP adapter
-packages/netlify-functions/ Netlify Web-native synchronous Functions adapter
-packages/next/      Next.js App Router handler and extended Fetch transport helpers
-packages/tanstack-start/ TanStack Start wildcard server-route adapter
-packages/react-router/ React Router v7 Framework Mode resource-route adapter
-packages/solid-start/ SolidStart v2 catch-all API-route adapter
-packages/sveltekit/ SvelteKit catch-all endpoint adapter
-packages/nuxt/      Nuxt/Nitro server-route and request-aware client adapters
-packages/astro/     Astro endpoint and explicit-context in-process adapters
+packages/core/src/
+  contract/     declarations, inherited paths, query encoding, and schema helpers
+  compiler.ts   immutable route manifest for runtime preparation and reflection
+  client/       typed calls, contract selections, middleware, and response decoding
+  server/       handler authoring, context, and exhaustive server composition
+  adapters/     one async route executor, matching, input decoding, and output encoding
+  fetch/        Fetch request/response transport and server mounting
+  in-process/   direct client/server transport without network serialization
+  validation.ts Standard Schema validation and explicit bidirectional codecs
+  execution.ts  schema execution and ordered field processing
+  stream.ts     streaming formats and incremental decoding
 ```
+
+Framework integrations, OpenAPI tooling, query integrations, MessagePort, and WebSocket transports live in separate
+`packages/*` directories. See the linked guides above for each integration.
 
 The publishable package uses the next major version while the root workspace and benchmarks remain private.
 
-See the [migration guide](./docs/migration.md) for executable client scopes, explicit composition, response headers and request lifetime changes.
+See the [migration guide](./docs/migration.md) for direct client construction, contract selections, response headers and request lifetime changes.
 
 For safe server/browser client setup across frameworks, see [hybrid rendering](./docs/hybrid-rendering.md).
 

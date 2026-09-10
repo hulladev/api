@@ -60,11 +60,11 @@ The Functions adapter only hosts the server implementation. Browser, mobile, and
 contract-shaped client against the function application's public origin:
 
 ```ts
-import { defineClient } from '@hulla/api/client'
+import { createClient } from '@hulla/api/client'
 import { fetchTransport } from '@hulla/api/fetch'
 import { contract } from './api/contract'
 
-export const api = defineClient(contract, {
+export const api = createClient(contract, {
   transport: fetchTransport({ baseUrl: 'https://example.azurewebsites.net' }),
 })
 

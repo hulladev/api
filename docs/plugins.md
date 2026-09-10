@@ -1,19 +1,19 @@
 # Client integrations
 
 Client integrations are explicit parallel views over the client described in
-[client authoring](./client-authoring.md). They do not register with `defineClient()`, mutate route calls, add `$`
+[client authoring](./client-authoring.md). They do not register with `createClient()`, mutate route calls, add `$`
 properties, or run hooks during ordinary client construction. These examples use the shared contract from
 [contract authoring](./contract-authoring.md).
 
 ## TanStack Query
 
 ```ts
-import { defineClient } from '@hulla/api/client'
+import { createClient } from '@hulla/api/client'
 import { fetchTransport } from '@hulla/api/fetch'
 import { createTanStackQuery } from '@hulla/api-tanstack-query'
 import { contract } from './contract'
 
-const client = defineClient(contract, {
+const client = createClient(contract, {
   transport: fetchTransport({ baseUrl: 'https://api.example.com' }),
 })
 

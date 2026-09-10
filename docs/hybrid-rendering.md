@@ -27,12 +27,12 @@ Put the local client, implementation, and database access behind Next's server-o
 ```ts
 // api/server.ts
 import 'server-only'
-import { defineClient } from '@hulla/api/client'
+import { createClient } from '@hulla/api/client'
 import { inProcessTransport } from '@hulla/api/in-process'
 import { contract } from './contract'
 import { implementation } from './implementation'
 
-export const api = defineClient(contract, {
+export const api = createClient(contract, {
   transport: inProcessTransport(implementation),
 })
 ```
@@ -41,11 +41,11 @@ Also put `import 'server-only'` in `implementation.ts`; protecting just the clie
 
 ```ts
 // api/browser.ts
-import { defineClient } from '@hulla/api/client'
+import { createClient } from '@hulla/api/client'
 import { fetchTransport } from '@hulla/api/fetch'
 import { contract } from './contract'
 
-export const api = defineClient(contract, { transport: fetchTransport() })
+export const api = createClient(contract, { transport: fetchTransport() })
 ```
 
 Server Components import `api/server`; Client Components import `api/browser`. Both call the same contract-shaped methods. The Next fixture builds an interactive browser consumer and executes its browser-safe client module against the real HTTP endpoint. Deliberately importing either the local client or implementation from a Client Component fails the production build.
@@ -64,11 +64,11 @@ Use the existing remote integration when a server implementation needs SvelteKit
 // routes/products.remote.ts
 import { query } from '$app/server'
 import { svelteKitRemoteTransport } from '@hulla/api-sveltekit/remote'
-import { defineClient } from '@hulla/api/client'
+import { createClient } from '@hulla/api/client'
 import { contract } from '$lib/api/contract'
 import { implementation } from '$lib/server/implementation'
 
-const api = defineClient(contract, {
+const api = createClient(contract, {
   transport: svelteKitRemoteTransport(implementation),
 })
 

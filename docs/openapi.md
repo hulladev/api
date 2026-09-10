@@ -67,8 +67,7 @@ import { createOpenAPIDocument, writeOpenAPIDocument } from '@hulla/api-openapi'
 await writeOpenAPIDocument('./openapi.json', await createOpenAPIDocument(definition))
 ```
 
-The exporter defaults to OpenAPI 3.1.2 and uses Standard JSON Schema's input conversion because OpenAPI describes the
-HTTP representation. `@hulla/api` codecs retain their wire schema's conversion capability. JSON and YAML output are both
+The exporter defaults to OpenAPI 3.1.2 and uses Standard JSON Schema's input conversion for requests and output conversion for responses, including response headers and declared error data, because OpenAPI describes the HTTP representation. `@hulla/api` codecs retain their wire schema's conversion capability. JSON and YAML output are both
 supported. A schema without Standard JSON Schema support produces an exact generation error unless the sidecar supplies
 an explicit request or response `schema` override.
 
@@ -122,11 +121,11 @@ Imported object schemas preserve additional JSON fields unless `additionalProper
 The generated contract is a normal runtime contract, so it uses the same client as a code-first contract:
 
 ```ts
-import { defineClient } from '@hulla/api/client'
+import { createClient } from '@hulla/api/client'
 import { fetchTransport } from '@hulla/api/fetch'
 import { contract } from './api.generated'
 
-export const api = defineClient(contract, {
+export const api = createClient(contract, {
   transport: fetchTransport({ baseUrl: 'https://api.example.com' }),
 })
 ```

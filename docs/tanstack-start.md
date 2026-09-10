@@ -91,7 +91,7 @@ calls inside loaders, which continue to own navigation preloading and route-cach
 
 ```ts
 // src/api/client.ts
-import { defineClient } from '@hulla/api/client'
+import { createClient } from '@hulla/api/client'
 import { fetchTransport } from '@hulla/api/fetch'
 import { contract } from './contract'
 
@@ -101,7 +101,7 @@ if (typeof window === 'undefined' && (!baseUrl || !URL.canParse(baseUrl))) {
   throw new Error('VITE_API_ORIGIN must be an absolute URL during SSR')
 }
 
-export const api = defineClient(contract, {
+export const api = createClient(contract, {
   transport: fetchTransport({ baseUrl }),
 })
 ```

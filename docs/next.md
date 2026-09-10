@@ -104,7 +104,7 @@ accepts only declared `GET` routes; route names, literal keys, and callback meth
 a Data Cache policy through this high-level API:
 
 ```ts
-import { defineClient } from '@hulla/api/client'
+import { createClient } from '@hulla/api/client'
 import { createNextCache } from '@hulla/api-next/client'
 
 export const cache = createNextCache(contract, {
@@ -122,7 +122,7 @@ export const cache = createNextCache(contract, {
   },
 })
 
-export const client = defineClient(contract, {
+export const client = createClient(contract, {
   transport: cache.fetchTransport({
     baseUrl: 'https://api.example.com',
   }),
@@ -216,12 +216,12 @@ the browser bundle does not import cache policy code:
 
 ```ts
 // src/api/browser-client.ts
-import { defineClient } from '@hulla/api/client'
+import { createClient } from '@hulla/api/client'
 import { fetchTransport } from '@hulla/api/fetch'
 import { createSWR } from '@hulla/api-swr'
 import { contract } from './contract'
 
-export const api = defineClient(contract, {
+export const api = createClient(contract, {
   transport: fetchTransport(),
 })
 

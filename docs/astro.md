@@ -81,11 +81,11 @@ round trip while preserving the normal client/server validation and codec bounda
 ```astro
 ---
 import { astroInProcessTransport } from '@hulla/api-astro'
-import { defineClient } from '@hulla/api/client'
+import { createClient } from '@hulla/api/client'
 import { contract } from '../api/contract'
 import { implementation } from '../api/server'
 
-const api = defineClient(contract, {
+const api = createClient(contract, {
   transport: astroInProcessTransport(implementation, Astro),
 })
 
@@ -109,12 +109,12 @@ fetches its internal island endpoint, and swaps in the returned HTML. The island
 ---
 // src/components/UserCard.astro
 import { astroInProcessTransport } from '@hulla/api-astro'
-import { defineClient } from '@hulla/api/client'
+import { createClient } from '@hulla/api/client'
 import { contract } from '../api/contract'
 import { implementation } from '../api/server'
 
 const { id } = Astro.props
-const api = defineClient(contract, {
+const api = createClient(contract, {
   transport: astroInProcessTransport(implementation, Astro),
 })
 const result = await api.users.byId({ params: { id } })

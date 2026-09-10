@@ -18,7 +18,7 @@ MessagePort and custom IPC endpoints share this package. Core's Fetch and in-pro
 Give one end of a channel to the server and the other to the client:
 
 ```ts
-import { defineClient } from '@hulla/api/client'
+import { createClient } from '@hulla/api/client'
 import { messagePortAdapter, messagePortTransport } from '@hulla/api-message-port'
 
 const server = messagePortAdapter(serverPort).mount(implementation)
@@ -26,7 +26,7 @@ const transport = messagePortTransport(clientPort)
 
 await Promise.all([server.ready, transport.ready])
 
-const client = defineClient(contract, { transport })
+const client = createClient(contract, { transport })
 const result = await client.users.byId({ params: { id: 'user-1' } })
 ```
 

@@ -69,13 +69,13 @@ and invokes internal endpoints without a network round trip:
 
 ```ts
 // src/routes/users/[id]/+page.ts
-import { defineClient } from '@hulla/api/client'
+import { createClient } from '@hulla/api/client'
 import { fetchTransport } from '@hulla/api/fetch'
 import { contract } from '$lib/api/contract'
 import type { PageLoad } from './$types'
 
 export const load: PageLoad = async ({ fetch, params, url }) => {
-  const api = defineClient(contract, {
+  const api = createClient(contract, {
     transport: fetchTransport({ baseUrl: url.origin, fetch }),
   })
   const result = await api.users.byId({ params: { id: params.id } })
@@ -99,14 +99,14 @@ codec boundary, but dispatches directly inside the current server process:
 
 ```ts
 // src/routes/users/data.remote.ts
-import { defineClient } from '@hulla/api/client'
+import { createClient } from '@hulla/api/client'
 import { svelteKitRemoteTransport } from '@hulla/api-sveltekit/remote'
 import { command, query } from '$app/server'
 import { renameUserInput, userId } from '$lib/api/schemas'
 import { contract } from '$lib/api/contract'
 import { implementation } from '$lib/api/server'
 
-const api = defineClient(contract, {
+const api = createClient(contract, {
   transport: svelteKitRemoteTransport(implementation),
 })
 

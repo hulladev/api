@@ -11,9 +11,9 @@ Run `bun run bench` from the repository root to build public exports and run the
 | Equivalent validation policy (`strict-parity`) | Server input validation, no manually added client input validation | Server and client output validation | Separate comparison for applications requiring these checks |
 | Focused diagnostics | Explicit fixture-specific policy | Explicit fixture-specific policy | Explains costs; not a cross-package league table |
 
-In the native fixtures, @hulla/api validates output on both server and client, tRPC/oRPC on the server, and direct Fetch/ts-rest on the client. The minimal Hono fixture has no output schema validation.
+In the native fixtures, @hulla/api and tRPC/oRPC validate output on the server, and direct Fetch/ts-rest on the client. The minimal Hono fixture has no output schema validation.
 
-The native fixture output validation count is two for @hulla/api, one for direct Fetch/tRPC/oRPC/ts-rest, and zero for the minimal Hono fixture. Equivalent-policy output validation is two. Input-bearing primary scenarios validate server input once. The preflight enforces these observed counts rather than relying only on table labels. Ordinary @hulla/api schemas expose outbound input types; explicit codecs additionally encode application values. Fetch-owned request readers now enforce a default 1 MiB limit. Host-native parsers retain their own limits. This behavior and its real cost remain in the default measurements.
+The native fixture output validation count is one for @hulla/api/direct Fetch/tRPC/oRPC/ts-rest, and zero for the minimal Hono fixture. Equivalent-policy and representative application output validation is two. Those @hulla/api fixtures explicitly parse the client result to retain that policy; the package itself only validates ordinary response schemas on the server. Input-bearing primary scenarios validate server input once. The preflight enforces these observed counts rather than relying only on table labels. Ordinary @hulla/api schemas expose outbound input types; explicit codecs additionally encode application values. Fetch-owned request readers are unbounded by default; fixtures may set explicit limits. Host-native parsers retain their own limits. This behavior and its real cost remain in the default measurements.
 
 `bun run --cwd benchmarks preflight` runs actual operations in a separate, untimed process. It verifies validation counts, deliberately rejects each configured boundary to detect validators that are called but ignored, and executes the focused fixtures' semantic assertions. The instrumentation wrapper is absent during timed execution. Native adapters also execute their own payload/status assertions in every measured operation. Timings include the fixture's client consumption and assertions; they are not raw handler-only timings unless explicitly labeled.
 
@@ -36,7 +36,7 @@ Snapshots carry a run ID, runtime/OS/CPU/host, methodology version, built-produc
 `bun run --cwd benchmarks bench:diagnostics` measures:
 
 - Route tables with 1/32/256/2,048 routes, deterministic broad hits, 404s, method misses and middleware depths 0/1/5.
-- Paired Fetch and in-process JSON roundtrips of approximately 1 KiB, 16 KiB, 256 KiB and 1 MiB, with serialized byte counts recorded. This payload sweep disables the Fetch body limit explicitly so the 1 MiB value plus its JSON envelope fits; ordinary request benchmarks retain the default limit.
+- Paired Fetch and in-process JSON roundtrips of approximately 1 KiB, 16 KiB, 256 KiB and 1 MiB, with serialized byte counts recorded. This payload sweep explicitly allows unbounded bodies so the 1 MiB value plus its JSON envelope fits. Ordinary request benchmarks use the reader defaults.
 - Actual localhost Node HTTP at concurrency 1/16/64, plus independently scheduled 100/1,000/5,000 requests/sec sweeps. Scheduled, dispatched and completed timestamps expose scheduling and queue delay. Timeouts count as failures.
 - MessagePort roundtrips with small/64 KiB messages and concurrency 1/16, including endpoint teardown.
 - Delayed streams with slow consumers, first-chunk/cancellation timing, completion, invalid input, handler failure and abort paths. Producer finalization is checked.
@@ -58,7 +58,7 @@ Every PR runs semantic preflight, behavior/type checks, built imports and bundle
 
 `check:size` builds the consumer fixtures and records minified and gzip sizes, including provenance. It fails on broken builds, but does not enforce fixed size caps while the architecture is evolving. Review size changes alongside functionality, runtime performance, and the actual entrypoints a consumer imports. Small increases are acceptable when their architectural or performance benefit is demonstrated.
 
-The original built executable Fetch fixture measured 45,895 minified / 14,202 gzip bytes; transport-neutral client+server measured 28,934 / 9,327. Lifecycle, repeated-header and bounded-reader behavior added code. Subsequent directional compilation reduces client-only and adapter-only bundles while the combined client+server fixture retains both directions. See `../audits/fetch-optimization-results.md` for paired measurements and tradeoffs.
+The original built executable Fetch fixture measured 45,895 minified / 14,202 gzip bytes; transport-neutral client+server measured 28,934 / 9,327. Lifecycle, repeated-header and bounded-reader behavior added code. Those historical measurements predate the current async pipeline; rebuild and measure the current entrypoints before comparing sizes. See `../audits/fetch-optimization-results.md` for paired measurements and tradeoffs.
 
 The scaling diagnostics now include chunked JSON request reading at 256-byte, 16 KiB and 256 KiB payload sizes, with 1 KiB and 64 KiB chunks. Bounded (1 MiB) and native unbounded readers are labeled separately because their guarantees differ. Each operation consumes a fresh stream and checks the parsed value; request construction and stream delivery are included in timing.
 
@@ -69,3 +69,12 @@ The scaling diagnostics now include chunked JSON request reading at 256-byte, 16
 
 
 MessagePort diagnostics and size fixtures consume the separate `@hulla/api-message-port` package. The boundary checks reject a core dependency on that package and verify that other consumers do not retain its implementation. Built-package smoke tests exercise a real MessageChannel roundtrip and downstream declaration emission.
+
+## Optimization acceptance
+
+Benchmarks diagnose costs; they do not prescribe additional execution paths. Compare a proposed optimization against
+the simplest correct pipeline, preserve lifecycle checks, and report absolute differences as well as percentages.
+Include representative requests and bundle size. Remove experiments that do not justify their maintenance cost.
+Historical reports in `audits/` do not establish a performance requirement for the current implementation.
+
+Large-consumer diagnostics retain inferred declaration failures such as TypeScript `TS7056`. They separately verify the documented `ClientFor<typeof contract>` export annotation and report whether it was required, along with emitted declaration bytes. This is a compiler emission limit, not a successful inferred emit or a runtime failure.

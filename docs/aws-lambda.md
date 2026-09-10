@@ -51,11 +51,11 @@ The Lambda adapter only hosts the server implementation. Browser, mobile, and se
 contract-shaped client against the API Gateway or Function URL origin:
 
 ```ts
-import { defineClient } from '@hulla/api/client'
+import { createClient } from '@hulla/api/client'
 import { fetchTransport } from '@hulla/api/fetch'
 import { contract } from './api/contract'
 
-export const api = defineClient(contract, {
+export const api = createClient(contract, {
   transport: fetchTransport({ baseUrl: 'https://api.example.com' }),
 })
 

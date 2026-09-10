@@ -1,45 +1,85 @@
-# Greenfield boundary
+# Core architecture
 
-Contracts consume Standard Schema directly. An ordinary schema is one-way: its input is supplied at the outbound application boundary and its output is received at the opposite boundary. An explicit `codec(wireSchema, applicationSchema, { decode, encode })` makes both applications use the application representation while HTTP uses the wire representation. No validator selection or schema-library introspection is required.
+The core defines typed HTTP contracts and executes them through small transport and adapter boundaries. A contract
+contains methods, paths, schemas, response statuses, and declared errors. Fetch, native framework adapters, in-process
+calls, MessagePort, and WebSocket transports use that same contract.
 
-The core is contract- and execution-plan-first rather than Fetch-first. It owns declarations, Standard Schema execution, middleware composition, handler invocation, and semantic response selection. Transport subpaths own native request construction, request extraction, lifecycle behavior, and response reading or writing. Fetch ships as `@hulla/api/fetch`, but importing the package root or transport-neutral client does not include it. Query integrations are explicit parallel views over a built client. Procedures remain a small optional application layer and do not participate in HTTP routing.
-
-## Fetch packaging and consumer boundaries
-
-Fetch remains included behind `@hulla/api/fetch`. Contract declarations such as `response.json()` stay in core; native request construction, response writing and body reading live in transport/adapter modules. Transport-neutral header normalization is separate from native `Headers` conversion. Core client/server modules import the portable helpers directly.
-
-Installing `@hulla/api` downloads the optional transport files. Loading or bundling a consumer retains the implementations reached by its imports; package installation size and application bundle size are different measurements. Fetch needs no separate installation. MessagePort and its custom IPC endpoints are provided by the separate `@hulla/api-message-port` package; Fetch and in-process transport remain core subpaths. A helper package may be introduced if a real shared dependency warrants it, with a one-way dependency graph.
-
-`bun run check:exports` builds seven representative consumers against both source and published entrypoints: contract-only, custom transport, in-process, MessagePort client, Fetch client, Fetch server, and Node writer. Retained-module checks enforce that non-Fetch consumers exclude HTTP implementations, Fetch client and server consumers exclude the opposite implementation, and browser consumers exclude Node helpers and external runtime dependencies. Executable consumer fixtures also verify successful calls. Checks inspect retained contributions rather than every parsed module, so an unused sibling export in a barrel does not count as bundled code. Size reports remain uncapped.
-
-## Request call graph
+## Value direction
 
 ```text
-application input
-  -> codec.encode when explicitly declared
-  -> representation-specific request serialization
-  -> adapter extracts raw request values
-  -> core query/body transport normalization
-  -> schema.decode
-  -> typed handler
-  -> response codec.encode or ordinary schema input validation
-  -> Response JSON serialization
-  -> response.json
-  -> client response schema.decode
-  -> application output
+Client request → transport parsing → request schema → handler
+Client response ← transport serialization ← response schema ← handler return
 ```
 
-For an ordinary request schema, the client accepts the schema input and the server receives its validated output. For a codec, both accept the application representation and the client encodes it before transport. Responses reverse the application roles: handlers return an ordinary response schema's input or a codec's application value, while clients always receive the validated application output. A server implementation exhaustively binds one mounted contract node: the root, one router subtree, or one route. Smaller fragments can be composed back into a complete root binding. Middleware is captured by each fragment's authoring scope, allowing descendants to add route-local middleware while retaining one context factory from their shared server definition. Route matching, validation, representation handling, middleware, and response dispatch are compiled once when a binding or fragment is attached to a runtime. Context factories are transport-neutral by default; adapter declarations explicitly bind factories that consume native request state so an incompatible mount fails before dispatch.
+Both ordinary schemas run on the server: input to output, never automatically reversed. A codec explicitly adds encode at the sender and decode at the receiver. See [numeric and date round trips](./value-round-trips.md).
 
-`compileContract()` from `@hulla/api/compiler` is the canonical reflection boundary for integrations. It returns a cached, immutable flat manifest in declaration order. Every entry correlates its structural key, method, fully joined path, accumulated router and route parameter declarations, and original route declaration. A single weakly keyed `ContractState` owns that manifest, a contract-scoped mounted-node index, and the transport-neutral client/server route plan, so core runtimes and external adapters or generators cannot drift or repeat the contract walk. Mounted-node metadata is retained only while its contract is reachable and reuses compiled route records rather than duplicating schemas or execution plans. Only compilation is cached; requests, responses, and application results are not.
+## From a declaration to a call
 
-`@hulla/api/client` supplies the transport-neutral client definition. `defineClient()` receives a transport and returns an executable, immutable authoring scope; `select(node)` returns a selected fragment. Top-level callable subtrees are materialized on first access. Core encodes declared inputs into a neutral invocation and decodes the declared response returned by the transport. Client fragments capture middleware from their derived `use()` scope and compose with `compose(...fragments)`, giving different route subtrees different middleware without changing their call surface. `@hulla/api/fetch` supplies `fetchTransport()`, `@hulla/api/in-process` dispatches without a native request object, and `@hulla/api-message-port` multiplexes calls over structured-clone ports or custom ordered IPC endpoints. Future WebSocket transports can consume the same invocation boundary. Like the server scope, the client supports a per-request context factory and `middleware()` definitions.
+`defineContract()` resolves nested paths and parameter declarations once. `compileContract()` exposes the public,
+immutable route manifest in declaration order. Each entry contains its structural key, method, complete path,
+inherited parameter schemas, and original route declaration. Each mounted node exposes `$contract` metadata with its key, selected entries, and errors. Selection requires no private node registry.
 
-Client and server context types derive from one core route-metadata implementation. Client context and middleware receive the schema-encoded neutral transport request; portable server context and middleware contain contract-level state only, with adapter declarations supplying typed native context input where needed. Their single-use `next()` continuation, awaitable behavior, runtime guards, and execution dispatcher remain shared. Procedures from `@hulla/api/procedure` reuse the execution-step and middleware-dispatch primitives while retaining precise synchronous-versus-asynchronous calls and their smaller application-only input.
+Client creation and adapter mounting prepare their functions directly from this manifest. There is no intermediate
+client/server contract plan or generic directional compiler. Schema validation functions are cached by schema and
+boundary location; response schema preparation is shared by client and server. These caches contain configuration,
+never requests, context, or application results.
 
-Operational errors share a structural `code` and Standard Schema-compatible `issues` array. Boundary validation annotates schema issues with its location while retaining validator-specific issue codes and paths. The same issue values can be inspected internally or converted to a JSON-safe `APIProblem`; integrations do not translate between an application error model and a separate validation error model.
+A client call follows one lifecycle:
 
-Run `bun run bench` to record the standalone comparison matrix. It covers static, small-body, and large-body round trips across Direct Fetch, @hulla/api, tRPC, oRPC, ts-rest, and Hono RPC, plus focused @hulla/api transport, middleware, failure, and streaming scenarios. Raw samples append to a local NDJSON history. The terminal and `benchmarks/results/latest.md` aggregate runs from the current source and compare their stable benchmark identities with the most recent prior revision on the same runtime, machine, and benchmark configuration.
+```text
+encode parameters, query, headers, and body
+  -> create per-call context
+  -> client middleware
+  -> transport
+  -> decode declared response headers and body
+  -> typed result
+```
+
+A server call follows one lifecycle:
+
+```text
+host routing or core route matching
+  -> decode parameters, query, headers, and body
+  -> create per-call context
+  -> server middleware and handler
+  -> validate/encode declared response
+  -> host response writer
+```
+
+Request fields process in the listed order and stop on failure. When response header decoding is asynchronous, body decoding runs concurrently;
+if either fails, the client disposes the response so a pending body read can be cancelled. Server error handling tracks
+routing, request, context, handler, and response phases. A declared error returned or thrown by a handler or middleware
+is encoded using its contract declaration. Stream consumption remains lazy and owns its cancellation and cleanup.
+
+HTTP calls always return promises. The lifecycle awaits only steps that return promises. Synchronous schemas and handlers stay synchronous within that lifecycle, with no separate simple-route executor.
+
+## Validation and representations
+
+Typed JSON declarations without schemas use native serialization and parsing without a recursive shape check. Supplying a schema explicitly requests validation. There is no client-wide validation policy. Ordinary request schemas validate and transform on the server after transport parsing. Ordinary response schemas validate and transform handler values on the server before serialization; the client consumes the parsed wire output without rerunning the schema. The same response rule applies to declared headers, formatted stream items, and declared error data. Explicit `codec(wireSchema, applicationSchema, { decode, encode })` declarations make both applications use the
+application representation while transports carry the wire representation. No schema-library introspection is needed.
+
+The neutral invocation still uses HTTP vocabulary: method, path, query, headers, status, and body representation.
+It does not require native Fetch objects. Native adapters can execute an already-matched route directly, while Fetch
+and other catch-all hosts use the shared route trie. Static routes take precedence over parameter routes. There are
+no special single-route or static-only dispatch implementations. In-process transport selects the same executor directly by contract key and passes encoded parameters without parsing a URL.
+
+## Selection and implementation
+
+`createClient(contractOrSelection, { transport, middleware, context })` prepares a plain tree of calls. Middleware configuration is captured once. Applications export selected clients independently or group them with ordinary objects. No builder methods occupy the endpoint namespace, and no client ownership or recomposition machinery is needed.
+
+Server implementations remain exhaustive for their selected contract node. Server-only composition combines smaller
+implementations, exposes public handler bindings, checks coverage and duplicates, and preserves middleware scopes. Native context factories declare
+their adapter requirement, so incompatible mounts fail during setup.
+
+## Import boundaries
+
+Core depends only on the Standard Schema specification. Validators belong to applications. Frameworks and host
+runtimes belong to integration packages. Fetch is included as an isolated `@hulla/api/fetch` subpath; MessagePort and
+WebSocket are separate packages. Non-Fetch consumers must not retain Fetch implementations, and browser consumers
+must not retain Node helpers. See `bun run check:exports` for executable source and published-package boundary checks.
+
+Installing a package downloads its files; bundling retains reachable code. Measure those separately. Avoid adding a
+new shared abstraction solely to reduce repeated imports or make client/server internals look symmetrical.
 
 ## Declaration shape
 

@@ -145,11 +145,11 @@ and error boundaries:
 
 ```ts
 // app/api/client.ts
-import { defineClient } from '@hulla/api/client'
+import { createClient } from '@hulla/api/client'
 import { fetchTransport } from '@hulla/api/fetch'
 import { contract } from './contract'
 
-export const api = defineClient(contract, {
+export const api = createClient(contract, {
   transport: fetchTransport({ baseUrl: process.env.API_ORIGIN }),
 })
 ```

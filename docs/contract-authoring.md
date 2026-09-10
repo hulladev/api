@@ -75,6 +75,8 @@ Every concrete response status must be declared. Its representation and schema d
 the status-discriminated server/client result type. A handler for `users.byId`, for example, can construct only its
 declared `200` and `404` responses, and a client can narrow `result.status` before reading the corresponding body.
 
+For native JSON with compile-time types only, use `request.json<Input>()` and `response.json<Output>()`. Passing a schema explicitly adds runtime validation; passing a transforming schema or codec explicitly adds conversion. There is no client-wide validation switch. Type-only declarations do not verify application data at runtime.
+
 Ordinary Standard Schemas validate one direction. Use an explicit `codec()` when the application value and HTTP wire
 value differ—for example, when a `Date` is encoded as an ISO string. The detailed representation and codec rules are in
 [request transport](./request-transport.md).
@@ -83,4 +85,12 @@ value differ—for example, when a `Date` is encoded as an ISO string. The detai
 
 The contract has no handlers and does not listen for requests. Continue with [server authoring](./server-authoring.md)
 to create an implementation with `defineServer()`, then choose a framework adapter to mount it. Client applications use
-the same contract with `defineClient()` as described in [client authoring](./client-authoring.md).
+the same contract with `createClient()` as described in [client authoring](./client-authoring.md).
+
+## Validation direction
+
+Use ordinary schemas as the default for checked HTTP contracts. Request schemas run on the server after parsing. Response schemas run on the server before serialization, and their output is sent to the client. This includes stripping unknown object fields, defaults, and transformations. Handler return types describe schema input; client response types describe schema output. Ordinary response outputs must match their representation: JSON-compatible values for JSON, strings for text and headers, and bytes for byte bodies.
+
+Use `codec()` when both client and handler should work with a richer application value, such as `Date`. The codec encodes at the sending boundary and decodes at the receiving boundary. Native type-only declarations remain available when runtime shape checks are unnecessary. There is no validation mode setting.
+
+See [value round trips](./value-round-trips.md) for numeric and date examples across these declarations.

@@ -61,7 +61,7 @@ One declaration cannot be assigned to several statuses in the same contract.
 Clients return declared errors as typed response values by default. Applications that prefer exception control flow can opt in once when defining the client:
 
 ```ts
-const client = defineClient(contract, {
+const client = createClient(contract, {
   transport,
   errorMode: 'throw',
 })

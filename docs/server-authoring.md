@@ -63,7 +63,7 @@ Keep the factory for request-scoped identity and shared state. If a dependency i
 
 ## Middleware
 
-Client, server, and procedure middleware receive one options object. Server middleware and handlers receive the contract's declared error factories. They may return or throw an occurrence:
+Client and server middleware receive one options object. Server middleware and handlers receive the contract's declared error factories. They may return or throw an occurrence:
 
 ```ts
 const requireUser = server.middleware(async ({ context, errors, next }) => {
@@ -77,7 +77,7 @@ const requireUser = server.middleware(async ({ context, errors, next }) => {
 const authenticated = server.use(requireUser)
 ```
 
-The declaration selects its exact data type. HTTP status is attached separately by `defineContract()`, so the same declaration remains usable in procedures and other transports.
+The declaration selects its exact data type. HTTP status is attached separately by `defineContract()`, so the same declaration remains usable across transports.
 
 Pass a mounted contract router or route as the first argument to scope one middleware while implementing an ordinary complete handler tree:
 
@@ -158,7 +158,7 @@ Portable handlers and middleware intentionally do not receive a transport reques
 
 The status discriminates the complete response envelope. An empty response forbids `body`; a raw response carries an adapter-native value and forbids separate headers; schema-backed response headers are required and typed when declared.
 
-Handlers may return a subset of the statuses declared by their route. Runtime execution also rejects undeclared statuses, validates ordinary response inputs, and encodes codec application values before serializing the selected body and headers.
+Handlers may return a subset of the statuses declared by their route. Runtime execution also rejects undeclared statuses, validates and transforms ordinary response inputs into wire output, and encodes codec application values before serializing the selected body and headers.
 
 ## Organizing handler values across modules
 

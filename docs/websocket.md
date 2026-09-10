@@ -4,7 +4,7 @@ Install `@hulla/api-websocket` alongside `@hulla/api`. The package has no WebSoc
 application supplies a browser WebSocket or a compatible accepted server socket (tested with `ws`). Core stays independent.
 
 ```ts
-import { defineClient } from '@hulla/api/client'
+import { createClient } from '@hulla/api/client'
 import { webSocketAdapter, webSocketTransport } from '@hulla/api-websocket'
 
 // Server: call this for each accepted socket.
@@ -12,7 +12,7 @@ const server = webSocketAdapter(acceptedSocket).mount(implementation)
 
 // Client: a connecting socket is supported; calls wait until it opens.
 const transport = webSocketTransport(new WebSocket('wss://example.com/api'))
-const client = defineClient(contract, { transport })
+const client = createClient(contract, { transport })
 await transport.ready
 ```
 

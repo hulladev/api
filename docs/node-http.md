@@ -73,11 +73,11 @@ The Node adapter only hosts the server implementation. Browser, mobile, and serv
 Fetch client:
 
 ```ts
-import { defineClient } from '@hulla/api/client'
+import { createClient } from '@hulla/api/client'
 import { fetchTransport } from '@hulla/api/fetch'
 import { contract } from './api/contract'
 
-export const api = defineClient(contract, {
+export const api = createClient(contract, {
   transport: fetchTransport({ baseUrl: 'http://127.0.0.1:3000' }),
 })
 ```
