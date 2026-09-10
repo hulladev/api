@@ -1,0 +1,19 @@
+{
+  "identity": {
+    "runId": "462a8d47-daac-429f-a030-4a0b4852067c",
+    "methodologyVersion": 4,
+    "productFingerprint": "076bc02de2e240ac3c2da6a3b4a67eec3e3e5f5f298b6ce872e18196753f85ea",
+    "workloadFingerprint": "7d3b8de6b20d5b599253ebd08bce43de1f318f8a3202605815d5263e0476c6ef",
+    "environment": {
+      "architecture": "arm64",
+      "cpu": "Apple M4 Pro",
+      "host": "Samuels-Macbook-M4-Pro.local",
+      "osRelease": "25.5.0",
+      "platform": "darwin",
+      "runtime": "Bun 1.4.0"
+    }
+  },
+  "target": "bun",
+  "minify": true,
+  "external": ["zod", "zod/*", "$app/server", "h3"]
+}
