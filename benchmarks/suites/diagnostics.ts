@@ -6,7 +6,7 @@ import { defineContract, request, response, route, type ContractRoutes } from '@
 import { messagePortAdapter, messagePortTransport } from '@hulla/api-message-port'
 import { nodeHttpAdapter } from '@hulla/api-node/http'
 import { createAdapterHandler, readFetchBody } from '@hulla/api/adapters'
-import { defineClient } from '@hulla/api/client'
+import { createClient } from '@hulla/api/client'
 import { fetchAdapter, fetchTransport } from '@hulla/api/fetch'
 import { inProcessTransport } from '@hulla/api/in-process'
 import { defineServer } from '@hulla/api/server'
@@ -117,8 +117,8 @@ export async function scaling(): Promise<Diagnostic[]> {
     })
     const implementation = defineServer(contract).implement({ echo: ({ body }) => ({ status: 200, body }) })
     const clients = {
-      'in-process': defineClient(contract, { transport: inProcessTransport(implementation) }),
-      fetch: defineClient(contract, {
+      'in-process': createClient(contract, { transport: inProcessTransport(implementation) }),
+      fetch: createClient(contract, {
         transport: fetchTransport({
           baseUrl: 'http://bench',
           fetch: fetchAdapter({ maxBodyBytes: Infinity }).mount(implementation),
@@ -300,7 +300,7 @@ export async function ipc(): Promise<Diagnostic[]> {
   const channel = new MessageChannel()
   const server = messagePortAdapter(channel.port1).mount(implementation)
   const transport = messagePortTransport(channel.port2)
-  const client = defineClient(contract, { transport })
+  const client = createClient(contract, { transport })
   const results: Diagnostic[] = []
   try {
     await Promise.all([server.ready, transport.ready])

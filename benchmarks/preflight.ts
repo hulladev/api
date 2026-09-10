@@ -20,13 +20,7 @@ for (const benchmark of cases) {
   const counts = validationCounts()
   const profile = benchmark.profile ?? 'strict-parity'
   const native = profile === 'native'
-  const outputPasses = native
-    ? benchmark.runtime.startsWith('@hulla/api')
-      ? 2
-      : benchmark.runtime.startsWith('Hono')
-        ? 0
-        : 1
-    : 2
+  const outputPasses = native ? (benchmark.runtime.startsWith('Hono') ? 0 : 1) : 2
   const expected =
     benchmark.scenario === 'static-get'
       ? { healthOutput: outputPasses }

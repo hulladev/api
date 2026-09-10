@@ -1,5 +1,5 @@
 import { defineContract, response, route } from '@hulla/api'
-import { defineClient } from '@hulla/api/client'
+import { createClient } from '@hulla/api/client'
 import { fetchAdapter, fetchTransport } from '@hulla/api/fetch'
 import { defineServer } from '@hulla/api/server'
 import { z } from 'zod'
@@ -11,6 +11,6 @@ const contract = defineContract({
 const server = defineServer(contract)
 const handler = fetchAdapter().mount(server.implement({ health: () => ({ status: 200, body: { ok: true } }) }))
 
-export const client = defineClient(contract, {
+export const client = createClient(contract, {
   transport: fetchTransport({ baseUrl: 'https://size.local', fetch: handler }),
 })

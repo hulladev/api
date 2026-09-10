@@ -1,5 +1,5 @@
 import { defineContract, response, route } from '@hulla/api'
-import { defineClient, type ClientTransport } from '@hulla/api/client'
+import { createClient, type ClientTransport } from '@hulla/api/client'
 import { defineServer } from '@hulla/api/server'
 import { z } from 'zod'
 
@@ -11,7 +11,7 @@ const transport: ClientTransport = () => {
   throw new Error('Size fixture transport')
 }
 
-export const client = defineClient(contract, { transport })
+export const client = createClient(contract, { transport })
 export const server = defineServer(contract).implement({
   health: () => ({ status: 200, body: { ok: true } }),
 })

@@ -7,7 +7,7 @@ export const benchmarkScenarios = {
   'path-parameter-read': 'Read one resource through two path parameters',
   'query-header-read': 'Filtered collection read with a path parameter, scalar and repeated query values, and a header',
   'mixed-update': 'JSON update with path parameters, query, headers, and validated response',
-  'static-get': 'Static JSON GET with server and client output validation',
+  'static-get': 'Static JSON GET with profile-specific output validation',
   'small-json-post': "Small JSON POST with each runtime's request and response validation",
   'large-json-post': "Large JSON POST with each runtime's request and response validation",
   'cold-first-call': 'Loaded-module application construction plus the first validated request',
@@ -43,7 +43,7 @@ export const benchmarkScenarios = {
   'middleware-context': 'Client and server context plus one middleware layer',
   'validation-failure': 'Invalid server request validation and protocol error serialization',
   'codec-roundtrip': 'Bidirectional Date codec across client and server HTTP boundaries',
-  streaming: 'Ten NDJSON chunks with server and client schema validation',
+  streaming: 'Ten NDJSON chunks with server schema validation',
 } as const
 
 export type BenchmarkScenario = keyof typeof benchmarkScenarios

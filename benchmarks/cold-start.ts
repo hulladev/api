@@ -1,5 +1,5 @@
 import { defineContract, response, route } from '@hulla/api'
-import { defineClient } from '@hulla/api/client'
+import { createClient } from '@hulla/api/client'
 import { fetchAdapter, fetchTransport } from '@hulla/api/fetch'
 import { defineServer } from '@hulla/api/server'
 import { createORPCClient } from '@orpc/client'
@@ -30,7 +30,7 @@ async function hullaApiFirstCall(): Promise<void> {
   })
   const server = defineServer(contract)
   const handler = fetchAdapter().mount(server.implement({ health: () => ({ status: 200, body: healthValue }) }))
-  const client = defineClient(contract, {
+  const client = createClient(contract, {
     transport: fetchTransport({ baseUrl: 'https://bench.local', fetch: handler }),
   })
   const result = await client.health()

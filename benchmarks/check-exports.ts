@@ -22,12 +22,12 @@ for (const subpath of Object.keys(core.exports)) {
   assert(Object.keys(module).length > 0, `Empty built export: ${subpath}`)
 }
 const { defineContract, response, route } = await import('@hulla/api')
-const { defineClient } = await import('@hulla/api/client')
+const { createClient } = await import('@hulla/api/client')
 const { defineServer } = await import('@hulla/api/server')
 const { fetchAdapter, fetchTransport } = await import('@hulla/api/fetch')
 const contract = defineContract({ routes: { health: route.get('/', { responses: { 200: response.json() } }) } })
 const implementation = defineServer(contract).implement({ health: () => ({ status: 200, body: { ok: true } }) })
-const client = defineClient(contract, {
+const client = createClient(contract, {
   transport: fetchTransport({ baseUrl: 'https://exports.test', fetch: fetchAdapter().mount(implementation) }),
 })
 assert.deepEqual((await client.health()).body, { ok: true })
@@ -41,7 +41,7 @@ const channel = new MessageChannel()
 const mounted = messagePortAdapter(channel.port1).mount(implementation)
 const transport = messagePortTransport(channel.port2)
 try {
-  const ipcClient = defineClient(contract, { transport })
+  const ipcClient = createClient(contract, { transport })
   assert.deepEqual((await ipcClient.health()).body, { ok: true })
 } finally {
   await transport.close()
@@ -60,19 +60,18 @@ try {
   await writeFile(
     path,
     `import { defineContract, response, route, router } from '@hulla/api';
-import { defineClient } from '@hulla/api/client';
+import { createClient } from '@hulla/api/client';
 import { defineServer } from '@hulla/api/server';
 import { messagePortTransport, type MessagePortLike } from '@hulla/api-message-port';
-export const connect = (port: MessagePortLike) => defineClient(contract, { transport: messagePortTransport(port) });
+export const connect = (port: MessagePortLike) => createClient(contract, { transport: messagePortTransport(port) });
 const contract = defineContract({ routes: { health: route.get('/', { responses: { 200: response.text(), 404: response.empty() } }), group: router('/group', { routes: { get: route.get('/', { responses: { 200: response.text() } }) } }) } });
-export const client = defineClient(contract, { transport: () => { throw new Error() } });
-export const selected = client.select(contract.routes.health);
-export const nested = client.select(contract.routes.group.get);
-export const composed = client.compose(selected, nested);
+export const client = createClient(contract, { transport: () => { throw new Error() } });
+export const selected = createClient(contract.routes.health, { transport: () => { throw new Error() } });
+export const nested = createClient(contract.routes.group.get, { transport: () => { throw new Error() } });
+export const selectedClients = { health: selected, nested };
 export const partial = defineServer(contract).implement(contract.routes.health, () => ({ status: 200, body: 'ok' }));
 const reserved = defineContract({ routes: { use: route.get('/', { responses: { 200: response.empty() } }) } });
-// @ts-expect-error Client authoring root names are reserved.
-defineClient(reserved, { transport: () => { throw new Error() } });
+createClient(reserved, { transport: () => { throw new Error() } });
 `
   )
   const result = spawnSync(

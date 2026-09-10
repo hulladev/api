@@ -1,6 +1,6 @@
 import { codec, defineContract, response, route } from '@hulla/api'
 import { createAdapterHandler } from '@hulla/api/adapters'
-import { defineClient } from '@hulla/api/client'
+import { createClient } from '@hulla/api/client'
 import { fetchAdapter, fetchTransport } from '@hulla/api/fetch'
 import { inProcessTransport } from '@hulla/api/in-process'
 import { defineServer } from '@hulla/api/server'
@@ -34,7 +34,7 @@ const transportImplementation = transportServer.implement({
   }),
 })
 const transportHandler = fetchHost.mount(transportImplementation)
-const transportClient = defineClient(transportContract, {
+const transportClient = createClient(transportContract, {
   transport: fetchTransport({ baseUrl: 'https://bench.local', fetch: transportHandler }),
 })
 
@@ -75,16 +75,17 @@ const middlewareServer = middlewareServerBase.use(serverMiddleware)
 const middlewareHandler = middlewareAdapter.mount(
   middlewareServer.implement({ protected: ({ response }) => response(200, 'ok') })
 )
-const middlewareClientBase = defineClient(middlewareContract, {
+const middlewareClient = createClient(middlewareContract, {
   transport: fetchTransport({ baseUrl: 'https://bench.local', fetch: middlewareHandler }),
   headers: { authorization: 'Bearer benchmark' },
   context: ({ request }) => ({ method: request.method }),
+  middleware: [
+    ({ context, next }) => {
+      if (context.method !== 'GET') throw new Error('Unexpected method')
+      return next()
+    },
+  ],
 })
-const clientMiddleware = middlewareClientBase.middleware(({ context, next }) => {
-  if (context.method !== 'GET') throw new Error('Unexpected method')
-  return next()
-})
-const middlewareClient = middlewareClientBase.use(clientMiddleware)
 
 async function directMiddleware(): Promise<void> {
   const request = new Request('https://bench.local/protected', {
@@ -215,7 +216,7 @@ const codecContract = defineContract({
 const codecServer = defineServer(codecContract)
 const codecImplementation = codecServer.implement({ echo: (input) => ({ status: 200, body: input.body }) })
 const codecHandler = fetchHost.mount(codecImplementation)
-const codecClient = defineClient(codecContract, {
+const codecClient = createClient(codecContract, {
   transport: fetchTransport({ baseUrl: 'https://bench.local', fetch: codecHandler }),
 })
 
@@ -248,7 +249,7 @@ const streamContract = defineContract({
 const streamServer = defineServer(streamContract)
 const streamImplementation = streamServer.implement({ events: () => ({ status: 200, body: chunks }) })
 const streamHandler = fetchHost.mount(streamImplementation)
-const streamClient = defineClient(streamContract, {
+const streamClient = createClient(streamContract, {
   transport: fetchTransport({ baseUrl: 'https://bench.local', fetch: streamHandler }),
 })
 
@@ -283,11 +284,11 @@ async function directStream(): Promise<void> {
   if (count !== chunks.length || buffered !== '') throw new Error('Unexpected stream length')
 }
 
-const inProcessTransportClient = defineClient(transportContract, {
+const inProcessTransportClient = createClient(transportContract, {
   transport: inProcessTransport(transportImplementation),
 })
-const inProcessCodecClient = defineClient(codecContract, { transport: inProcessTransport(codecImplementation) })
-const inProcessStreamClient = defineClient(streamContract, { transport: inProcessTransport(streamImplementation) })
+const inProcessCodecClient = createClient(codecContract, { transport: inProcessTransport(codecImplementation) })
+const inProcessStreamClient = createClient(streamContract, { transport: inProcessTransport(streamImplementation) })
 
 export const hullaApiBreakdownBenchmarks: readonly Benchmark[] = (
   [

@@ -60,7 +60,7 @@ try {
       const authoredHandlers = nested ? `resources: { ${handlers} }` : handlers
       const selection = nested ? 'resources.r0' : 'r0'
       const call = nested ? `resources.r${count - 1}` : `r${count - 1}`
-      const source = `import { defineContract, response, route, router } from '@hulla/api';\nimport { defineClient } from '@hulla/api/client';\nimport { defineServer } from '@hulla/api/server';\nconst contract = defineContract({ routes: { ${authoredRoutes} } });\nexport const server = defineServer(contract).implement({ ${authoredHandlers} });\nexport const client = defineClient(contract, { transport: () => { throw new Error() } });\nexport const selected = client.select(contract.routes.${selection});\nexport const result = client.${call}();\n`
+      const source = `import { defineContract, response, route, router } from '@hulla/api';\nimport { createClient, type ClientFor } from '@hulla/api/client';\nimport { defineServer } from '@hulla/api/server';\nconst contract = defineContract({ routes: { ${authoredRoutes} } });\nexport const server = defineServer(contract).implement({ ${authoredHandlers} });\nexport const client = createClient(contract, { transport: () => { throw new Error() } });\nexport const selected = createClient(contract.routes.${selection}, { transport: () => { throw new Error() } });\nexport const result = client.${call}();\n`
       const path = `${scratch}/consumer.ts`
       await writeFile(path, source)
       for (let run = 0; run < options.runs; run++) {
@@ -90,7 +90,7 @@ try {
         types.push({ routes: count, nested, processMs: performance.now() - start, diagnostics: result.stdout })
       }
       const declarations = `${scratch}/declarations-${count}-${nested}`
-      const emitted = spawnSync(
+      let emitted = spawnSync(
         'bun',
         [
           'x',
@@ -113,18 +113,52 @@ try {
         ],
         { encoding: 'utf8', timeout: 120000 }
       )
+      let annotationRequired = false
+      if (emitted.status !== 0 && emitted.stdout.includes('TS7056')) {
+        // Keep the inferred-export failure visible; verify the documented typed export separately.
+        types.push({ routes: count, nested, inferredDeclarationError: emitted.stdout })
+        annotationRequired = true
+        await writeFile(
+          path,
+          source.replace('export const client =', 'export const client: ClientFor<typeof contract> =')
+        )
+        emitted = spawnSync(
+          'bun',
+          [
+            'x',
+            '--no-install',
+            'tsc',
+            '--ignoreConfig',
+            '--declaration',
+            '--emitDeclarationOnly',
+            '--strict',
+            '--skipLibCheck',
+            '--target',
+            'ES2022',
+            '--module',
+            'NodeNext',
+            '--moduleResolution',
+            'NodeNext',
+            '--outDir',
+            declarations,
+            path,
+          ],
+          { encoding: 'utf8', timeout: 120000 }
+        )
+      }
       if (emitted.status !== 0)
         throw new Error(`Consumer declaration emit failed: ${emitted.stdout}\n${emitted.stderr}`)
       types.push({
         routes: count,
         nested,
+        annotationRequired,
         declarationBytes: (await readFile(`${declarations}/consumer.d.ts`)).byteLength,
       })
     }
   const entry = `${scratch}/browser.ts`
   await writeFile(
     entry,
-    `import { defineContract, response, route } from '@hulla/api';\nimport { defineClient } from '@hulla/api/client';\nimport { fetchTransport } from '@hulla/api/fetch';\nconst contract = defineContract({ routes: { health: route.get('/', { responses: { 200: response.json() } }) } });\nexport const client = defineClient(contract, { transport: fetchTransport({ baseUrl: 'https://api.example.com' }) });\nexport const health = () => client.health();\n`
+    `import { defineContract, response, route } from '@hulla/api';\nimport { createClient, type ClientFor } from '@hulla/api/client';\nimport { fetchTransport } from '@hulla/api/fetch';\nconst contract = defineContract({ routes: { health: route.get('/', { responses: { 200: response.json() } }) } });\nexport const client = createClient(contract, { transport: fetchTransport({ baseUrl: 'https://api.example.com' }) });\nexport const health = () => client.health();\n`
   )
   const bundle = `${scratch}/browser.js`
   const built = spawnSync('bun', ['build', entry, '--target=browser', '--minify', `--outfile=${bundle}`], {

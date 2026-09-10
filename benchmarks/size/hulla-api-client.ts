@@ -1,5 +1,5 @@
 import { defineContract, response, route } from '@hulla/api'
-import { defineClient, type ClientTransport } from '@hulla/api/client'
+import { createClient, type ClientTransport } from '@hulla/api/client'
 import { z } from 'zod'
 
 const output = z.object({ ok: z.boolean() })
@@ -10,4 +10,4 @@ const transport: ClientTransport = () => {
   throw new Error('Size fixture transport')
 }
 
-export const client = defineClient(contract, { transport })
+export const client = createClient(contract, { transport })

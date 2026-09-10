@@ -8,7 +8,7 @@ const root = new URL('../', import.meta.url).pathname
 const scratch = await mkdtemp(new URL('./.boundaries-', import.meta.url).pathname)
 const contract = `import { defineContract, response, route } from '@hulla/api';
 export const contract = defineContract({ routes: { health: route.get('/health', { responses: { 200: response.text() } }) } });`
-const client = `import { defineClient } from '@hulla/api/client';`
+const client = `import { createClient } from '@hulla/api/client';`
 const server = `import { defineServer } from '@hulla/api/server';
 const implementation = defineServer(contract).implement({ health: () => ({ status: 200, body: 'ok' }) });`
 const verify = `export async function verify() { if ((await client.health()).body !== 'ok') throw new Error('Invalid consumer result'); }`
@@ -32,7 +32,7 @@ const consumers: readonly Consumer[] = [
   {
     name: 'custom-client',
     code: `${contract}\n${client}
-export const client = defineClient(contract, { transport: () => ({ status: 200, headers: { 'content-type': 'text/plain' }, readBody: () => 'ok' }) });\n${verify}`,
+export const client = createClient(contract, { transport: () => ({ status: 200, headers: { 'content-type': 'text/plain' }, readBody: () => 'ok' }) });\n${verify}`,
     required: ['client/creation.ts'],
     forbidden: [...httpModules, 'server/', 'message-port/'],
     execute: true,
@@ -41,7 +41,7 @@ export const client = defineClient(contract, { transport: () => ({ status: 200, 
     name: 'in-process',
     code: `${contract}\n${client}\n${server}
 import { inProcessTransport } from '@hulla/api/in-process';
-export const client = defineClient(contract, { transport: inProcessTransport(implementation) });\n${verify}`,
+export const client = createClient(contract, { transport: inProcessTransport(implementation) });\n${verify}`,
     required: ['in-process/index.ts', 'adapters/runtime.ts'],
     forbidden: [...httpModules, 'message-port/'],
     execute: true,
@@ -50,7 +50,7 @@ export const client = defineClient(contract, { transport: inProcessTransport(imp
     name: 'message-port-client',
     code: `${contract}\n${client}
 import { messagePortTransport, type MessagePortLike } from '@hulla/api-message-port';
-export const connect = (port: MessagePortLike) => defineClient(contract, { transport: messagePortTransport(port) });`,
+export const connect = (port: MessagePortLike) => createClient(contract, { transport: messagePortTransport(port) });`,
     required: ['message-port/client.ts'],
     forbidden: [...httpModules, 'message-port/server.ts', 'adapters/runtime.ts'],
   },
@@ -58,7 +58,7 @@ export const connect = (port: MessagePortLike) => defineClient(contract, { trans
     name: 'websocket-client',
     code: `${contract}\n${client}
 import { webSocketTransport, type WebSocketLike } from '@hulla/api-websocket';
-export const connect = (socket: WebSocketLike) => defineClient(contract, { transport: webSocketTransport(socket) });`,
+export const connect = (socket: WebSocketLike) => createClient(contract, { transport: webSocketTransport(socket) });`,
     required: ['websocket/client.ts'],
     forbidden: [...httpModules, 'websocket/server.ts', 'adapters/runtime.ts'],
   },
@@ -66,7 +66,7 @@ export const connect = (socket: WebSocketLike) => defineClient(contract, { trans
     name: 'fetch-client',
     code: `${contract}\n${client}
 import { fetchTransport } from '@hulla/api/fetch';
-export const client = defineClient(contract, { transport: fetchTransport({ baseUrl: 'https://boundary.test', fetch: () => new Response('ok', { headers: { 'content-type': 'text/plain' } }) }) });\n${verify}`,
+export const client = createClient(contract, { transport: fetchTransport({ baseUrl: 'https://boundary.test', fetch: () => new Response('ok', { headers: { 'content-type': 'text/plain' } }) }) });\n${verify}`,
     required: ['fetch/client.ts', 'adapters/headers.ts'],
     forbidden: ['fetch/server.ts', 'adapters/runtime.ts', 'adapters/web.ts', 'adapters/body.ts', 'message-port/'],
     execute: true,

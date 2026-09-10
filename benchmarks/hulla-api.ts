@@ -1,5 +1,5 @@
 import { defineContract, response, route } from '@hulla/api'
-import { defineClient } from '@hulla/api/client'
+import { createClient } from '@hulla/api/client'
 import { fetchAdapter, fetchTransport } from '@hulla/api/fetch'
 import { inProcessAdapter } from '@hulla/api/in-process'
 import { defineServer } from '@hulla/api/server'
@@ -81,18 +81,19 @@ const implementation = server.implement({
   update: ({ params, body }) => ({ status: 200, body: { ...params, ...body } }),
 })
 const handler = fetchAdapter().mount(implementation)
-const client = defineClient(contract, {
+const client = createClient(contract, {
   transport: fetchTransport({ baseUrl: 'https://bench.local', fetch: handler }),
 })
-const inProcessClient = defineClient(contract, { transport: inProcessAdapter().mount(implementation) })
+const inProcessClient = createClient(contract, { transport: inProcessAdapter().mount(implementation) })
 
-function basicBenchmarks(client: typeof inProcessClient): readonly Benchmark[] {
+function basicBenchmarks(client: typeof inProcessClient, validateOutput = true): readonly Benchmark[] {
   return [
     {
       runtime: '@hulla/api',
       scenario: 'static-get',
       async run() {
         const result = await client.health()
+        if (validateOutput) healthOutput.parse(result.body)
         if (result.status !== 200 || !result.body.ok) throw new Error('Unexpected health result')
       },
     },
@@ -101,6 +102,7 @@ function basicBenchmarks(client: typeof inProcessClient): readonly Benchmark[] {
       scenario: 'small-json-post',
       async run() {
         const result = await client.createUser({ body: createUserValue })
+        if (validateOutput) createUserOutput.parse(result.body)
         if (result.status !== 201 || result.body.id !== 'user-1') throw new Error('Unexpected benchmark result')
       },
     },
@@ -109,6 +111,7 @@ function basicBenchmarks(client: typeof inProcessClient): readonly Benchmark[] {
       scenario: 'large-json-post',
       async run() {
         const result = await client.large({ body: largeValue })
+        if (validateOutput) largeOutput.parse(result.body)
         if (result.status !== 200 || result.body.count !== 100) throw new Error('Unexpected large result')
       },
     },
@@ -117,7 +120,7 @@ function basicBenchmarks(client: typeof inProcessClient): readonly Benchmark[] {
 
 export const hullaApiBenchmarks = basicBenchmarks(client)
 
-export const hullaApiNativeBenchmarks: readonly Benchmark[] = hullaApiBenchmarks.map((benchmark) => ({
+export const hullaApiNativeBenchmarks: readonly Benchmark[] = basicBenchmarks(client, false).map((benchmark) => ({
   ...benchmark,
   profile: 'native',
 }))
@@ -130,6 +133,7 @@ function applicationBenchmarks(client: typeof inProcessClient): readonly Benchma
       scenario: 'path-parameter-read',
       async run() {
         const result = await client.resource({ params: resourceValue })
+        resourceOutput.parse(result.body)
         if (result.status !== 200 || result.body.userId !== resourceValue.userId) throw new Error('Unexpected resource')
       },
     },
@@ -143,6 +147,7 @@ function applicationBenchmarks(client: typeof inProcessClient): readonly Benchma
           query: queryValue,
           headers: headerValue,
         })
+        collectionOutput.parse(result.body)
         if (result.status !== 200 || result.body.roles.length !== 2) throw new Error('Unexpected collection')
       },
     },
@@ -157,6 +162,7 @@ function applicationBenchmarks(client: typeof inProcessClient): readonly Benchma
           headers: headerValue,
           body: updateBodyValue,
         })
+        resourceOutput.parse(result.body)
         if (result.status !== 200 || result.body.displayName !== updateBodyValue.displayName) {
           throw new Error('Unexpected update')
         }
@@ -168,6 +174,6 @@ function applicationBenchmarks(client: typeof inProcessClient): readonly Benchma
 export const hullaApiApplicationBenchmarks = applicationBenchmarks(client)
 export const hullaApiInProcessBenchmarks: readonly Benchmark[] = [
   ...basicBenchmarks(inProcessClient),
-  ...basicBenchmarks(inProcessClient).map((benchmark) => ({ ...benchmark, profile: 'native' as const })),
+  ...basicBenchmarks(inProcessClient, false).map((benchmark) => ({ ...benchmark, profile: 'native' as const })),
   ...applicationBenchmarks(inProcessClient),
 ].map((benchmark) => ({ ...benchmark, runtime: '@hulla/api in-process' }))
