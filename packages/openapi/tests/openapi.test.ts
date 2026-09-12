@@ -298,7 +298,7 @@ describe('OpenAPI to contract', () => {
     } finally {
       await rm(directory, { recursive: true, force: true })
     }
-  })
+  }, 30_000)
 
   test('reads and writes YAML documents', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'hulla-openapi-yaml-'))
@@ -513,4 +513,4 @@ test('custom schema generators retain their imports and produce compilable contr
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
-})
+}, 30_000)

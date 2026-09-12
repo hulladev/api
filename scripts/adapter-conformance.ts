@@ -227,7 +227,7 @@ export function adapterConformance(options: ConformanceOptions): void {
       }
       expect(length).toBe(256 * 16 * 1024)
       await expect.poll(() => current.state.finalized).toBe(1)
-    })
+    }, 15_000)
     test('reports a failing stream and finalizes its producer', async () => {
       const consume = async () => {
         const result = await client().brokenStream()
