@@ -115,6 +115,17 @@
         "@hulla/api": "^2.0.0",
       },
     },
+    "packages/control": {
+      "name": "@hulla/api-control",
+      "version": "2.0.0",
+      "dependencies": {
+        "@hulla/api": "workspace:^",
+        "@hulla/control": "^0.0.3",
+      },
+      "devDependencies": {
+        "zod": "^4.4.3",
+      },
+    },
     "packages/core": {
       "name": "@hulla/api",
       "version": "2.0.0",
@@ -723,6 +734,8 @@
 
     "@hulla/api-cloudflare": ["@hulla/api-cloudflare@workspace:packages/cloudflare"],
 
+    "@hulla/api-control": ["@hulla/api-control@workspace:packages/control"],
+
     "@hulla/api-elysia": ["@hulla/api-elysia@workspace:packages/elysia"],
 
     "@hulla/api-express": ["@hulla/api-express@workspace:packages/express"],
@@ -764,6 +777,8 @@
     "@hulla/api-tanstack-start": ["@hulla/api-tanstack-start@workspace:packages/tanstack-start"],
 
     "@hulla/api-websocket": ["@hulla/api-websocket@workspace:packages/websocket"],
+
+    "@hulla/control": ["@hulla/control@0.0.3", "", {}, "sha512-63McqzBte48N223OV7CZAQccoyk/9TGbIeal242gay5Sb+JP/SQIpjSxLY3RX0mZYKODZ2oApWUzZhtXiRcu1Q=="],
 
     "@img/colour": ["@img/colour@1.1.0", "", {}, "sha512-Td76q7j57o/tLVdgS746cYARfSyxk8iEfRxewL9h4OMzYhbW4TAcppl0mT4eyqXddh6L/jwoM75mo7ixa/pCeQ=="],
 
