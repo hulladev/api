@@ -82,6 +82,8 @@ boundary are covered in [`docs/client-authoring.md`](./docs/client-authoring.md)
 Worker, Electron, and custom desktop IPC setup is covered in
 [`docs/message-port.md`](./docs/message-port.md).
 Use ordinary functions for application logic. Use a selected in-process client when local calls need the HTTP contract lifecycle.
+Result-returning clients powered by `@hulla/control` are available through the separate
+[`@hulla/api-control`](./packages/control/README.md) package.
 Explicit TanStack Query/SWR client integrations are covered in
 [`docs/plugins.md`](./docs/plugins.md).
 Structured operational errors, Standard Schema issue compatibility, and protocol problem conversion are covered in
