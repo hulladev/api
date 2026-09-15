@@ -1,0 +1,37 @@
+{
+  "name": "@hulla/api-google-cloud-functions",
+  "version": "2.0.0",
+  "description": "Google Cloud Run functions HTTP adapter for @hulla/api",
+  "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "clean": "rm -rf dist coverage",
+    "test": "bun run build && vitest run",
+    "test:coverage": "bun run build && vitest run --coverage",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@google-cloud/functions-framework": "^5.0.5",
+    "@hulla/api": "workspace:*",
+    "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "@google-cloud/functions-framework": "^5.0.0",
+    "@hulla/api": "^2.0.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

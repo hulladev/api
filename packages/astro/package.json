@@ -1,0 +1,38 @@
+{
+  "name": "@hulla/api-astro",
+  "version": "2.0.0",
+  "description": "Astro endpoint and server-island integration for @hulla/api",
+  "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "clean": "rm -rf dist coverage .astro",
+    "test": "bun run build && vitest run",
+    "test:coverage": "bun run build && vitest run --coverage",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@astrojs/node": "^11.0.0",
+    "@hulla/api": "workspace:*",
+    "astro": "^7.0.0",
+    "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "@hulla/api": "^2.0.0",
+    "astro": "^5.0.0 || ^6.0.0 || ^7.0.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

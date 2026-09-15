@@ -1,71 +1,34 @@
 {
   "name": "@hulla/api-swr",
-  "version": "1.2.5",
-  "description": "The next-gen API/RPC manager 🚀",
-  "keywords": [
-    "@hulla",
-    "@hulla/api",
-    "@tanstack/react-query",
-    "api",
-    "axios",
-    "firebase",
-    "graphql",
-    "http",
-    "hulla",
-    "hulla api",
-    "hulla dev",
-    "hulla/api",
-    "mutation",
-    "query",
-    "query manager",
-    "react-query",
-    "rest",
-    "rpc",
-    "server actions",
-    "supabase",
-    "swr",
-    "tanstack",
-    "trpc"
-  ],
-  "homepage": "https://hulla.dev/projects/api",
+  "version": "2.0.0",
+  "description": "SWR option helpers for @hulla/api clients",
   "license": "MIT",
-  "author": {
-    "name": "Samuel Hulla",
-    "email": "hulla@hulla.dev",
-    "url": "https://hulla.dev"
-  },
-  "maintainers": [
-    "Samuel Hulla <hulla@hulla.dev>"
-  ],
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/hulladev/api.git",
-    "directory": "packages/api"
-  },
   "files": [
     "dist"
   ],
-  "type": "commonjs",
-  "main": "./dist/index.js",
+  "type": "module",
+  "sideEffects": false,
   "exports": {
-    "import": {
-      "types": "./dist/index.d.mts",
-      "default": "./dist/index.mjs"
-    },
-    "require": {
+    ".": {
       "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
+      "import": "./dist/index.js"
     }
   },
   "scripts": {
-    "lint": "oxlint . --fix",
-    "fmt": "oxfmt --write .",
-    "build": "tsdown --config-loader unrun",
-    "test": "tsc -p tsconfig.tests.json --noEmit && vitest run",
-    "clean": "rm -rf node_modules dist"
+    "build": "tsdown",
+    "clean": "rm -rf dist coverage",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@hulla/api": "^1.2.5",
-    "zod": "^3.23.8"
+    "@hulla/api": "workspace:*",
+    "react": "^19.2.8",
+    "swr": "^2.5.1",
+    "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "@hulla/api": "^2.0.0"
   }
 }

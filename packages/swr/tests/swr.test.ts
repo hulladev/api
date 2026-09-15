@@ -1,82 +1,122 @@
-import { describe, expect, expectTypeOf, test } from 'vitest'
+import { defineContract, response, route, router } from '@hulla/api'
+import { createClient } from '@hulla/api/client'
+import { fetchTransport } from '@hulla/api/fetch'
+import { describe, expect, expectTypeOf, test, vi } from 'vitest'
 import { z } from 'zod'
-import { init } from '../../core/src'
-import { swr } from '../src/swr'
+import { createSWR } from '../src'
 
-export const users = [
-  { id: 1, name: 'John' },
-  { id: 2, name: 'Jane' },
-] as const
-
-export const routes = init({
-  plugins: [swr()],
-  settings: {
-    plugins: {
-      swr: {
-        aliases: {
-          procedure: {
-            mutation: 'swrMutation',
-          },
-        },
+const contract = defineContract({
+  routes: {
+    health: route.get('/health', { responses: { 200: response.json(z.literal('ok')) } }),
+    users: router('/users', {
+      routes: {
+        byId: route.get('/:id', {
+          params: z.object({ id: z.string() }),
+          responses: { 200: response.json(z.object({ id: z.string() })) },
+        }),
       },
-    },
+    }),
   },
 })
-  .router('users')
-  .define(({ procedure }) => ({
-    all: procedure.handler(() => users),
-    byId: procedure.input(z.number()).handler(async ({ input }) => users.find((user) => user.id === input)!),
-  }))
 
-describe('swr plugin', () => {
-  test('uses the shared query namespace with swr semantics', async () => {
-    expectTypeOf(routes.byId.key.root).toEqualTypeOf<'users/byId'>()
-    const [boundByIdKey, boundByIdFetcher] = routes.byId.query.options(1)
-    expectTypeOf(boundByIdKey[0]).toEqualTypeOf<'users/byId'>()
-    expectTypeOf(boundByIdKey[1]).toEqualTypeOf<number>()
-    expectTypeOf(boundByIdFetcher).returns.toEqualTypeOf<Promise<(typeof users)[number]>>()
+function json(value: unknown): Response {
+  return new Response(JSON.stringify(value), { status: 200, headers: { 'content-type': 'application/json' } })
+}
 
-    expect(routes.all.key.root).toBe('users/all')
-    expect(routes.all.key.full()).toStrictEqual(['users/all'])
-    expect(routes.byId.key.full(1)).toStrictEqual(['users/byId', 1])
-    expect(routes.byId.query.options(1)).toStrictEqual([['users/byId', 1], expect.any(Function)])
-    expect(routes.byId.query.options()).toStrictEqual([['users/byId'], expect.any(Function)])
+describe('SWR integration', () => {
+  test('exposes query keys plus bound query and mutation tuples', async () => {
+    const fetcher = vi.fn<(request: Request) => Promise<Response>>(async (request) =>
+      request.url.endsWith('/health') ? json('ok') : json({ id: request.url.split('/').at(-1) })
+    )
+    const client = createClient(contract, {
+      transport: fetchTransport({ baseUrl: 'https://api.example.com', fetch: fetcher }),
+    })
+    const swr = createSWR(client)
+    const input = { params: { id: 'user-1' } }
 
-    const [allKey, allFetcher] = routes.all.query.options()
-    const [byIdKey, byIdFetcher] = routes.byId.query.options(1)
-    const [byIdRootKey, byIdRootFetcher] = routes.byId.query.options()
-    expectTypeOf(byIdRootKey[0]).toEqualTypeOf<'users/byId'>()
-    expectTypeOf(byIdRootFetcher).parameter(0).toEqualTypeOf<number>()
+    const [boundKey, boundFetcher] = swr.users.byId.queryOptions(input)
+    expectTypeOf(boundKey[0]).toEqualTypeOf<'users'>()
+    expectTypeOf(boundKey[1]).toEqualTypeOf<'byId'>()
+    expectTypeOf(boundKey[2]).toExtend<{ readonly params: { id: string } }>()
+    expectTypeOf(swr.users.queryKey()).toEqualTypeOf<readonly ['users']>()
+    expectTypeOf(swr.users.byId.queryKey()).toEqualTypeOf<readonly ['users', 'byId']>()
 
-    expect(allKey).toStrictEqual(['users/all'])
-    expect(byIdKey).toStrictEqual(['users/byId', 1])
-    expect(byIdRootKey).toStrictEqual(['users/byId'])
-    expect(allFetcher()).toStrictEqual(users)
-    await expect(byIdRootFetcher(1)).resolves.toStrictEqual(users[0])
-    await expect(byIdFetcher()).resolves.toStrictEqual(users[0])
-  })
-
-  test('works alongside a second plugin on the same handlers', async () => {
-    const aliasedRoute = routes.byId as typeof routes.byId & {
-      swrMutation: {
-        options: (() => readonly [readonly ['users/byId'], (input: number) => Promise<(typeof users)[number]>]) &
-          ((input: number) => readonly [readonly ['users/byId', number], () => Promise<(typeof users)[number]>])
-      }
+    expect(swr.users.queryKey()).toEqual(['users'])
+    expect(swr.users.byId.queryKey()).toEqual(['users', 'byId'])
+    expect(swr.users.byId.queryKey(input)).toEqual(['users', 'byId', input])
+    expect(boundKey).toEqual(['users', 'byId', input])
+    expect('queryOptions' in swr.users).toBe(false)
+    expect('mutationOptions' in swr.users).toBe(false)
+    const invalidRouterOptions = () => {
+      // @ts-expect-error Query options are available only on callable routes.
+      swr.users.queryOptions()
+      // @ts-expect-error Mutation options are available only on callable routes.
+      swr.users.mutationOptions()
     }
+    expectTypeOf(invalidRouterOptions).toBeFunction()
+    await expect(boundFetcher()).resolves.toMatchObject({ body: { id: 'user-1' } })
 
-    const [aliasedMutationKey, aliasedMutate] = aliasedRoute.swrMutation.options(2)
-    expectTypeOf(aliasedMutationKey[0]).toEqualTypeOf<'users/byId'>()
-    expectTypeOf(aliasedMutationKey[1]).toEqualTypeOf<number>()
-    expectTypeOf(aliasedMutate).returns.toEqualTypeOf<Promise<(typeof users)[number]>>()
+    const [mutationKey, mutate] = swr.users.byId.mutationOptions(input)
+    expect(mutationKey).toEqual(['users', 'byId', input])
+    await expect(mutate()).resolves.toMatchObject({ body: { id: 'user-1' } })
 
-    expect(aliasedRoute.swrMutation.options(2)).toStrictEqual([['users/byId', 2], expect.any(Function)])
-    expect(aliasedRoute.swrMutation.options()).toStrictEqual([['users/byId'], expect.any(Function)])
-
-    const [key, mutate] = aliasedRoute.swrMutation.options(2)
-    const [rootKey, mutateWithInput] = aliasedRoute.swrMutation.options()
-    expect(key).toStrictEqual(['users/byId', 2])
-    expect(rootKey).toStrictEqual(['users/byId'])
-    await expect(mutateWithInput(2)).resolves.toStrictEqual(users[1])
-    await expect(mutate()).resolves.toStrictEqual(users[1])
+    const [rootMutationKey, mutateWithInput] = swr.users.byId.mutationOptions()
+    expect(rootMutationKey).toEqual(['users', 'byId'])
+    await expect(mutateWithInput(input)).resolves.toMatchObject({ body: { id: 'user-1' } })
   })
+
+  test('requires query input while supporting no-input routes', async () => {
+    const client = createClient(contract, {
+      transport: fetchTransport({ baseUrl: 'https://api.example.com', fetch: async () => json('ok') }),
+    })
+    const swr = createSWR(client)
+
+    // @ts-expect-error Input routes require bound query input.
+    expect(() => swr.users.byId.queryOptions()).toThrow('requires the route input')
+
+    const [key, fetcher] = swr.health.queryOptions()
+
+    expectTypeOf(key).toEqualTypeOf<readonly ['health']>()
+    expect(swr.health.queryKey()).toEqual(['health'])
+    expect(key).toEqual(['health'])
+    await expect(fetcher()).resolves.toMatchObject({ body: 'ok' })
+  })
+})
+
+test('uses SWR structural keys and isolates cache mutations by namespace', async () => {
+  const { unstable_serialize, mutate } = await import('swr')
+  const client = createClient(contract, {
+    transport: fetchTransport({ baseUrl: 'https://cache.test', fetch: async () => json({ id: 'one' }) }),
+  })
+  const first = createSWR(client, { prefix: ['tenant-a'] })
+  const second = createSWR(client, { prefix: ['tenant-b'] })
+  const keyA = first.users.byId.queryKey({ params: { id: 'one' } })
+  const keyB = second.users.byId.queryKey({ params: { id: 'one' } })
+  expect(unstable_serialize(keyA)).toBe(unstable_serialize(first.users.byId.queryKey({ params: { id: 'one' } })))
+  expect(unstable_serialize(keyA)).not.toBe(unstable_serialize(keyB))
+  await mutate(keyA, 'a', { revalidate: false })
+  await mutate(keyB, 'b', { revalidate: false })
+  try {
+    await mutate(
+      keyA,
+      (value) => {
+        expect(value).toBe('a')
+        return 'updated'
+      },
+      { revalidate: false }
+    )
+    await mutate(
+      keyB,
+      (value) => {
+        expect(value).toBe('b')
+        return value
+      },
+      { revalidate: false }
+    )
+    // @ts-expect-error Authoring controls are not cache routes.
+    void first.select
+  } finally {
+    await mutate(keyA, undefined, { revalidate: false })
+    await mutate(keyB, undefined, { revalidate: false })
+  }
 })

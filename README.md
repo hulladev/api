@@ -1,461 +1,157 @@
 # @hulla/api
 
-<a href="https://pkg-size.dev/@hulla/api"><img src="https://pkg-size.dev/badge/bundle/2038" title="Bundle size for @hulla/api"></a>
-<a href="https://github.com/hulladev/api/actions/workflows/check.yml"><img src="https://github.com/hulladev/api/actions/workflows/check.yml/badge.svg" title="Passing tests"></a>
+A typed HTTP contract library and integration ecosystem for TypeScript APIs. Contracts accept any Standard Schema directly for one-way validation and expose an explicit validator-neutral codec when client and server should share an application value. Client and server authoring stay transport-neutral; optional transports include `@hulla/api/fetch`, `@hulla/api/in-process`, and the separately installed `@hulla/api-message-port` and `@hulla/api-websocket` packages.
 
-Stop rewriting the same API contract in five different places. `@hulla/api` lets you define a call once, keep its types attached to the handler, and reuse it everywhere your app needs it.
+The active workspace contains the batteries-included [`@hulla/api`](./packages/core) package. Zod, Valibot, and other Standard Schema implementations remain application dependencies. The previous implementation remains in [`legacy`](./legacy) for behavioral reference and is excluded from the active workspace.
 
-## About
-
-What is `@hulla/api`? A tiny API/RPC manager for TypeScript 🚀
-
-- Organize API, server action, database, queue, or local calls in one typed place ✅
-- Fix backend changes once, at the route definition, instead of chasing every caller 🛠️
-- Works on the client, server, serverless, or anywhere TypeScript runs 💎
-- Framework agnostic, with optional Query, SWR, and OpenAPI integrations 🧩
-
-## Install
+## Start here
 
 ```bash
-pnpm add @hulla/api
-# works also with bun, yarn, npm, deno, etc...
+bun install
+bun run dev         # rebuild the package while editing
+bun run test:watch  # run the focused test loop
+bun run bench       # compare the standalone runtime matrix and write a detailed report
+bun run check       # CI-equivalent verification
 ```
 
-Optional integrations:
+The ecosystem includes:
 
-```bash
-pnpm add @hulla/api-query    # @tanstack/query
-pnpm add @hulla/api-swr      # swr
-pnpm add @hulla/api-openapi  # openapi/swagger -> api (gen)
-```
+- `defineContract`, `router`, and method-specific route declarations
+- a canonical immutable compiled route manifest for runtimes, adapters, and generators
+- native directional Standard Schemas and explicit bidirectional codecs without validator configuration
+- a transport-neutral client runtime plus an opt-in `@hulla/api/fetch` transport and server adapter
+- an opt-in `@hulla/api/in-process` transport for colocated clients and servers
+- an optional `@hulla/api-message-port` package for workers, Electron, and custom ordered IPC endpoints
+- explicit TanStack Query and SWR client wrappers with no core plugin hooks
+- an advanced `@hulla/api/adapters` server-adapter boundary
+- a dependency-free `@hulla/api-node/http` integration with native request/response context and streaming backpressure
+- a streaming `@hulla/api-express` server integration for complete implementations and route fragments
+- a native-routing `@hulla/api-fastify` integration with typed request, reply, hooks, and plugin encapsulation
+- a native-routing `@hulla/api-hono` integration with typed Hono context, bindings, and variables
+- a native-routing `@hulla/api-h3` integration with typed H3 events, middleware, and multi-runtime deployment
+- a native-routing `@hulla/api-elysia` integration with typed Elysia context, decorators, and stores
+- a Module Worker `@hulla/api-cloudflare` integration with typed bindings and execution context
+- a `@hulla/api-cloudflare/pages` integration for Pages Functions file routing, middleware data, and asset fallback access
+- an API Gateway HTTP API v2 and Function URL `@hulla/api-aws-lambda` integration
+- an Azure Functions Node.js v4 HTTP trigger `@hulla/api-azure-functions` integration
+- a Google Cloud Run functions HTTP `@hulla/api-google-cloud-functions` integration
+- a Web-native `@hulla/api-netlify-functions` integration with typed Netlify context
+- an App Router and Data Cache-aware `@hulla/api-next` integration for Next.js
+- a contract-backed `@hulla/api-tanstack-start` wildcard server-route integration for TanStack Start
+- a contract-backed `@hulla/api-react-router` resource-route integration for React Router v7 Framework Mode
+- a SolidStart v2 `@hulla/api-solid-start` catch-all API-route integration with native event context
+- a SvelteKit `@hulla/api-sveltekit` integration for catch-all endpoints and zero-hop remote functions with native request-event context
+- a Nuxt `@hulla/api-nuxt` integration for Nitro catch-all routes and request-aware `useAsyncData` clients
+- an Astro `@hulla/api-astro` integration for catch-all endpoints and zero-hop SSR/server-island calls
+- normalized contract problems and bidirectional codec coverage across every HTTP representation
+- bidirectional OpenAPI generation with typed development-only documentation sidecars and optional JSDoc extraction
 
-## Basic Usage
+## Client consumption
 
-Start with an API instance and a procedure:
+Server adapters do not change the client API. Create the contract-shaped client with the transport appropriate for the
+consumer, then call its routes from that application's loader, resource, query, or state layer:
 
 ```ts
-import { init } from '@hulla/api'
+import { createClient } from '@hulla/api/client'
+import { fetchTransport } from '@hulla/api/fetch'
+import { contract } from './api/contract'
 
-const api = init()
+const api = createClient(contract, {
+  transport: fetchTransport({ baseUrl: 'https://api.example.com' }),
+})
 
-const ping = api.procedure.handler(() => 'pong')
+const result = await api.users.byId({ params: { id: 'user-1' } })
 
-ping.call() // "pong"
-```
-
-Add schemas when you want runtime parsing and inferred TypeScript:
-
-```ts
-import { z } from 'zod'
-
-const double = api.procedure
-  .input(z.number())
-  .output(z.number())
-  .handler(({ input }) => input * 2)
-
-double.call(21) // 42
-double.call(null)
-// TS error: expected type 'number', got 'null'
-// Runtime error through zod validation
-```
-
-Group named procedures with routers:
-
-```ts
-const users = api.router('users').define(({ procedure }) => ({
-  all: procedure.handler(() => [
-    { id: 1, name: 'Samuel' },
-    { id: 2, name: 'Jane' },
-  ]),
-  byId: procedure
-    .input(z.number())
-    .handler(({ input }) => ({
-      id: input,
-      name: 'Samuel',
-    })),
-}))
-
-users.all.call()
-users.byId.call(1)
-
-users.all.key.root // "users/all"
-users.byId.key.full(1) // ["users/byId", 1]
-```
-
-> [!NOTE]
-> The route logic stays out of your transport layer, so the same procedure can wrap `fetch`, a database query, a server action, a queue job, or a local or a server function. 
-
-## Middleware
-
-Middleware is declared once and selected where it applies:
-
-```ts
-type Session = { userId: string }
-type AdminPermissions = { canDeleteUsers: boolean }
-
-async function getSession(): Promise<Session> {
-  return fetch('/api/session').then((res) => res.json())
+if (result.status === 200) {
+  result.body
 }
-
-async function getAdminPermissions(): Promise<AdminPermissions> {
-  const permissions = await fetch('/api/admin-permissions').then(
-    (res) => res.json() as Promise<AdminPermissions>
-  )
-
-  if (!permissions.canDeleteUsers) {
-    throw new Error('Admin access required')
-  }
-
-  return permissions
-}
-
-const api = init({
-  middleware: {
-    session: getSession,
-    admin: getAdminPermissions,
-  },
-})
-
-const account = api
-  .router('account')
-  .use('session')
-  .define(({ procedure }) => ({
-    me: procedure.handler(async ({ getContext }) => {
-      const { session } = await getContext()
-
-      return { id: session.userId }
-    }),
-
-    deleteUser: procedure
-      .use('admin')
-      .input(z.string())
-      .handler(async ({ input, getContext }) => {
-        const { session, admin } = await getContext()
-
-        return {
-          deletedBy: session.userId,
-          canDelete: admin.canDeleteUsers,
-          id: input,
-        }
-      }),
-  }))
 ```
 
-Routers pass their middleware to every procedure. Procedure-level `.use(...)` adds to that selection, and duplicate middleware keys are deduped.
+The result is a status-discriminated union of the responses declared by that route. Framework integrations remain
+outside the client: Solid Router, TanStack Router, Next.js, TanStack Query, SWR, or another consumer continues to own
+loading state, caching, mutations, hydration, and invalidation.
 
-## Project Structure
+JSON declarations make runtime work explicit: `response.json<User>()` supplies static types and uses native JSON; `response.json(userSchema)` validates and transforms on the server; `response.json(userCodec)` converts and validates. Request bodies follow the same pattern with `request.json()`. Type arguments alone do not validate data.
 
-In most apps, create one configured instance and export it as `api`:
+See [`docs/architecture.md`](./docs/architecture.md) for the boundary and request call graph,
+[`docs/contract-authoring.md`](./docs/contract-authoring.md) for declaring the shared HTTP contract, and
+[`docs/server-authoring.md`](./docs/server-authoring.md) for the modular server implementation API. The text-first
+request model, flat and repeated query behavior, and codecs are documented in
+[`docs/request-transport.md`](./docs/request-transport.md). Client call syntax and its intentionally small transport
+boundary are covered in [`docs/client-authoring.md`](./docs/client-authoring.md).
+Worker, Electron, and custom desktop IPC setup is covered in
+[`docs/message-port.md`](./docs/message-port.md).
+Use ordinary functions for application logic. Use a selected in-process client when local calls need the HTTP contract lifecycle.
+Result-returning clients powered by `@hulla/control` are available through the separate
+[`@hulla/api-control`](./packages/control/README.md) package.
+Explicit TanStack Query/SWR client integrations are covered in
+[`docs/plugins.md`](./docs/plugins.md).
+Structured operational errors, Standard Schema issue compatibility, and protocol problem conversion are covered in
+[`docs/errors.md`](./docs/errors.md).
+Bidirectional OpenAPI generation, typed sidecars, docstrings, and drift checks are covered in
+[`docs/openapi.md`](./docs/openapi.md).
+Dependency-free Node.js HTTP deployment is covered in [`docs/node-http.md`](./docs/node-http.md).
+Express server deployment is covered in [`docs/express.md`](./docs/express.md).
+Fastify native routing, hooks, context, and plugin encapsulation are covered in
+[`docs/fastify.md`](./docs/fastify.md).
+Hono native routing, middleware, context, and multi-runtime deployment are covered in [`docs/hono.md`](./docs/hono.md).
+H3 v2 native routing, middleware, event context, and multi-runtime deployment are covered in
+[`docs/h3.md`](./docs/h3.md).
+Elysia native routing, lifecycle, context, and deployment are covered in [`docs/elysia.md`](./docs/elysia.md).
+Cloudflare Module Workers and Pages Functions, including native context, file routing, and fallback boundaries, are covered in
+[`docs/cloudflare.md`](./docs/cloudflare.md).
+AWS Lambda HTTP API v2 and Function URL deployment is covered in
+[`docs/aws-lambda.md`](./docs/aws-lambda.md).
+Azure Functions v4 HTTP trigger deployment is covered in
+[`docs/azure-functions.md`](./docs/azure-functions.md).
+Google Cloud Run functions HTTP deployment is covered in
+[`docs/google-cloud-functions.md`](./docs/google-cloud-functions.md).
+Netlify Functions routing, native context, and Web handler deployment are covered in
+[`docs/netlify-functions.md`](./docs/netlify-functions.md).
+Next.js Route Handlers, server-side and client-side consumption, caching, and Server Action composition are covered in
+[`docs/next.md`](./docs/next.md).
+TanStack Start contract-backed server routes, loader consumption, native context, framework boundaries, and fragment deployment are covered in
+[`docs/tanstack-start.md`](./docs/tanstack-start.md).
+React Router v7 resource routes, loaders and actions, native load context, and fragment deployment are covered in
+[`docs/react-router.md`](./docs/react-router.md).
+SolidStart v2 API routes, Solid Router consumption, native request-event state, and full-stack framework boundaries are covered in
+[`docs/solid-start.md`](./docs/solid-start.md).
+SvelteKit endpoints, remote functions, enhanced Fetch consumption, native request-event state, and full-stack framework boundaries are covered in
+[`docs/sveltekit.md`](./docs/sveltekit.md).
+Nuxt/Nitro server routes, `useAsyncData`, request-aware fetching, native H3 context, and framework boundaries are covered in
+[`docs/nuxt.md`](./docs/nuxt.md).
+Astro endpoints, native render context, colocated SSR calls, and deferred server islands are covered in
+[`docs/astro.md`](./docs/astro.md).
 
-```ts
-// src/api.ts
-import { init } from '@hulla/api'
-import { query } from '@hulla/api-query'
+## Core layout
 
-type Session = { userId: string }
+The [architecture guide](./docs/architecture.md) explains the request lifecycle and ownership boundaries.
 
-async function getSession(): Promise<Session> {
-  return fetch('/api/session').then((res) => res.json())
-}
-
-export const api = init({
-  middleware: {
-    session: getSession,
-  },
-  plugins: [query()],
-})
+```text
+packages/core/src/
+  contract/     declarations, inherited paths, query encoding, and schema helpers
+  compiler.ts   immutable route manifest for runtime preparation and reflection
+  client/       typed calls, contract selections, middleware, and response decoding
+  server/       handler authoring, context, and exhaustive server composition
+  adapters/     one async route executor, matching, input decoding, and output encoding
+  fetch/        Fetch request/response transport and server mounting
+  in-process/   direct client/server transport without network serialization
+  validation.ts Standard Schema validation and explicit bidirectional codecs
+  execution.ts  schema execution and ordered field processing
+  stream.ts     streaming formats and incremental decoding
 ```
 
-Then import that configured instance wherever routes live:
+Framework integrations, OpenAPI tooling, query integrations, MessagePort, and WebSocket transports live in separate
+`packages/*` directories. See the linked guides above for each integration.
 
-```ts
-// src/routes/users.ts
-import { z } from 'zod'
-import { api } from '../api'
+The publishable package uses the next major version while the root workspace and benchmarks remain private.
 
-export const users = api
-  .router('users')
-  .use('session')
-  .define(({ procedure }) => ({
-    list: procedure.handler(async ({ getContext }) => {
-      const { session } = await getContext()
+See the [migration guide](./docs/migration.md) for direct client construction, contract selections, response headers and request lifetime changes.
 
-      return fetch(`/api/users?viewer=${session.userId}`).then((res) =>
-        res.json()
-      )
-    }),
+For safe server/browser client setup across frameworks, see [hybrid rendering](./docs/hybrid-rendering.md).
 
-    byId: procedure
-      .input(z.string().uuid())
-      .output(
-        z.object({
-          id: z.string(),
-          name: z.string(),
-        })
-      )
-      .handler(async ({ input }) => {
-        const response = await fetch(`/api/users/${input}`)
+NestJS integrates through the separate [`@hulla/api-nestjs`](./docs/nestjs.md) package.
+See [WebSocket transport](./docs/websocket.md) and [Bun, Deno and Vercel runtime fixtures](./docs/runtime-hosts.md) for the other runtime integrations.
 
-        return response.json()
-      }),
-  }))
-```
-
-The finalized procedure is the runtime value:
-
-```ts
-const user = await users.byId.call(
-  '2f2f0f0c-0f0f-4f0f-8f0f-0f0f0f0f0f0f'
-)
-
-users.byId.key.root // "users/byId"
-users.byId.key.full('user_123') // ["users/byId", "user_123"]
-users.byId.query.options('user_123') // TanStack Query options
-```
-
-## Public And Protected Routes
-
-Use API-level `.use(...)` when a whole group of routes shares middleware.
-`init()` declares the middleware that exists, and `.use(...)` returns a scoped
-API instance where that middleware runs for every procedure and router:
-
-```ts
-// src/api.ts
-import { init } from '@hulla/api'
-
-type Session = { userId: string }
-type AdminPermissions = { canDeleteUsers: boolean }
-
-async function getSession(): Promise<Session> {
-  return fetch('/api/session').then((res) => res.json())
-}
-
-async function getAdminPermissions(): Promise<AdminPermissions> {
-  const permissions = await fetch('/api/admin-permissions').then(
-    (res) => res.json() as Promise<AdminPermissions>
-  )
-
-  if (!permissions.canDeleteUsers) {
-    throw new Error('Admin access required')
-  }
-
-  return permissions
-}
-
-const api = init({
-  middleware: {
-    session: getSession,
-    admin: getAdminPermissions,
-  },
-})
-
-export const publicApi = api
-export const protectedApi = api.use('session')
-export const adminApi = api.use('session', 'admin')
-```
-
-Protected routes can now define procedures directly. The `procedure` passed into
-the router keeps the API-level selection, so `getContext()` is typed from the
-selected middleware:
-
-```ts
-// src/routes/account.ts
-import { z } from 'zod'
-import { protectedApi } from '../api'
-
-export const account = protectedApi.router('account').define(({ procedure }) => ({
-  me: procedure.handler(async ({ getContext }) => {
-    const { session } = await getContext()
-
-    return { id: session.userId }
-  }),
-
-  rename: procedure
-    .input(z.string().min(1))
-    .handler(async ({ input, getContext }) => {
-      const { session } = await getContext()
-
-      return { id: session.userId, name: input }
-    }),
-}))
-```
-
-And public routes stay visibly public:
-
-```ts
-// src/routes/health.ts
-import { publicApi } from '../api'
-
-export const health = publicApi.router('health').define(({ procedure }) => ({
-  check: procedure.handler(() => ({ ok: true })),
-}))
-```
-
-The same pattern works for standalone procedures:
-
-```ts
-// src/actions/viewer.ts
-import { protectedApi } from '../api'
-
-export const viewer = protectedApi.procedure.handler(({ getContext }) => getContext())
-```
-
-Router-level and procedure-level `.use(...)` still work on scoped APIs, so you
-can add more middleware for a specific router or procedure. `publicApi`,
-`protectedApi`, and `adminApi` are just project-level names. `@hulla/api` only cares
-about the selected middleware keys, so you can use `authed`, `internal`,
-`tenant`, or whatever matches your app.
-
-## Integrations
-
-### TanStack Query
-
-`@hulla/api-query` adds `query.options(...)` and `mutation.options(...)` helpers designed for TanStack Query.
-
-```ts
-import { init } from '@hulla/api'
-import { query } from '@hulla/api-query'
-import { z } from 'zod'
-
-const api = init({
-  plugins: [query()],
-})
-
-const users = api.router('users').define(({ procedure }) => ({
-  all: procedure.handler(() =>
-    fetch('/api/users').then((res) => res.json())
-  ),
-  byId: procedure
-    .input(z.number())
-    .handler(({ input }) =>
-      fetch(`/api/users/${input}`).then((res) => res.json())
-    ),
-}))
-
-const listOptions = users.all.query.options()
-const boundUserOptions = users.byId.query.options(1)
-const lazyUserOptions = users.byId.query.options()
-const mutationOptions = users.byId.mutation.options()
-
-// useQuery(listOptions)
-// useQuery(boundUserOptions)
-// lazyUserOptions.queryFn(1)
-// useMutation(mutationOptions)
-```
-
-For input procedures, calling `.options(input)` binds the input into the query key and query function. Calling `.options()` returns the root key and a function that accepts the input later.
-
-### SWR
-
-`@hulla/api-swr` exposes `query.options(...)` and `mutation.options(...)` helpers as SWR tuples.
-
-```ts
-import { init } from '@hulla/api'
-import { swr } from '@hulla/api-swr'
-import { z } from 'zod'
-
-const api = init({
-  plugins: [swr()],
-})
-
-const users = api.router('users').define(({ procedure }) => ({
-  byId: procedure
-    .input(z.number())
-    .handler(({ input }) =>
-      fetch(`/api/users/${input}`).then((res) => res.json())
-    ),
-}))
-
-const [key, fetcher] = users.byId.query.options(1)
-const [mutationKey, mutate] = users.byId.mutation.options()
-
-// useSWR(key, fetcher)
-// useSWRMutation(mutationKey, mutate)
-```
-
-### OpenAPI
-
-`@hulla/api-openapi` generates `@hulla/api` client factories from OpenAPI documents.
-
-```bash
-bunx @hulla/api-openapi ./openapi.json --output ./src/api.generated.ts
-```
-
-You can derive procedure names from paths instead of `operationId`:
-
-```bash
-bunx @hulla/api-openapi ./openapi.json --output ./src/generated-api --names path
-```
-
-The generated client accepts your transport function:
-
-```ts
-import { createOpenAPIClient } from './api.generated'
-
-const client = createOpenAPIClient((request) => {
-  return fetch(request.path, {
-    method: request.method,
-    body: request.body === undefined ? undefined : JSON.stringify(request.body),
-  }).then((res) => res.json())
-})
-
-const user = await client.users.getUsersId.call({
-  params: { id: 'user_123' },
-})
-```
-
-## Output Parsing
-
-By default, output schemas parse the resolved handler value, so async handlers work with plain schemas:
-
-```ts
-const user = api.procedure.output(z.string()).handler(async () => 'Samuel')
-
-await user.call() // "Samuel"
-```
-
-If you want output schemas to validate the exact unawaited return value instead, set `output` to `raw`.
-
-```ts
-const api = init({
-  settings: {
-    output: 'raw',
-  },
-})
-```
-
-## Development
-
-- Install dependencies with `bun install`
-- Run checks with `bun run lint`, `bun run fmt`, `bun run test`, and `bun run build`
-
-## Plugin Settings (Advanced)
-
-Plugins are injected automatically by default. You can make a plugin opt-in, select it on a router or procedure, or alias exposed members.
-
-```ts
-const api = init({
-  plugins: [query()],
-  settings: {
-    plugins: {
-      query: {
-        inject: 'opt-in',
-        aliases: {
-          procedure: {
-            query: 'rq',
-          },
-        },
-      },
-    },
-  },
-})
-
-const users = api
-  .router('users')
-  .plugin('query')
-  .define(({ procedure }) => ({
-    byId: procedure.input(z.number()).handler(({ input }) => input),
-  }))
-
-users.byId.rq.options(1)
-```
+Koa middleware is available through [`@hulla/api-koa`](./docs/koa.md).
+[Desktop bridges](./docs/desktop-bridges.md) cover Electron ports, Tauri channels and Dioxus eval messaging.

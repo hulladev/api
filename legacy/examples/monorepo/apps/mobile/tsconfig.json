@@ -1,0 +1,16 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "paths": {
+      "@tanstack/db": ["../../node_modules/@tanstack/db"],
+      "@tanstack/query-core": ["../../node_modules/@tanstack/query-core"],
+      "@tanstack/query-db-collection": ["../../node_modules/@tanstack/query-db-collection"],
+      "@tanstack/react-db": ["../../node_modules/@tanstack/react-db"],
+      "@tanstack/react-query": ["../../node_modules/@tanstack/react-query"],
+      "drizzle-orm": ["../../../../packages/drizzle/node_modules/drizzle-orm"],
+      "drizzle-orm/*": ["../../../../packages/drizzle/node_modules/drizzle-orm/*"]
+    },
+    "strict": true
+  },
+  "exclude": ["dist"]
+}

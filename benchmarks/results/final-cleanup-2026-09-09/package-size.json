@@ -1,0 +1,247 @@
+[
+  {
+    "comparison": "executable",
+    "imports": "@hulla/api + /client + /server + /fetch",
+    "runtime": "@hulla/api",
+    "minifiedBytes": 45800,
+    "gzipBytes": 14296
+  },
+  {
+    "comparison": "breakdown",
+    "imports": "@hulla/api",
+    "runtime": "Contract declarations",
+    "minifiedBytes": 8952,
+    "gzipBytes": 3187
+  },
+  {
+    "comparison": "breakdown",
+    "imports": "@hulla/api + /client",
+    "runtime": "Transport-neutral client",
+    "minifiedBytes": 21043,
+    "gzipBytes": 7116
+  },
+  {
+    "comparison": "breakdown",
+    "imports": "@hulla/api + /server",
+    "runtime": "Transport-neutral server",
+    "minifiedBytes": 14843,
+    "gzipBytes": 5127
+  },
+  {
+    "comparison": "breakdown",
+    "imports": "@hulla/api + /client + /server",
+    "runtime": "Transport-neutral client + server",
+    "minifiedBytes": 26292,
+    "gzipBytes": 8769
+  },
+  {
+    "comparison": "breakdown",
+    "imports": "@hulla/api/fetch (fetchTransport)",
+    "runtime": "Fetch client transport",
+    "minifiedBytes": 3553,
+    "gzipBytes": 1589
+  },
+  {
+    "comparison": "breakdown",
+    "imports": "@hulla/api/fetch (fetchAdapter)",
+    "runtime": "Fetch server adapter",
+    "minifiedBytes": 19579,
+    "gzipBytes": 6662
+  },
+  {
+    "comparison": "breakdown",
+    "imports": "@hulla/api/adapters (createAdapterHandler)",
+    "runtime": "Core adapter dispatcher",
+    "minifiedBytes": 13904,
+    "gzipBytes": 4962
+  },
+  {
+    "comparison": "breakdown",
+    "imports": "@hulla/api-message-port (messagePortTransport)",
+    "runtime": "MessagePort client transport",
+    "minifiedBytes": 7540,
+    "gzipBytes": 2692
+  },
+  {
+    "comparison": "breakdown",
+    "imports": "@hulla/api-message-port (messagePortAdapter)",
+    "runtime": "MessagePort server adapter",
+    "minifiedBytes": 22300,
+    "gzipBytes": 7340
+  },
+  {
+    "comparison": "breakdown",
+    "imports": "@hulla/api-express (expressAdapter)",
+    "runtime": "Express server adapter",
+    "minifiedBytes": 18342,
+    "gzipBytes": 6239
+  },
+  {
+    "comparison": "breakdown",
+    "imports": "@hulla/api-node/http (nodeHttpAdapter)",
+    "runtime": "Node HTTP server adapter",
+    "minifiedBytes": 20549,
+    "gzipBytes": 7050
+  },
+  {
+    "comparison": "breakdown",
+    "imports": "@hulla/api-fastify (fastifyAdapter)",
+    "runtime": "Fastify server adapter",
+    "minifiedBytes": 16684,
+    "gzipBytes": 5700
+  },
+  {
+    "comparison": "breakdown",
+    "imports": "@hulla/api-hono (honoAdapter)",
+    "runtime": "Hono server adapter",
+    "minifiedBytes": 22405,
+    "gzipBytes": 7732
+  },
+  {
+    "comparison": "breakdown",
+    "imports": "@hulla/api-h3 (h3Adapter)",
+    "runtime": "H3 server adapter",
+    "minifiedBytes": 17345,
+    "gzipBytes": 5952
+  },
+  {
+    "comparison": "breakdown",
+    "imports": "@hulla/api-cloudflare (cloudflareAdapter)",
+    "runtime": "Cloudflare Workers adapter",
+    "minifiedBytes": 19898,
+    "gzipBytes": 6761
+  },
+  {
+    "comparison": "breakdown",
+    "imports": "@hulla/api-cloudflare/pages (cloudflarePagesAdapter)",
+    "runtime": "Cloudflare Pages Functions adapter",
+    "minifiedBytes": 19805,
+    "gzipBytes": 6724
+  },
+  {
+    "comparison": "breakdown",
+    "imports": "@hulla/api-google-cloud-functions (googleCloudFunctionsAdapter)",
+    "runtime": "Google Cloud Run functions adapter",
+    "minifiedBytes": 21933,
+    "gzipBytes": 7440
+  },
+  {
+    "comparison": "breakdown",
+    "imports": "@hulla/api-netlify-functions (netlifyFunctionsAdapter)",
+    "runtime": "Netlify Functions adapter",
+    "minifiedBytes": 19843,
+    "gzipBytes": 6732
+  },
+  {
+    "comparison": "breakdown",
+    "imports": "@hulla/api-next/server (nextAdapter)",
+    "runtime": "Next.js server adapter",
+    "minifiedBytes": 20306,
+    "gzipBytes": 6895
+  },
+  {
+    "comparison": "breakdown",
+    "imports": "@hulla/api-tanstack-start (tanStackStartAdapter)",
+    "runtime": "TanStack Start server adapter",
+    "minifiedBytes": 20461,
+    "gzipBytes": 6966
+  },
+  {
+    "comparison": "breakdown",
+    "imports": "@hulla/api-react-router (reactRouterAdapter)",
+    "runtime": "React Router v7 server adapter",
+    "minifiedBytes": 20602,
+    "gzipBytes": 6995
+  },
+  {
+    "comparison": "breakdown",
+    "imports": "@hulla/api-solid-start (solidStartAdapter)",
+    "runtime": "SolidStart server adapter",
+    "minifiedBytes": 20465,
+    "gzipBytes": 6961
+  },
+  {
+    "comparison": "breakdown",
+    "imports": "@hulla/api-sveltekit/server (svelteKitAdapter)",
+    "runtime": "SvelteKit server adapter",
+    "minifiedBytes": 20456,
+    "gzipBytes": 6961
+  },
+  {
+    "comparison": "breakdown",
+    "imports": "@hulla/api-sveltekit/remote (svelteKitRemoteTransport)",
+    "runtime": "SvelteKit remote transport",
+    "minifiedBytes": 14792,
+    "gzipBytes": 5279
+  },
+  {
+    "comparison": "breakdown",
+    "imports": "@hulla/api-nuxt/server (nuxtAdapter)",
+    "runtime": "Nuxt server adapter",
+    "minifiedBytes": 20453,
+    "gzipBytes": 6969
+  },
+  {
+    "comparison": "breakdown",
+    "imports": "@hulla/api-nuxt/client (nuxtFetchTransport)",
+    "runtime": "Nuxt request-aware client transport",
+    "minifiedBytes": 3432,
+    "gzipBytes": 1524
+  },
+  {
+    "comparison": "breakdown",
+    "imports": "@hulla/api-astro (astroAdapter)",
+    "runtime": "Astro server adapter",
+    "minifiedBytes": 19922,
+    "gzipBytes": 6774
+  },
+  {
+    "comparison": "breakdown",
+    "imports": "@hulla/api-astro (astroInProcessTransport)",
+    "runtime": "Astro in-process transport",
+    "minifiedBytes": 14700,
+    "gzipBytes": 5226
+  },
+  {
+    "comparison": "executable",
+    "imports": "@trpc/client + @trpc/server",
+    "runtime": "tRPC",
+    "minifiedBytes": 66901,
+    "gzipBytes": 19810
+  },
+  {
+    "comparison": "executable",
+    "imports": "@orpc/client + @orpc/server",
+    "runtime": "oRPC",
+    "minifiedBytes": 37941,
+    "gzipBytes": 12158
+  },
+  {
+    "comparison": "executable",
+    "imports": "@ts-rest/core + @ts-rest/serverless/fetch",
+    "runtime": "ts-rest",
+    "minifiedBytes": 18004,
+    "gzipBytes": 6240
+  },
+  {
+    "comparison": "breakdown",
+    "imports": "@ts-rest/core@3.52.1",
+    "runtime": "ts-rest stable core",
+    "minifiedBytes": 5758,
+    "gzipBytes": 2243
+  },
+  {
+    "comparison": "breakdown",
+    "imports": "@ts-rest/core@3.53.0-rc.1",
+    "runtime": "ts-rest Zod 4 RC core",
+    "minifiedBytes": 62369,
+    "gzipBytes": 15363
+  },
+  {
+    "comparison": "executable",
+    "imports": "hono + hono/client",
+    "runtime": "Hono RPC",
+    "minifiedBytes": 23541,
+    "gzipBytes": 9457
+  }
+]

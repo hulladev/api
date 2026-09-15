@@ -1,0 +1,252 @@
+{
+  "baselineRevision": "1548d29aae0607371feb541e87f3abbc36463e56",
+  "currentIdentity": {
+    "runId": "bc8cb18c-cde8-46ac-abe3-76d396a2a321",
+    "methodologyVersion": 3,
+    "productFingerprint": "12036b3a2c4eb6ee09d6076501640865637425247c84218a893ad4288a27a6e1",
+    "workloadFingerprint": "c33b21553f4307f692aef1dfdb8dafa45297a21cb6b8873559c9f38acd8bdd7a",
+    "environment": {
+      "architecture": "arm64",
+      "cpu": "Apple M4 Pro",
+      "host": "Samuels-Macbook-M4-Pro.local",
+      "osRelease": "25.5.0",
+      "platform": "darwin",
+      "runtime": "Bun 1.4.0"
+    }
+  },
+  "methodology": "Three fresh Bun processes. Seven alternating-order batches of at least 30 ms, with 1,000 warmup calls. Dynamic Unicode path, validated params/JSON response, zero or five server middleware layers. Focused GET diagnostic, not socket throughput.",
+  "fixtureSource": "import { z } from '/Users/samuel/Coding/hulla/api/benchmarks/node_modules/zod/index.js'\nconst current = '/Users/samuel/Coding/hulla/api/packages/core/dist'\nconst old = '/private/tmp/hulla-review-baseline/packages/core/dist'\nconst jobs = []\nfor (const [version, path] of [['before', old], ['after', current]]) {\n  const { defineContract, response, route } = await import(`${path}/index.js`)\n  const { defineServer } = await import(`${path}/server/index.js`)\n  const { defineClient } = await import(`${path}/client/index.js`)\n  const { inProcessTransport } = await import(`${path}/in-process/index.js`)\n  const { fetchAdapter, fetchTransport } = await import(`${path}/fetch/index.js`)\n  for (const depth of [0, 5]) {\n    const contract = defineContract({ routes: { get: route.get('/organizations/:org/users/:id', { params: z.object({ org: z.string(), id: z.string() }), responses: { 200: response.json(z.object({ id: z.string(), org: z.string() })) } }) } })\n    let server = defineServer(contract)\n    for (let i = 0; i < depth; i++) server = server.use(async ({next}) => next())\n    const implementation = server.implement({ get: ({params}) => ({status:200, body:params}) })\n    for (const transport of ['inprocess', 'fetch']) {\n      const scope = defineClient(contract, { transport: transport === 'fetch' ? fetchTransport({ baseUrl: 'http://bench', fetch: fetchAdapter().mount(implementation) }) : inProcessTransport(implementation) })\n      const client = version === 'before' ? scope.create() : scope\n      const run = async () => { const value = await client.get({params:{org:'example',id:'space /\u2713'}}); if(value.body.id !== 'space /\u2713') throw new Error('Invalid result') }\n      for(let i=0;i<1000;i++) await run()\n      jobs.push({version,depth,transport,run,samples:[]})\n    }\n  }\n}\nfor(let round=0;round<7;round++) {\n  const order=round%2? [...jobs].reverse():jobs\n  for(const job of order) {\n    let iterations=0; const start=performance.now()\n    do { for(let i=0;i<100;i++) await job.run(); iterations+=100 } while(performance.now()-start<30)\n    job.samples.push((performance.now()-start)*1e6/iterations)\n  }\n}\nconsole.log(JSON.stringify({processId:process.pid,results:jobs.map(({run,...value})=>value)}))\n",
+  "processes": [
+    {
+      "processId": 46725,
+      "results": [
+        {
+          "version": "before",
+          "depth": 0,
+          "transport": "inprocess",
+          "samples": [
+            2415.661349206351, 2185.0996376811563, 1928.0983333333286, 1933.1704487179354, 1964.7086274509847,
+            2029.6537162162138, 2004.1943046357605
+          ]
+        },
+        {
+          "version": "before",
+          "depth": 0,
+          "transport": "fetch",
+          "samples": [
+            3583.4425000000015, 3263.2201086956616, 3288.4239130434817, 3472.5382758620594, 3575.2380952380863,
+            3325.6914285714247, 3497.805232558131
+          ]
+        },
+        {
+          "version": "before",
+          "depth": 5,
+          "transport": "inprocess",
+          "samples": [
+            2441.2872357723563, 2310.948692307691, 2265.083955223881, 2210.4687500000064, 2886.7908653846,
+            2326.7151162790537, 3015.7170270270294
+          ]
+        },
+        {
+          "version": "before",
+          "depth": 5,
+          "transport": "fetch",
+          "samples": [
+            3679.3191463414614, 3914.2748051948015, 4210.52083333333, 3742.0472839506115, 4348.458285714287,
+            4168.842500000002, 8125.540540540527
+          ]
+        },
+        {
+          "version": "after",
+          "depth": 0,
+          "transport": "inprocess",
+          "samples": [
+            2119.999999999999, 1935.5403225806456, 2194.823576642334, 1968.0692156862724, 2059.1357432432555,
+            2165.365683453235, 2143.488873239445
+          ]
+        },
+        {
+          "version": "after",
+          "depth": 0,
+          "transport": "fetch",
+          "samples": [
+            4037.166666666667, 4059.104729729729, 4130.2682191780905, 3910.519480519479, 4204.404027777792,
+            3928.2575324675427, 3859.3589743589537
+          ]
+        },
+        {
+          "version": "after",
+          "depth": 5,
+          "transport": "inprocess",
+          "samples": [
+            2655.1696460177004, 2288.4154545454553, 2547.680084745765, 2412.2800000000007, 2506.4965833333304,
+            2275.713333333339, 2330.726744186037
+          ]
+        },
+        {
+          "version": "after",
+          "depth": 5,
+          "transport": "fetch",
+          "samples": [
+            4499.987611940301, 4332.61314285714, 4647.09615384616, 4467.80632352941, 4307.101142857131,
+            4216.128472222224, 4242.206478873215
+          ]
+        }
+      ]
+    },
+    {
+      "processId": 46823,
+      "results": [
+        {
+          "version": "before",
+          "depth": 0,
+          "transport": "inprocess",
+          "samples": [
+            2366.804409448818, 1961.4703870967728, 1812.773614457831, 1879.3958750000072, 1888.1184905660361,
+            2365.328110236221, 2221.914275362319
+          ]
+        },
+        {
+          "version": "before",
+          "depth": 0,
+          "transport": "fetch",
+          "samples": [
+            3496.7005813953483, 3204.1489361702097, 3032.2643434343413, 3195.172872340426, 3136.7143750000064,
+            3630.808192771087, 3379.222808988758
+          ]
+        },
+        {
+          "version": "before",
+          "depth": 5,
+          "transport": "inprocess",
+          "samples": [
+            2484.5523966942164, 2264.4266917293226, 2232.481481481483, 2319.301230769226, 2138.8593617021274,
+            2445.2721774193537, 2278.393333333325
+          ]
+        },
+        {
+          "version": "before",
+          "depth": 5,
+          "transport": "fetch",
+          "samples": [
+            3607.4652380952407, 3650.205783132533, 3532.789176470594, 3769.41137499999, 3426.164772727289,
+            3681.595609756109, 3633.3634939759063
+          ]
+        },
+        {
+          "version": "after",
+          "depth": 0,
+          "transport": "inprocess",
+          "samples": [
+            2164.4784172661875, 1939.3301265822815, 1706.761363636363, 1780.327928994082, 1735.4833142857128,
+            1828.0378787878747, 1791.0738690476282
+          ]
+        },
+        {
+          "version": "after",
+          "depth": 0,
+          "transport": "fetch",
+          "samples": [
+            3930.0379220779214, 3531.3725882352924, 3545.191176470593, 3603.8294047619006, 3327.857142857143,
+            3673.2340476190266, 3544.019647058817
+          ]
+        },
+        {
+          "version": "after",
+          "depth": 5,
+          "transport": "inprocess",
+          "samples": [
+            2265.5827067669175, 2077.6522758620667, 2357.392578125008, 2372.7821259842494, 2052.395170068035,
+            2179.266304347829, 2105.4283216783124
+          ]
+        },
+        {
+          "version": "after",
+          "depth": 5,
+          "transport": "fetch",
+          "samples": [
+            4001.2889333333383, 3750.03086419753, 4342.315428571428, 4169.8031944444365, 3732.942469135808,
+            3645.180722891552, 3878.7714102563946
+          ]
+        }
+      ]
+    },
+    {
+      "processId": 46724,
+      "results": [
+        {
+          "version": "before",
+          "depth": 0,
+          "transport": "inprocess",
+          "samples": [
+            2403.65336, 2014.9580536912752, 1884.0390625000011, 1969.3382352941142, 1984.106315789473,
+            2004.897200000005, 1968.600196078441
+          ]
+        },
+        {
+          "version": "before",
+          "depth": 0,
+          "transport": "fetch",
+          "samples": [
+            3694.5782926829265, 3195.1639361702114, 3243.6379569892497, 3354.810111111116, 3277.486413043478,
+            3272.8306521739155, 3228.058510638298
+          ]
+        },
+        {
+          "version": "before",
+          "depth": 5,
+          "transport": "inprocess",
+          "samples": [
+            2470.2287704918044, 2247.472014925374, 2295.3912213740437, 2383.908730158728, 2316.538461538462,
+            2304.9077862595523, 2293.416030534337
+          ]
+        },
+        {
+          "version": "before",
+          "depth": 5,
+          "transport": "fetch",
+          "samples": [
+            3545.3724705882337, 3738.51345679012, 3680.1473170731647, 3559.617647058825, 3633.7549397590506,
+            3612.584285714293, 3824.8522784810225
+          ]
+        },
+        {
+          "version": "after",
+          "depth": 0,
+          "transport": "inprocess",
+          "samples": [
+            2200.9032846715336, 1826.6239759036143, 1797.3502994011992, 1758.798713450294, 1837.2611585365846,
+            1845.4012883435544, 2080.776666666664
+          ]
+        },
+        {
+          "version": "after",
+          "depth": 0,
+          "transport": "fetch",
+          "samples": [
+            3847.585512820513, 3492.916666666666, 3607.366071428571, 3470.5634090909143, 3832.473670886055,
+            3490.9011627906843, 3896.531298701297
+          ]
+        },
+        {
+          "version": "after",
+          "depth": 5,
+          "transport": "inprocess",
+          "samples": [
+            2464.993306451614, 2211.253088235293, 2129.9231914893635, 2164.71631205674, 2175.473985507235,
+            2154.324428571434, 2251.206417910446
+          ]
+        },
+        {
+          "version": "after",
+          "depth": 5,
+          "transport": "fetch",
+          "samples": [
+            4205.115694444446, 4043.94736842105, 3889.2628205128144, 3867.0833333333417, 4354.625652173898,
+            4062.4437837838027, 4090.92773333335
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -4,7 +4,16 @@
   "singleQuote": true,
   "trailingComma": "es5",
   "printWidth": 120,
-  "ignorePatterns": ["dist/**", "node_modules/**", ".cache/**", ".turbo/**", "*.md"],
+  "ignorePatterns": [
+    "dist/**",
+    "node_modules/**",
+    ".cache/**",
+    ".turbo/**",
+    ".playwright-cli/**",
+    "legacy/**",
+    "output/**",
+    "*.md"
+  ],
   "sortImports": {
     "newlinesBetween": false
   },

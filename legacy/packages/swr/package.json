@@ -1,0 +1,77 @@
+{
+  "name": "@hulla/api-swr",
+  "version": "2.0.0-beta.1",
+  "description": "SWR helpers for typed @hulla/api procedures",
+  "keywords": [
+    "@hulla",
+    "@hulla/api",
+    "@tanstack/react-query",
+    "api",
+    "axios",
+    "firebase",
+    "graphql",
+    "http",
+    "hulla",
+    "hulla api",
+    "hulla dev",
+    "hulla/api",
+    "mutation",
+    "query",
+    "query manager",
+    "react-query",
+    "rest",
+    "rpc",
+    "server actions",
+    "supabase",
+    "swr",
+    "tanstack",
+    "trpc"
+  ],
+  "homepage": "https://hulla.dev/projects/api",
+  "license": "MIT",
+  "author": {
+    "name": "Samuel Hulla",
+    "email": "hulla@hulla.dev",
+    "url": "https://hulla.dev"
+  },
+  "maintainers": [
+    "Samuel Hulla <hulla@hulla.dev>"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hulladev/api.git",
+    "directory": "packages/swr"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "commonjs",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "exports": {
+    "import": {
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    },
+    "require": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "lint": "oxlint .",
+    "lint:fix": "oxlint . --fix",
+    "fmt": "oxfmt --check .",
+    "fmt:fix": "oxfmt --write .",
+    "build": "tsdown --config-loader unrun",
+    "test": "tsc -p tsconfig.tests.json --noEmit && vitest run --config vitest.config.ts",
+    "clean": "rm -rf node_modules dist"
+  },
+  "devDependencies": {
+    "@hulla/api": "^2.0.0-beta.1",
+    "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "@hulla/api": "^2.0.0-beta.1"
+  }
+}

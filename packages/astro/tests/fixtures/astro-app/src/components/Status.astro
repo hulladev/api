@@ -1,0 +1,17 @@
+---
+import { astroInProcessTransport } from '@hulla/api-astro'
+import { createClient } from '@hulla/api/client'
+import { contract } from '../api/contract'
+import { implementation } from '../api/server'
+
+const api = createClient(contract, {
+  transport: astroInProcessTransport(implementation, Astro),
+})
+const result = await api.health()
+
+if (result.status !== 200) throw new Error(`Unexpected health status: ${result.status}`)
+---
+
+<output id="server-island" data-request-path={result.body.requestPath} data-route-path={result.body.routePath}>
+  {result.body.actor}
+</output>

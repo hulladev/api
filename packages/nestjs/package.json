@@ -1,0 +1,48 @@
+{
+  "name": "@hulla/api-nestjs",
+  "version": "2.0.0",
+  "description": "Native NestJS controller and dependency-injection integration for @hulla/api",
+  "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "clean": "rm -rf dist coverage",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hulla/api-node": "workspace:^"
+  },
+  "devDependencies": {
+    "@hulla/api": "workspace:*",
+    "@nestjs/common": "^12.0.1",
+    "@nestjs/core": "^12.0.1",
+    "@nestjs/platform-express": "^12.0.1",
+    "@nestjs/platform-fastify": "^12.0.1",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.2.0",
+    "express": "^5.2.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
+  },
+  "peerDependencies": {
+    "@hulla/api": "^2.0.0",
+    "@nestjs/common": "^11.1.0 || ^12.0.1",
+    "@nestjs/core": "^11.1.0 || ^12.0.1",
+    "@types/node": ">=22.0.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
+  }
+}

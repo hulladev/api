@@ -1,0 +1,136 @@
+name: Performance comparison
+
+on:
+  pull_request:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  create:
+  workflow_dispatch:
+    inputs:
+      baseline:
+        description: Baseline ref (defaults to master)
+        default: master
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: performance-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  revisions:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.refs.outputs.run }}
+      head: ${{ steps.refs.outputs.head }}
+      base: ${{ steps.refs.outputs.base }}
+    steps:
+      - uses: actions/github-script@v8
+        id: refs
+        with:
+          script: |
+            const event = context.payload;
+            let head = context.sha;
+            let base = event.inputs?.baseline || event.repository.default_branch;
+            if (event.pull_request) {
+              head = event.pull_request.head.sha;
+              base = event.pull_request.base.sha;
+            } else if (context.eventName === 'create') {
+              if (event.ref_type !== 'branch') return core.setOutput('run', 'false');
+              head = event.ref;
+            } else if (context.eventName === 'push') {
+              // Creation has its own event; subsequent PR pushes run via pull_request.
+              if (event.created && context.ref.startsWith('refs/heads/')) return core.setOutput('run', 'false');
+              if (event.deleted) return core.setOutput('run', 'false');
+              if (context.ref.startsWith('refs/heads/')) {
+                const { data: prs } = await github.rest.pulls.list({ ...context.repo, state: 'open', head: `${context.repo.owner}:${context.ref.slice(11)}` });
+                if (prs.length) return core.setOutput('run', 'false');
+              }
+              if (context.ref === `refs/heads/${event.repository.default_branch}` && !/^0+$/.test(event.before)) base = event.before;
+            }
+            const commit = async (ref) => (await github.rest.repos.getCommit({ ...context.repo, ref })).data.sha;
+            core.setOutput('head', await commit(head));
+            core.setOutput('base', await commit(base));
+            core.setOutput('run', 'true');
+
+  measure:
+    needs: revisions
+    if: needs.revisions.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.revisions.outputs.head }}
+          path: head
+          persist-credentials: false
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.revisions.outputs.base }}
+          path: base
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.0'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Build head core only
+        working-directory: head
+        run: bun ci && bun x turbo run build --filter=@hulla/api
+      - name: Detect comparable baseline
+        id: baseline
+        run: |
+          node --input-type=module <<'JS'
+          import { readFileSync, appendFileSync } from 'node:fs';
+          const pkg = JSON.parse(readFileSync('base/packages/core/package.json', 'utf8'));
+          const compatible = Number(pkg.version.split('.')[0]) >= 2 && ['.', './client', './fetch', './server'].every(key => pkg.exports?.[key]);
+          appendFileSync(process.env.GITHUB_OUTPUT, `compatible=${compatible}\n`);
+          JS
+      - name: Build baseline core only
+        if: steps.baseline.outputs.compatible == 'true'
+        working-directory: base
+        run: bun ci && bun x turbo run build --filter=@hulla/api
+      - name: Compare the same workload on both commits
+        run: node head/benchmarks/ci/compare.mjs head base performance-results
+      - name: Job summary
+        run: cat performance-results/comment.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: performance-comparison
+          path: performance-results/
+          retention-days: 90
+
+  comment:
+    needs: [revisions, measure]
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      # No checkout or execution of measured code in the job with write access.
+      - uses: actions/download-artifact@v4
+        with:
+          name: performance-comparison
+          path: report
+      - uses: actions/github-script@v8
+        env:
+          MEASURED_HEAD: ${{ needs.revisions.outputs.head }}
+        with:
+          script: |
+            const fs = require('node:fs');
+            const issue_number = context.payload.pull_request.number;
+            const { data: pr } = await github.rest.pulls.get({ ...context.repo, pull_number: issue_number });
+            if (pr.head.sha !== process.env.MEASURED_HEAD) return core.info('A newer commit superseded this result.');
+            const marker = '<!-- hulla-api-performance-v1 -->';
+            const report = fs.readFileSync('report/comment.md', 'utf8');
+            if (!report.startsWith(marker) || report.length > 50000) throw new Error('Invalid performance report');
+            const body = report + `\n[Workflow run and raw samples](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})\n`;
+            const comments = await github.paginate(github.rest.issues.listComments, { ...context.repo, issue_number });
+            const previous = comments.find(comment => comment.user?.login === 'github-actions[bot]' && comment.body?.startsWith(marker));
+            if (previous) await github.rest.issues.updateComment({ ...context.repo, comment_id: previous.id, body });
+            else await github.rest.issues.createComment({ ...context.repo, issue_number, body });

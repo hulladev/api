@@ -1,0 +1,34 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "ignore": [
+    "legacy/**",
+    "packages/astro/tests/fixtures/**",
+    "packages/next/tests/fixtures/**",
+    "packages/nuxt/tests/fixtures/**",
+    "packages/react-router/tests/fixtures/**",
+    "packages/solid-start/tests/fixtures/**",
+    "packages/sveltekit/tests/fixtures/**",
+    "packages/tanstack-start/tests/fixtures/**",
+    "scripts/package-consumers/**",
+    "benchmarks/results/**",
+    "examples/runtime-hosts/**"
+  ],
+  "treatConfigHintsAsErrors": true,
+  "workspaces": {
+    ".": {
+      "project": ["**/*.{js,cjs,mjs,jsx,ts,cts,mts,tsx}", "!legacy/**"]
+    },
+    "benchmarks": {
+      "entry": ["size/*.ts", "fetch-roundtrip.ts", "runners/*-child.ts", "check-exports.ts", "ci/*.mjs"]
+    },
+    "packages/astro": {
+      "ignoreDependencies": ["@astrojs/node"]
+    },
+    "packages/react-router": {
+      "ignoreDependencies": ["@react-router/dev", "@react-router/node", "isbot"]
+    },
+    "packages/sveltekit": {
+      "ignoreUnresolved": ["\\$app/server"]
+    }
+  }
+}

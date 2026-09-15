@@ -1,4 +1,23 @@
 import { defineConfig } from 'tsdown'
-import { sharedTsdownConfig } from '../../tsdown.shared.ts'
 
-export default defineConfig(sharedTsdownConfig)
+export default defineConfig({
+  clean: true,
+  dts: true,
+  entry: [
+    'src/index.ts',
+    'src/adapters/index.ts',
+    'src/client/index.ts',
+    'src/compiler.ts',
+    'src/errors.ts',
+    'src/fetch/index.ts',
+    'src/in-process/index.ts',
+    'src/server/index.ts',
+    'src/stream.ts',
+    'src/validation.ts',
+  ],
+  fixedExtension: false,
+  format: ['esm'],
+  minify: false,
+  outDir: 'dist',
+  publint: true,
+})

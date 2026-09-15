@@ -1,7 +1,12 @@
 import { defineConfig } from 'tsdown'
-import { sharedTsdownConfig } from '../../tsdown.shared.ts'
 
 export default defineConfig({
-  ...sharedTsdownConfig,
+  clean: true,
+  dts: true,
   entry: ['src/index.ts', 'src/cli.ts'],
+  fixedExtension: false,
+  format: ['esm'],
+  minify: false,
+  outDir: 'dist',
+  publint: true,
 })

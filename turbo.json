@@ -1,16 +1,46 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "ui": "tui",
   "tasks": {
+    "bench": {
+      "cache": false,
+      "dependsOn": ["^build"]
+    },
     "build": {
-      "dependsOn": ["^build"],
-      "inputs": ["src/**/*.ts", "!tests/**/*"],
-      "outputs": ["dist/**/*"]
+      "dependsOn": ["^build", "typecheck"],
+      "inputs": ["$TURBO_DEFAULT$", "../../tsconfig.base.json"],
+      "outputs": ["dist/**"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
     },
     "test": {
-      "inputs": ["tests/**/*.ts"]
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", "../../tsconfig.base.json"],
+      "env": ["SOLID_START_NODE_BINARY"]
     },
-    "lint": {},
-    "fmt": {},
-    "clean": {}
-  }
+    "test:coverage": {
+      "cache": false,
+      "dependsOn": ["^build"],
+      "outputs": ["coverage/**"],
+      "env": ["SOLID_START_NODE_BINARY"]
+    },
+    "test:watch": {
+      "cache": false,
+      "persistent": true
+    },
+    "typecheck": {
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", "../../tsconfig.base.json"]
+    },
+    "clean": {
+      "cache": false
+    }
+  },
+  "globalDependencies": [
+    "scripts/framework-test-utils.ts",
+    "scripts/adapter-conformance.ts",
+    "scripts/conformance-http.ts"
+  ]
 }

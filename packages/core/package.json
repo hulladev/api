@@ -1,78 +1,69 @@
 {
   "name": "@hulla/api",
-  "version": "1.2.5",
-  "description": "The next-gen API/RPC manager 🚀",
-  "keywords": [
-    "@hulla",
-    "@hulla/api",
-    "@tanstack/react-query",
-    "api",
-    "axios",
-    "firebase",
-    "graphql",
-    "http",
-    "hulla",
-    "hulla api",
-    "hulla dev",
-    "hulla/api",
-    "mutation",
-    "query",
-    "query manager",
-    "react-query",
-    "rest",
-    "rpc",
-    "server actions",
-    "supabase",
-    "swr",
-    "tanstack",
-    "trpc"
-  ],
-  "homepage": "https://hulla.dev/projects/api",
+  "version": "2.0.0",
+  "description": "Directional Standard Schema contracts with typed client and server bindings",
   "license": "MIT",
-  "author": {
-    "name": "Samuel Hulla",
-    "email": "hulla@hulla.dev",
-    "url": "https://hulla.dev"
-  },
-  "maintainers": [
-    "Samuel Hulla <hulla@hulla.dev>"
-  ],
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/hulladev/api.git",
-    "directory": "packages/api"
-  },
   "files": [
     "dist"
   ],
-  "type": "commonjs",
-  "main": "./dist/index.js",
+  "type": "module",
+  "sideEffects": false,
   "exports": {
-    "import": {
-      "types": "./dist/index.d.mts",
-      "default": "./dist/index.mjs"
-    },
-    "require": {
+    ".": {
       "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
+      "import": "./dist/index.js"
+    },
+    "./adapters": {
+      "types": "./dist/adapters/index.d.ts",
+      "import": "./dist/adapters/index.js"
+    },
+    "./client": {
+      "types": "./dist/client/index.d.ts",
+      "import": "./dist/client/index.js"
+    },
+    "./compiler": {
+      "types": "./dist/compiler.d.ts",
+      "import": "./dist/compiler.js"
+    },
+    "./errors": {
+      "types": "./dist/errors.d.ts",
+      "import": "./dist/errors.js"
+    },
+    "./fetch": {
+      "types": "./dist/fetch/index.d.ts",
+      "import": "./dist/fetch/index.js"
+    },
+    "./in-process": {
+      "types": "./dist/in-process/index.d.ts",
+      "import": "./dist/in-process/index.js"
+    },
+    "./server": {
+      "types": "./dist/server/index.d.ts",
+      "import": "./dist/server/index.js"
+    },
+    "./stream": {
+      "types": "./dist/stream.d.ts",
+      "import": "./dist/stream.js"
+    },
+    "./validation": {
+      "types": "./dist/validation.d.ts",
+      "import": "./dist/validation.js"
     }
   },
   "scripts": {
-    "lint": "oxlint . --fix",
-    "build": "tsdown --config-loader unrun",
-    "fmt": "oxfmt --write .",
-    "test": "tsc -p tsconfig.tests.json --noEmit && vitest run",
-    "clean": "rm -rf node_modules dist"
+    "build": "tsdown",
+    "clean": "rm -rf dist coverage",
+    "dev": "tsdown --watch",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@standard-schema/spec": "^1.1.0"
   },
   "devDependencies": {
-    "zod": "^3.23.8"
-  },
-  "peerDependencies": {
-    "zod": "^3.23.8"
-  },
-  "peerDependenciesMeta": {
-    "zod": {
-      "optional": true
-    }
+    "valibot": "^1.4.2",
+    "zod": "^4.4.3"
   }
 }

@@ -114,6 +114,9 @@ web_modules/
 # Next.js build output
 
 .next
+.astro
+.solid-start
+.svelte-kit
 out
 
 # Nuxt.js build / generate output
@@ -174,3 +177,40 @@ dist
 
 # Finder (MacOS) folder config
 .DS_Store
+
+# Generated browser artifacts
+.playwright-cli/
+output/
+
+# Generated host integration fixtures
+.start/
+.react-router/
+
+# Temporary runtime verification bundles
+examples/.runtime-consumer-*/
+
+/benchmarks/results/architecture-2026-09-08/
+
+/benchmarks/results/normalization-2026-09-08/
+
+/benchmarks/results/streaming-2026-09-08/
+
+/benchmarks/results/startup-2026-09-08/
+
+/benchmarks/results/body-reader-2026-09-08/
+
+/benchmarks/results/landscape-2026-09-08/
+
+/benchmarks/results/adapter-landscape-2026-09-08/
+
+/benchmarks/results/node-writer-2026-09-08/
+
+/benchmarks/results/parameter-experiments-2026-09-08/
+
+/benchmarks/results/header-reader-2026-09-08/
+
+/benchmarks/results/native-header-readers-2026-09-08/
+
+/benchmarks/results/combined-audit-2026-09-08/
+
+/benchmarks/results/response-plans-2026-09-08/

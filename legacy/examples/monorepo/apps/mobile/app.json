@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "Form / Function",
+    "slug": "fitness-mobile",
+    "scheme": "fitness",
+    "version": "0.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#EDFF3C",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "backgroundColor": "#E9E7DF",
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}

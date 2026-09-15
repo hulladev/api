@@ -1,0 +1,194 @@
+{
+  "runtime": "v22.18.0",
+  "calls": 20000,
+  "samplingInterval": 32768,
+  "includesCollectedObjects": true,
+  "totalSampledBytes": 713908696,
+  "groups": {
+    "Node internals": 344769016,
+    "core JavaScript": 218814856,
+    "other / unattributed": 150324824
+  },
+  "topFunctions": [
+    {
+      "function": "consumeBody",
+      "url": "node:internal/deps/undici/undici",
+      "line": 5709,
+      "estimatedBytes": 76640744
+    },
+    {
+      "function": "setupReadableByteStreamControllerFromSource",
+      "url": "node:internal/webstreams/readablestream",
+      "line": 3300,
+      "estimatedBytes": 51691912
+    },
+    {
+      "function": "extractBody",
+      "url": "node:internal/deps/undici/undici",
+      "line": 5480,
+      "estimatedBytes": 47518368
+    },
+    {
+      "function": "withResolvers",
+      "url": "",
+      "line": 0,
+      "estimatedBytes": 47354704
+    },
+    {
+      "function": "executeRuntimeRoute",
+      "url": "file:///Users/samuel/Coding/hulla/api/packages/core/dist/runtime-CfxMKH7y.js",
+      "line": 368,
+      "estimatedBytes": 37127992
+    },
+    {
+      "function": "readAllBytes",
+      "url": "node:internal/deps/undici/undici",
+      "line": 4636,
+      "estimatedBytes": 33234776
+    },
+    {
+      "function": "handler",
+      "url": "file:///Users/samuel/Coding/hulla/api/packages/core/dist/fetch/index.js",
+      "line": 204,
+      "estimatedBytes": 28781552
+    },
+    {
+      "function": "Map",
+      "url": "",
+      "line": 0,
+      "estimatedBytes": 21835096
+    },
+    {
+      "function": "call",
+      "url": "file:///Users/samuel/Coding/hulla/api/packages/core/dist/client/index.js",
+      "line": 189,
+      "estimatedBytes": 19054096
+    },
+    {
+      "function": "pull",
+      "url": "node:internal/deps/undici/undici",
+      "line": 5488,
+      "estimatedBytes": 17617120
+    },
+    {
+      "function": "",
+      "url": "file:///Users/samuel/Coding/hulla/api/packages/core/dist/validation-yQotGinf.js",
+      "line": 28,
+      "estimatedBytes": 14211984
+    },
+    {
+      "function": "_Request",
+      "url": "node:internal/deps/undici/undici",
+      "line": 9569,
+      "estimatedBytes": 13653864
+    },
+    {
+      "function": "makeRequest",
+      "url": "node:internal/deps/undici/undici",
+      "line": 10015,
+      "estimatedBytes": 13612672
+    },
+    {
+      "function": "",
+      "url": "file:///Users/samuel/Coding/hulla/api/packages/core/dist/runtime-CfxMKH7y.js",
+      "line": 131,
+      "estimatedBytes": 12806544
+    },
+    {
+      "function": "push",
+      "url": "",
+      "line": 0,
+      "estimatedBytes": 12513984
+    },
+    {
+      "function": "toFetchResponse",
+      "url": "file:///Users/samuel/Coding/hulla/api/packages/core/dist/web-AyYIyR3H.js",
+      "line": 126,
+      "estimatedBytes": 12173488
+    },
+    {
+      "function": "",
+      "url": "file:///Users/samuel/Coding/hulla/api/packages/core/dist/client/index.js",
+      "line": 76,
+      "estimatedBytes": 11707432
+    },
+    {
+      "function": "decode",
+      "url": "file:///Users/samuel/Coding/hulla/api/packages/core/dist/validation-yQotGinf.js",
+      "line": 138,
+      "estimatedBytes": 11414680
+    },
+    {
+      "function": "",
+      "url": "node:internal/deps/undici/undici",
+      "line": 3825,
+      "estimatedBytes": 9573584
+    },
+    {
+      "function": "entries",
+      "url": "",
+      "line": 0,
+      "estimatedBytes": 9475936
+    },
+    {
+      "function": "toSortedArray",
+      "url": "node:internal/deps/undici/undici",
+      "line": 8790,
+      "estimatedBytes": 9183032
+    },
+    {
+      "function": "fetchTransportResponse",
+      "url": "file:///Users/samuel/Coding/hulla/api/packages/core/dist/fetch/index.js",
+      "line": 68,
+      "estimatedBytes": 8707784
+    },
+    {
+      "function": "next",
+      "url": "",
+      "line": 0,
+      "estimatedBytes": 8231136
+    },
+    {
+      "function": "",
+      "url": "file:///Users/samuel/Coding/hulla/api/packages/core/dist/client/index.js",
+      "line": 70,
+      "estimatedBytes": 8203664
+    },
+    {
+      "function": "read",
+      "url": "node:internal/webstreams/readablestream",
+      "line": 855,
+      "estimatedBytes": 8166024
+    },
+    {
+      "function": "decode",
+      "url": "file:///Users/samuel/Coding/hulla/api/packages/core/dist/response-Bq8e2oTD.js",
+      "line": 115,
+      "estimatedBytes": 8069616
+    },
+    {
+      "function": "then",
+      "url": "",
+      "line": 0,
+      "estimatedBytes": 7904272
+    },
+    {
+      "function": "next",
+      "url": "node:internal/deps/undici/undici",
+      "line": 4488,
+      "estimatedBytes": 7875384
+    },
+    {
+      "function": "",
+      "url": "file:///Users/samuel/Coding/hulla/api/packages/core/dist/runtime-CfxMKH7y.js",
+      "line": 222,
+      "estimatedBytes": 7874576
+    },
+    {
+      "function": "",
+      "url": "",
+      "line": 1,
+      "estimatedBytes": 6887488
+    }
+  ]
+}
