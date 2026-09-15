@@ -10,7 +10,7 @@ export function median(values) {
 }
 
 export function renderReport(snapshot) {
-  const { head, base, environment, baselineReason } = snapshot
+  const { head, base, environment } = snapshot
   const link = (sha) => `[${sha.slice(0, 8)}](https://github.com/hulladev/api/commit/${sha})`
   const rows = head.results.map((result) => {
     const current = median(result.samples.map((sample) => sample.microseconds))
@@ -34,7 +34,6 @@ export function renderReport(snapshot) {
     '| --- | ---: | ---: | ---: | ---: | ---: |',
     ...rows,
     '',
-    ...(baselineReason ? [`Baseline unavailable: ${baselineReason}`, ''] : []),
     'Lower latency is better. These are medians of batch-average samples, not request latency percentiles. Hosted runner noise makes this advisory evidence, not a pass/fail regression gate.',
     '',
     `Harness: \`${snapshot.harnessHash}\`. Raw samples and commit metadata are saved in the workflow artifact.`,

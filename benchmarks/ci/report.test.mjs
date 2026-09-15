@@ -25,5 +25,6 @@ test('report uses latency direction and includes both immutable commit reference
 test('incompatible baselines produce no invented comparison', () => {
   const report = renderReport({ ...snapshot, base: null, baselineReason: 'v1 API is incompatible' })
   assert.ok(report.includes('| — | 30.00 | — |'))
-  assert.ok(report.includes('Baseline unavailable: v1 API is incompatible'))
+  assert.ok(!report.includes('Baseline unavailable:'))
+  assert.ok(!report.includes('v1 API is incompatible'))
 })
