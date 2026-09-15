@@ -28,7 +28,7 @@ jobs:
       head: ${{ steps.refs.outputs.head }}
       base: ${{ steps.refs.outputs.base }}
     steps:
-      - uses: actions/github-script@v8
+      - uses: actions/github-script@v9
         id: refs
         with:
           script: |
@@ -117,7 +117,7 @@ jobs:
         with:
           name: performance-comparison
           path: report
-      - uses: actions/github-script@v8
+      - uses: actions/github-script@v9
         env:
           MEASURED_HEAD: ${{ needs.revisions.outputs.head }}
         with:
