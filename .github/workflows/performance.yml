@@ -113,7 +113,7 @@ jobs:
       pull-requests: write
     steps:
       # No checkout or execution of measured code in the job with write access.
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: performance-comparison
           path: report
