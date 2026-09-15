@@ -24,7 +24,7 @@
   },
   "devDependencies": {
     "@hulla/api": "workspace:*",
-    "@netlify/functions": "^5.3.0",
+    "@netlify/functions": "^6.0.0",
     "zod": "^4.4.3"
   },
   "peerDependencies": {
