@@ -1,6 +1,8 @@
 # Request transport
 
-@hulla/api treats an ordinary request schema directionally: its input is supplied to the client and its validated output is exposed to server code. Use an explicit codec when client and server should instead share one application representation.
+A query such as `?page=2` arrives as text, even if your handler needs a number. Request schemas describe how to turn that input into the value the handler receives.
+
+Use a [codec](./value-round-trips.md) when the client also needs to convert a value before sending it.
 
 ## URL and header values
 
@@ -9,10 +11,20 @@ Client path parameters cannot encode to `.` or `..`: URL normalization would cha
 Path parameters, query fields, and headers cross HTTP as text. Their wire schemas must therefore accept strings; query arrays and tuples accept repeated strings. A one-way schema transform keeps the client textual while giving the handler a richer value:
 
 ```ts
+import { defineContract, response, route } from '@hulla/api'
 import { z } from 'zod'
 
 const oneWayQuery = z.object({
   page: z.string().regex(/^\d+$/).transform(Number),
+})
+
+const oneWayQueryContract = defineContract({
+  routes: {
+    search: route.get('/search', {
+      query: oneWayQuery,
+      responses: { 200: response.empty() },
+    }),
+  },
 })
 ```
 
@@ -36,7 +48,11 @@ const sharedQuery = codec(
     tags: z.array(z.string()).optional(),
   }),
   {
-    decode: ({ page, active, tags }) => ({ page: Number(page), active: active === 'true', tags }),
+    decode: ({ page, active, tags }) => ({
+      page: Number(page),
+      active: active === 'true',
+      tags,
+    }),
     encode: ({ page, active, tags }) => ({
       page: String(page),
       active: active ? 'true' : 'false',
@@ -78,16 +94,29 @@ Nested objects and nested arrays are rejected. There is no built-in bracket pars
 A naked body schema is JSON shorthand. JSON bodies retain their natural JSON types:
 
 ```ts
-body: z.object({
-  title: z.string(),
-  count: z.number().int(),
-  active: z.boolean(),
+import { defineContract, response, route } from '@hulla/api'
+import { z } from 'zod'
+
+const jsonBodyContract = defineContract({
+  routes: {
+    createArticle: route.post('/articles', {
+      body: z.object({
+        title: z.string(),
+        count: z.number().int(),
+        active: z.boolean(),
+      }),
+      responses: { 201: response.empty() },
+    }),
+  },
 })
 ```
 
 A codec is needed when JSON cannot directly represent the application value, or when client and server should share a transformed value:
 
 ```ts
+import { codec, defineContract, request, response, route } from '@hulla/api'
+import { z } from 'zod'
+
 const datedBody = codec(
   z.object({ createdAt: z.iso.datetime() }),
   z.object({ createdAt: z.date() }),
@@ -96,15 +125,42 @@ const datedBody = codec(
     encode: ({ createdAt }) => ({ createdAt: createdAt.toISOString() }),
   },
 )
+
+const datedBodyContract = defineContract({
+  routes: {
+    createArticle: route.post('/articles', {
+      body: request.json(datedBody),
+      responses: { 201: response.empty() },
+    }),
+  },
+})
 ```
 
 Explicit representations use the request namespace:
 
 ```ts
-body: request.json(schema)
-body: request.text(schema)
-body: request.bytes(schema)
-body: request.formData(schema)
+import { defineContract, request, response, route } from '@hulla/api'
+
+const representationContract = defineContract({
+  routes: {
+    json: route.post('/json', {
+      body: request.json(),
+      responses: { 204: response.empty() },
+    }),
+    text: route.post('/text', {
+      body: request.text(),
+      responses: { 204: response.empty() },
+    }),
+    bytes: route.post('/bytes', {
+      body: request.bytes(),
+      responses: { 204: response.empty() },
+    }),
+    formData: route.post('/form-data', {
+      body: request.formData(),
+      responses: { 204: response.empty() },
+    }),
+  },
+})
 ```
 
 Each helper also has a representation-appropriate identity schema when the schema is omitted. Content types match by MIME essence, so parameters such as JSON charsets and multipart boundaries do not change the selected representation.
@@ -116,8 +172,18 @@ Adapters provide already-extracted native path strings, flat query values, heade
 ## Typed native JSON
 
 ```ts
-body: request.json<{ name: string }>()
-responses: { 200: response.json<{ id: string; name: string }>() }
+import { defineContract, request, response, route } from '@hulla/api'
+
+const nativeJsonContract = defineContract({
+  routes: {
+    rename: route.post('/rename', {
+      body: request.json<{ name: string }>(),
+      responses: {
+        200: response.json<{ id: string; name: string }>(),
+      },
+    }),
+  },
+})
 ```
 
 A type argument adds compile-time types only. No recursive shape validation or coercion runs. JSON serialization and parsing follow the native transport, including omission of undefined object fields; malformed JSON still fails parsing. In-process calls pass values directly and do not simulate JSON serialization. Use JSON-compatible values across transports.

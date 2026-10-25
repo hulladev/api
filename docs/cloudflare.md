@@ -1,228 +1,219 @@
-# Cloudflare
+# Cloudflare Workers
 
-`@hulla/api-cloudflare` supports two Cloudflare HTTP boundaries. The package root mounts an `@hulla/api` server
-implementation in a Module Worker, while `@hulla/api-cloudflare/pages` mounts one in a file-routed Pages Function. Both
-delegate Web `Request`/`Response` execution to `@hulla/api/fetch` while retaining their distinct native context and
-lifecycle types.
+`@hulla/api-cloudflare` connects your API to a Worker's `fetch()` entrypoint. Mount the implementation there to handle HTTP requests and access bindings such as KV from your handlers.
 
-## Prerequisites
+## Install the adapter
 
-This guide starts at the adapter boundary. First define the shared contract from
-[contract authoring](./contract-authoring.md), then turn it into the server value mounted below:
+This guide assumes the Worker project and its Wrangler configuration already exist. The example uses Zod for request
+and response schemas.
+
+<!-- docs:package-manager -->
+
+```sh
+# Bun
+bun add @hulla/api @hulla/api-cloudflare zod
+
+# npm
+npm install @hulla/api @hulla/api-cloudflare zod
+
+# pnpm
+pnpm add @hulla/api @hulla/api-cloudflare zod
+
+# Yarn
+yarn add @hulla/api @hulla/api-cloudflare zod
+```
+
+## Mount a route and verify it
+
+Declare the HTTP boundary in a module shared by server and client code:
+
+```ts
+// src/api/contract.ts
+import { defineContract, response, route } from '@hulla/api'
+import { z } from 'zod'
+
+export const contract = defineContract({
+  basePath: '/api',
+  routes: {
+    profile: route.get('/profiles/:id', {
+      params: z.object({ id: z.string() }),
+      responses: {
+        200: response.json(
+          z.object({ id: z.string(), runtime: z.string() })
+        ),
+      },
+    }),
+  },
+})
+```
+
+Implement the route in server-only code:
 
 ```ts
 // src/api/server.ts
 import { defineServer } from '@hulla/api/server'
 import { contract } from './contract'
 
-const server = defineServer(contract)
-
-export const implementation = server.implement({
-  health: ({ response }) => response(200, 'ok'),
-  users: {
-    byId: ({ params, response }) => response(200, { id: params.id, name: 'Ada' }),
-    rename: ({ params, body, response }) => response(200, { id: params.id, name: body.name }),
-  },
+export const implementation = defineServer(contract).implement({
+  profile: ({ params, response }) =>
+    response(200, {
+      id: params.id,
+      runtime: 'cloudflare-worker',
+    }),
 })
 ```
 
-`defineServer(contract)` creates the server authoring scope. `implement()` requires the handler tree to cover the
-contract and returns the complete `implementation` accepted by `mount()`. See
-[server authoring](./server-authoring.md) for context, middleware, declared errors, and independently deployable
-fragments.
-
-## Module Workers
-
-Use the adapter's `mount()` result as the default export's `fetch` method:
+Mount the implementation as the Module Worker's `fetch` handler:
 
 ```ts
 // src/index.ts
 import { cloudflareAdapter } from '@hulla/api-cloudflare'
 import { implementation } from './api/server'
 
+export default {
+  fetch: cloudflareAdapter().mount(implementation),
+}
+```
+
+The mounted function has the same `(request, env, ctx)` shape that Cloudflare calls. Verify the adapter boundary
+without deploying or opening a port:
+
+```ts
+// scripts/verify-worker.ts
+import worker from '../src/index'
+
+const result = await worker.fetch(
+  new Request('https://worker.example/api/profiles/user%201'),
+  {},
+  {
+    waitUntil() {},
+    passThroughOnException() {},
+  }
+)
+
+console.log(result.status) // 200
+console.log(await result.json())
+// { id: 'user 1', runtime: 'cloudflare-worker' }
+```
+
+The call uses an ordinary Web `Request` and receives an ordinary Web `Response`. In production, Cloudflare supplies
+the real bindings and execution context to that same mounted function.
+
+## Follow the Worker request lifecycle
+
+For each HTTP request:
+
+1. Cloudflare calls the exported `fetch` handler with `request`, `env`, and `ctx`.
+2. The adapter matches the method and pathname against the selected contract routes.
+3. It decodes and validates declared path parameters, query values, headers, and any request body.
+4. `@hulla/api` creates server context, runs server middleware, and calls the handler.
+5. The adapter returns the declared result as a Web `Response`.
+
+An unmatched path returns `404`; a known path with the wrong method returns `405` with an `Allow` header. Mounting a
+[server fragment](./server-composition.md) limits matching to that fragment's routes. The adapter does not add Worker
+routes or Wrangler configuration around the mounted handler.
+
+## Add bindings to server context
+
+Run `wrangler types` in the Worker project when application context needs generated binding and runtime types:
+
+```sh
+wrangler types
+```
+
+Pass the generated `Env` type to `cloudflareAdapter()`, then use `adapter.context()` to expose only the native values
+needed by handlers:
+
+```ts
+// src/index.ts
+import { defineServer } from '@hulla/api/server'
+import { cloudflareAdapter } from '@hulla/api-cloudflare'
+import { contract } from './api/contract'
+
+type Env = {
+  SERVICE_NAME: string
+}
+
 const adapter = cloudflareAdapter<Env>()
+
+const implementation = defineServer(contract, {
+  context: adapter.context(({ env, ctx, request, route }) => ({
+    defer: ctx.waitUntil.bind(ctx),
+    requestId: request.headers.get('cf-ray'),
+    routeKey: route.key.join('.'),
+    serviceName: env.SERVICE_NAME,
+  })),
+}).implement({
+  profile: ({ params, context, response }) => {
+    console.info(context.requestId, context.routeKey)
+    return response(200, {
+      id: params.id,
+      runtime: context.serviceName,
+    })
+  },
+})
 
 export default {
   fetch: adapter.mount(implementation),
-} satisfies ExportedHandler<Env>
+}
 ```
 
-The adapter accepts complete implementations and deployable fragments. Routing, request decoding, response encoding,
-streaming, declared errors, and protocol-safe 404/405 responses have the same behavior as the generic Fetch adapter.
-Cloudflare Workers pass arbitrary HTTP methods to `fetch`, so `@hulla/api` `QUERY` routes remain available.
-
-Use `cloudflareAdapter()` with Wrangler's generated `Env` type when context construction needs bindings or Worker lifecycle APIs:
-
-```ts
-import { defineServer } from '@hulla/api/server'
-import { cloudflareAdapter } from '@hulla/api-cloudflare'
-
-const adapter = cloudflareAdapter<Env>()
-const server = defineServer(contract, {
-  context: adapter.context(({ env, ctx, request, route }) => ({
-    database: env.DB,
-    request,
-    route,
-    defer: ctx.waitUntil.bind(ctx),
-  })),
-})
-```
-
-Run `wrangler types` in the Worker project so `Env` and the runtime globals match its compatibility date and flags. The
-adapter's built-in `CloudflareExecutionContext` type contains the universally available `waitUntil()` and
-`passThroughOnException()` methods. Pass the generated `ExecutionContext` as the second type argument when the context
-factory also uses newer APIs such as `ctx.props`, `ctx.exports`, or `ctx.tracing`:
+The adapter's built-in execution-context type includes `waitUntil()` and `passThroughOnException()`. When code needs
+additional properties from Wrangler's generated `ExecutionContext`, pass that type as the second generic argument:
 
 ```ts
 const adapter = cloudflareAdapter<Env, ExecutionContext>()
-const server = defineServer(contract, {
-  context: adapter.context(({ env, ctx }) => ({
-    service: env.API,
-    caller: ctx.props,
-  })),
-})
 ```
 
-The native context requirement is inherited by implementations and fragments. They fail immediately if mounted through generic
-Fetch adapter, Express, or the in-process adapter. Context factories using only portable route metadata remain usable
-through every adapter.
+`adapter.context()` binds the implementation to the `cloudflare-workers` adapter. Mounting it through Pages, generic
+Fetch, or the in-process transport fails during setup rather than supplying incompatible native state.
 
-Pass `onError` to `cloudflareAdapter()` to share it across every mounted implementation or fragment:
+## Keep request-body ownership explicit
+
+The adapter reads a contract-declared body from the Web `Request` before creating context or calling the handler. Read
+the decoded value from the handler's typed `body` field. For a body route, the native `request` visible to a context
+factory has already been consumed.
+
+The Cloudflare adapter does not expose `preserveRequestBody` or `maxBodyBytes`. If outer Worker code also needs the
+body, clone the request before passing the original to the mounted handler. Cloudflare's request limits still apply at
+the platform boundary.
+
+## Handle errors, streams, and cancellation
+
+Use `onError` to observe or replace failures while the adapter decodes inputs, creates context, runs server middleware
+or the handler, serializes a response, or converts it to a Web `Response`:
 
 ```ts
 const adapter = cloudflareAdapter<Env>({
   onError({ error, phase, request, env, ctx, defaultResponse }) {
-    console.error(phase, request.url, env, ctx, error)
+    console.error(phase, request.url, env.SERVICE_NAME, ctx, error)
     return defaultResponse
   },
 })
 ```
 
-The hook receives the native `Request`, `env`, `ctx`, route metadata, and a clone of the protocol-safe default
-`Response`; it may return a replacement `Response`. Native invocation state is passed directly through the adapter error
-path, so concurrent invocations remain isolated even if a test reuses one `Request` object. Options passed to `mount()`
-shallowly override the adapter defaults.
+The hook receives the invocation's `env` and `ctx` plus a clone of the protocol-safe default `Response`. Return another
+`Response` to replace it, or return `undefined` to keep the default. Options passed to `mount()` override adapter
+defaults; `onError: undefined` disables an inherited hook for that mount.
 
-## Pages Functions
+Declared streams become Web `ReadableStream` bodies. Cancelling the response stream calls the source iterator's
+`return()` method, and a producer failure is reported with `phase: 'transport'`. Once the response has been returned,
+the hook can observe a late stream failure but cannot replace bytes already in flight. The handler's `signal` is the
+incoming `Request.signal`; pass it to work that supports cooperative cancellation.
 
-Cloudflare recommends Workers for new server-side projects. Use the Pages integration for an existing Pages Functions
-application or while migrating one incrementally. Advanced-mode Pages projects use the Module Worker adapter described
-above.
+## Keep non-HTTP events outside this adapter
 
-### Catch-all Function
+The package root targets the Module Worker `fetch(request, env, ctx)` handler. It does not implement legacy Service
+Worker event syntax or Cloudflare's scheduled, queue, email, alarm, or Durable Object lifecycles. Those entrypoints do
+not represent an `@hulla/api` HTTP request and should call application services directly.
 
-The examples assume that the contract uses `/api` as its `basePath`. Mount the implementation from one Pages catch-all
-file beneath that prefix:
+D1, KV, R2, service bindings, and Durable Object namespaces need no adapter-specific API. Configure them in the
+Worker project, include them in `Env`, and expose the values handlers need through server context.
 
-```ts
-// functions/api/[[hulla]].ts
-import { cloudflarePagesAdapter } from '@hulla/api-cloudflare/pages'
-import { implementation } from '../../src/api/server'
+## Next steps
 
-const adapter = cloudflarePagesAdapter<Env, 'hulla'>()
-
-export const onRequest = adapter.mount(implementation)
-```
-
-The generic `onRequest` export accepts every method that reaches the Function, including custom methods such as
-`QUERY`. The adapter accepts complete implementations and deployable fragments. Request decoding, response encoding,
-streaming, declared errors, and protocol-safe 404/405 responses match the generic Fetch adapter.
-
-Placing the Function at `functions/api/[[hulla]].ts` lets Pages continue its normal static-asset routing outside `/api`.
-Once a request reaches the mounted implementation, the contract owns that API boundary: an unmatched route returns the
-`route-not-found` problem and does not call `context.next()` or `env.ASSETS.fetch()`. This avoids mistaking a declared
-application 404 for a platform routing miss.
-
-### Native context
-
-Use the adapter's context declaration when context construction needs Pages bindings or lifecycle state:
-
-```ts
-import { defineServer } from '@hulla/api/server'
-import { cloudflarePagesAdapter } from '@hulla/api-cloudflare/pages'
-
-type PagesData = {
-  actor?: { readonly id: string }
-}
-
-const adapter = cloudflarePagesAdapter<Env, 'hulla', PagesData>()
-const server = defineServer(contract, {
-  context: adapter.context(({ data, env, functionPath, params, request, route, waitUntil }) => ({
-    actor: data.actor,
-    database: env.DB,
-    functionPath,
-    pagesPath: params.hulla,
-    request,
-    route,
-    defer: waitUntil,
-  })),
-})
-```
-
-The second type argument is the union of Pages file-route parameter names. A single-segment parameter is a string and a
-double-bracket catch-all parameter is a string array. The third type argument describes `context.data`, which Pages
-middleware can populate before the mounted Function runs. The context also includes `passThroughOnException()`,
-`next()`, and `env.ASSETS.fetch()`.
-
-Run `wrangler types` in the Pages project so `Env` and runtime globals match the deployment's bindings, compatibility
-date, and flags. The portable `CloudflarePagesEventContext` type mirrors the Pages Function handler boundary without
-requiring `@cloudflare/workers-types` as a package dependency.
-
-A native Pages context factory binds its implementations and fragments to the `cloudflare-pages` adapter. Mounting one
-through the Module Worker, generic Fetch, or in-process adapter fails immediately. Context factories using only portable
-route metadata remain deployable through every compatible adapter.
-
-### Error handling
-
-Pass `onError` to `cloudflarePagesAdapter()` to share it across mounts, or override it for one implementation or
-fragment:
-
-```ts
-const adapter = cloudflarePagesAdapter<Env, 'hulla', PagesData>({
-  onError({ data, defaultResponse, env, error, functionPath, phase, request }) {
-    console.error(phase, functionPath, request.url, env, data, error)
-    return defaultResponse
-  },
-})
-```
-
-The hook receives the complete native event context, contract route metadata when routing reached a route, and a clone
-of the protocol-safe default `Response`. It may return a replacement `Response`; returning `undefined` retains the
-default. Options supplied to `mount()` shallowly override adapter defaults.
-
-## Client consumption
-
-The Cloudflare adapters only host the server implementation. Browser, mobile, and service consumers use the ordinary
-contract-shaped client against the deployment or custom domain:
-
-```ts
-import { createClient } from '@hulla/api/client'
-import { fetchTransport } from '@hulla/api/fetch'
-import { contract } from './api/contract'
-
-export const api = createClient(contract, {
-  transport: fetchTransport({ baseUrl: 'https://api.example.com' }),
-})
-
-export async function getUser(id: string) {
-  const result = await api.users.byId({ params: { id } })
-
-  if (result.status === 200) return result.body
-  if (result.status === 404) return undefined
-  throw new Error(`Could not load user: ${result.status}`)
-}
-```
-
-The returned value is a status-discriminated union, so each declared response narrows its body and headers. The client
-can run in another Worker as well as in a browser or Node.js service. Keep caching, retries, and UI state in the
-consumer; see [client authoring](./client-authoring.md) and [client integrations](./plugins.md).
-
-## Scope
-
-The package root targets the current Module Worker `fetch(request, env, ctx)` entrypoint. The legacy Service Worker
-event syntax is intentionally excluded. The `/pages` subpath targets Pages Functions' file-based `onRequest(context)`
-boundary; an advanced-mode Pages project with `_worker.js` uses the package root instead.
-
-Scheduled, queue, email, and alarm handlers do not receive HTTP requests and therefore do not map to an `@hulla/api` server.
-Durable Objects have their own stateful lifecycle. Bindings for D1, KV, R2, Queues, service bindings, and Durable Object
-namespaces need no adapter-specific APIs: expose them through `Env` and consume them from the context factory.
+- [Server context and middleware](./server-context.md) explains portable request context and route policies.
+- [Server fragments and composition](./server-composition.md) shows how to mount selected route groups.
+- [Typed clients](./client-authoring.md) calls the deployed Worker through the same contract.
+- [Cloudflare's fetch-handler documentation](https://developers.cloudflare.com/workers/runtime-apis/handlers/fetch/)
+  covers bindings, execution context, and deployment behavior.

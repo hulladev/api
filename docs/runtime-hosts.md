@@ -1,21 +1,55 @@
-# Bun, Deno and Vercel
+# Web-native runtimes
 
-These hosts use the existing `fetchAdapter()` from `@hulla/api/fetch`; no additional adapter package is needed.
-The runnable fixtures are in [`examples/runtime-hosts`](../examples/runtime-hosts).
+Bun, Deno, and Vercel can all run a handler that accepts a `Request` and returns a `Response`. Create that handler with `fetchAdapter().mount(implementation)`, then connect it to your host using the examples below.
 
-- Bun: run `bun examples/runtime-hosts/bun.ts` after building core. Pass the mounted handler to `Bun.serve({ fetch: handler })`.
-- Deno: run `deno run --config examples/runtime-hosts/deno.json --allow-net --allow-env=PORT examples/runtime-hosts/deno.ts`
-  after building core. The workspace import map points at built core; an installed application can map to the published
-  npm package. Pass the mounted handler to `Deno.serve(handler)`.
-- Vercel: use the runtime-hosts directory as the project root. Its `api/index.ts` exports `{ fetch: handler }` and
-  `vercel.json` rewrites API paths to that function. Install core in the deployment project and keep the shared server
-  module within its root. This is a standalone Web Handler fixture, independent of Next.js.
+## Choose the host boundary
 
-The shared implementation demonstrates request context, bytes, repeated cookies and response streams. `PORT` selects the
-local listen port. Host deployment configuration, authentication and native platform limits remain application-owned;
-the Fetch adapter does not impose a default body limit. Optional `maxBodyBytes` is available when deliberately wanted.
+| Host   | Register the mounted handler                            | Choose it when                                                                           |
+| ------ | ------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Bun    | Pass `handler` to `Bun.serve()`                         | Your application owns the listener and startup code.                                     |
+| Deno   | Export `{ fetch: handler }` for `deno serve`            | Deno should own the listener; use `Deno.serve()` when your application must own startup. |
+| Vercel | Export `{ fetch: handler }` from a root `api/*.ts` file | Vercel should discover and deploy a standalone Web Handler.                              |
 
-`bun run check:runtimes` builds and tests a native Bun HTTP server and invokes the built Vercel Web Handler locally.
-`npm exec --yes --package=deno@2.9.6 -- bun run check:runtimes --deno` also tests a real Deno HTTP server. These checks
-verify bodies above 1 MiB, byte fidelity, cookies, streaming, context and 404/405 behavior. The Vercel check is local
-artifact evidence, not a deployed-cloud test. CI runs all three fixtures.
+The Bun and Deno rows start a long-running server process. The Vercel row exports a function that Vercel invokes from
+its file-based `api` directory. Use a framework or host-specific adapter when the host should own a native router,
+parsed body, response writer, or request context instead.
+
+## The shared boundary
+
+Once you have a contract implementation, mounting it is the same on every Fetch-compatible host:
+
+```ts
+// src/api/handler.ts
+import { fetchAdapter } from '@hulla/api/fetch'
+import { implementation } from './server'
+
+export const handler = fetchAdapter().mount(implementation)
+```
+
+`handler` receives the complete Web `Request`, matches its method and pathname against the contract, decodes and
+validates declared inputs, runs the selected implementation, and returns a Web `Response`. The host then decides how
+that function is reached and where the response is sent.
+
+## Ownership at a glance
+
+`@hulla/api` owns the portable request lifecycle:
+
+- contract route selection, including normal `404` and `405` responses;
+- declared parameter, query, header, and body decoding and validation;
+- server context and handler execution;
+- declared response encoding and headers;
+- propagation of the Web request's cancellation signal to portable handler code.
+
+The host owns everything around that handler:
+
+- listener or function discovery and public path mapping;
+- ports, TLS, deployment, authentication, and platform logging;
+- body-size, duration, concurrency, streaming, and cancellation behavior;
+- host-native values that are not part of a Web `Request`.
+
+Read the [Fetch transport guide](/docs/api/transports/fetch) for adapter options such as `maxBodyBytes` and
+`preserveRequestBody`. Then choose a host-specific setup:
+
+- [Bun](./bun.md) mounts the handler in `Bun.serve` and verifies it with a local HTTP request.
+- [Deno](./deno.md) exports the handler for `deno serve` and keeps additional runtime permissions explicit.
+- [Vercel Functions](./vercel.md) exports the handler from a root `api` file and aligns file routing with the contract path.

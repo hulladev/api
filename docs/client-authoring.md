@@ -1,6 +1,8 @@
 # Client authoring
 
-`createClient(contractOrSelection, options)` returns a plain tree of endpoint functions, or a single function when given a route. Start with the shared contract from [contract authoring](./contract-authoring.md). Construction prepares the selected routes once; every call returns a promise. Middleware is supplied in the options.
+`createClient()` turns a [contract](./contract-authoring.md) into functions you can call. Pass the route's input, await the response, and check its status before using the body.
+
+## Create a client and make a call
 
 ```ts
 import { createClient } from '@hulla/api/client'
@@ -22,21 +24,29 @@ if (result.status === 200) {
 }
 ```
 
-An omitted or path-relative `baseUrl` uses the host document's URL when the runtime can resolve relative `Request`
-objects. Configure an absolute `baseUrl` in Node.js and SSR runtimes; the transport reports this requirement explicitly
-when the native `Request` constructor cannot resolve the URL.
+In a browser, you can omit `baseUrl` to call the current origin. In Node.js and other server runtimes, use an absolute URL unless your framework provides a request-aware Fetch. See [Server and browser calls](./hybrid-rendering.md) for the two setups.
+
+## Pass input and request options
 
 Routes without declared request data take only optional request-scoped transport options:
 
 ```ts
+const controller = new AbortController()
+
 await client.health()
-await client.health({ signal })
+await client.health({ signal: controller.signal })
 ```
 
 Routes with declared request data take those options as a second argument:
 
 ```ts
-await client.users.rename(input, { signal })
+const controller = new AbortController()
+const input = {
+  params: { id: 'user-1' },
+  body: { name: 'Ada' },
+}
+
+await client.users.rename(input, { signal: controller.signal })
 ```
 
 ## Consuming responses in an application
@@ -68,17 +78,29 @@ changing the underlying client.
 A context factory runs once per call with the encoded request and route metadata. Middleware runs in array order and wraps transport execution and response decoding:
 
 ```ts
+const session = { accessToken: 'example-token' }
+
 export const client = createClient(contract, {
   transport: fetchTransport({ baseUrl: 'https://api.example.com' }),
-  context: ({ request }) => ({ accessToken: session.accessToken, path: request.path }),
-  middleware: [async ({ context, next, request }) => {
-    request.headers.authorization = `Bearer ${context.accessToken}`
-    return next()
-  }],
+  context: ({ request }) => ({
+    accessToken: session.accessToken,
+    path: request.path,
+  }),
+  middleware: [
+    async ({ context, next, request }) => {
+      request.headers.authorization = `Bearer ${context.accessToken}`
+      return next()
+    },
+  ],
 })
 ```
 
-Context can contain memoized functions when a value is expensive and only some middleware needs it. Request headers are mutable. Route identity, method, and path are fixed before middleware; URL rewriting belongs in the transport. Middleware may reject a call or return a typed contract-level error through `errors` or `response`. Calling `next()` twice is an error.
+Context can hold memoized functions for expensive values that only some middleware needs.
+
+Request headers are mutable. Route identity, method, and path are fixed before middleware; rewrite URLs in the transport. Middleware can reject a call or return a typed contract-level error through `errors` or `response`.
+
+> [!WARNING] Call next only once
+> Calling `next()` twice is an error. Return its result so the caller receives the transport response.
 
 Use the standalone `clientMiddleware(contract, handler)` typing helper for reusable middleware. It exposes portable route metadata and the selected contract's declared errors. Inline middleware also infers the context from construction options.
 
@@ -87,24 +109,42 @@ Use the standalone `clientMiddleware(contract, handler)` typing helper for reusa
 Pass the required contract node directly to construction:
 
 ```ts
+import { clientMiddleware, createClient } from '@hulla/api/client'
+import { inProcessTransport } from '@hulla/api/in-process'
+import { contract } from './contract'
+import { implementation } from './server'
+
+const transport = inProcessTransport(implementation)
+const logRequests = clientMiddleware(contract, ({ next, route }) => {
+  console.info(route.key.join('.'))
+  return next()
+})
+const authenticate = clientMiddleware(contract, ({ next, request }) => {
+  request.headers.authorization = 'Bearer example-token'
+  return next()
+})
+
 export const health = createClient(contract.routes.health, {
   transport,
   middleware: [logRequests],
 })
-export const organizations = createClient(contract.routes.organizations, {
+export const users = createClient(contract.routes.users, {
   transport,
   middleware: [logRequests, authenticate],
 })
 
 // Optional application namespace.
-export const client = { health, organizations }
+export const client = { health, users }
 ```
 
 Selections retain inherited paths, parameter schemas, and declared errors through public `$contract` metadata. Each constructor owns its context factory and a snapshot of its middleware array. Construction never modifies another client.
 
-Clients can cover any subset of endpoints. There is no client builder or recomposition operation. Endpoint names such as `use`, `select`, and `compose` are ordinary names. A selected route is a function; a selected router is a tree of functions. Server composition remains exhaustive because an implementation must supply its selected handlers. Selection does not automatically split JavaScript bundles; use real module boundaries for code splitting.
+A selected route produces one callable function; a selected router produces a tree of functions. Clients can cover any subset of endpoints, while a server must implement every route in its selection.
 
-For framework-specific client placement, server-only import guards, and native server-function patterns, see [hybrid rendering](./hybrid-rendering.md).
+Selection does not split JavaScript bundles. Use separate modules for code splitting. Names such as `use`, `select`, and `compose` remain ordinary endpoint names; the client has no builder or recomposition operation.
+
+For framework-specific client placement, server-only import guards, and native server-function patterns, see
+[server and browser calls](./hybrid-rendering.md).
 
 ## Transport boundary
 
@@ -115,11 +155,13 @@ The client does not throw merely because a transport response has a 4xx or 5xx s
 The core does not add retries, caching, deduplication, domain exceptions, loading state, or query-library behavior. Those policies can be ordinary application functions:
 
 ```ts
-export async function createUser(input: Parameters<typeof client.organizations.createUser>[0]) {
-  const result = await client.organizations.createUser(input)
+export async function renameUser(
+  input: Parameters<typeof client.users.rename>[0],
+) {
+  const result = await client.users.rename(input)
 
-  if (result.status !== 201) {
-    throw new Error(`Could not create user: ${result.status}`)
+  if (result.status !== 200) {
+    throw new Error(`Could not rename user: ${result.status}`)
   }
 
   return result.body
@@ -129,10 +171,13 @@ export async function createUser(input: Parameters<typeof client.organizations.c
 When the client and server share one JavaScript process, use the same client API with the in-process transport:
 
 ```ts
-import { inProcessAdapter } from '@hulla/api/in-process'
+import { createClient } from '@hulla/api/client'
+import { inProcessTransport } from '@hulla/api/in-process'
+import { contract } from './contract'
+import { implementation } from './server'
 
 const client = createClient(contract, {
-  transport: inProcessAdapter().mount(implementation),
+  transport: inProcessTransport(implementation),
 })
 ```
 
@@ -150,16 +195,31 @@ Use ordinary functions for application logic. Use a selected in-process client w
 
 ## Response validation
 
-Validation follows the contract declaration, with no client-wide mode. `response.json<User>()` uses native JSON parsing and supplies compile-time types; it does not check the shape at runtime. `response.json(userSchema)` validates and applies the schema's declared transforms on the server, then sends the resulting output. `response.json(userCodec)` additionally encodes application values on the server and decodes them on the client. The client does not rerun ordinary response schemas. It trusts the server contract, while still checking status, content type, and transport parsing. Codec responses explicitly validate and decode on the client.
+The response declaration determines validation; there is no client-wide validation mode:
 
-Static `headers` objects are captured and normalized when the client is constructed. Supply `headers: () => currentHeaders` when values must change per call.
+| Declaration | Server | Client |
+| --- | --- | --- |
+| `response.json<User>()` | Serializes native JSON; no shape check. | Parses JSON; trusts the declared type. |
+| `response.json(userSchema)` | Validates and applies schema transforms. | Receives the server's parsed output. |
+| `response.json(userCodec)` | Validates and encodes application values. | Validates and decodes them. |
+
+All forms check the declared status, content type, and transport parsing. Ordinary response schemas do not run again on the client. Use a [codec](./value-round-trips.md) when the client must decode a richer application value.
+
+Static `headers` objects are captured and normalized when the client is constructed. Supply a function that returns the current headers when values must change per call.
 
 For very large contracts exported from a library that emits `.d.ts` files, give the client an explicit public type:
 
 ```ts
 import { createClient, type ClientFor } from '@hulla/api/client'
+import { inProcessTransport } from '@hulla/api/in-process'
+import { contract } from './contract'
+import { implementation } from './server'
 
-export const client: ClientFor<typeof contract> = createClient(contract, { transport })
+const transport = inProcessTransport(implementation)
+
+export const client: ClientFor<typeof contract> = createClient(contract, {
+  transport,
+})
 ```
 
 This preserves endpoint types while allowing TypeScript to name the contract instead of expanding the complete inferred client. The 1,000-route diagnostic reaches TypeScript's inferred declaration serialization limit (`TS7056`) without this annotation; ordinary type checking still succeeds. Selected clients remain useful for keeping application modules focused.

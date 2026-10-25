@@ -1,101 +1,178 @@
 # Message-port transport
 
-`@hulla/api-message-port` carries the transport-neutral client invocation over an ordered, bidirectional message
-channel. It works directly with browser and worker `MessagePort`, Node.js `worker_threads.MessagePort`, and Electron's
-EventEmitter-style `MessagePortMain`. A small async endpoint interface supports other IPC bridges without making the core
-package depend on a desktop runtime.
+`@hulla/api-message-port` lets a client call an API running in a worker or another process through a message channel. Connect both ends of the channel, then use the client as you would over HTTP.
 
-## Installation
+## Install the transport
+
+<!-- docs:package-manager -->
 
 ```sh
+# Bun
 bun add @hulla/api @hulla/api-message-port
+
+# npm
+npm install @hulla/api @hulla/api-message-port
+
+# pnpm
+pnpm add @hulla/api @hulla/api-message-port
+
+# Yarn
+yarn add @hulla/api @hulla/api-message-port
 ```
 
-MessagePort and custom IPC endpoints share this package. Core's Fetch and in-process transports remain available without it.
+## Run one call across a `MessageChannel`
 
-## MessagePort setup
+This Node.js example creates both ends of a channel, mounts a server on one port, and calls it from the other. Browser and worker runtimes expose `MessageChannel` globally, so omit the Node import there.
 
-Give one end of a channel to the server and the other to the client:
+```ts filename="src/api/message-port-demo.ts"
+import { MessageChannel } from "node:worker_threads";
+import { defineContract, response, route } from "@hulla/api";
+import { createClient } from "@hulla/api/client";
+import { defineServer } from "@hulla/api/server";
+import {
+  messagePortAdapter,
+  messagePortTransport,
+} from "@hulla/api-message-port";
 
-```ts
-import { createClient } from '@hulla/api/client'
-import { messagePortAdapter, messagePortTransport } from '@hulla/api-message-port'
+const contract = defineContract({
+  routes: {
+    health: route.get("/health", {
+      responses: { 200: response.text() },
+    }),
+  },
+});
 
-const server = messagePortAdapter(serverPort).mount(implementation)
-const transport = messagePortTransport(clientPort)
+const implementation = defineServer(contract).implement({
+  health: () => ({ status: 200, body: "ok" }),
+});
 
-await Promise.all([server.ready, transport.ready])
+const channel = new MessageChannel();
+const server = messagePortAdapter(channel.port1).mount(implementation);
+const transport = messagePortTransport(channel.port2);
 
-const client = createClient(contract, { transport })
-const result = await client.users.byId({ params: { id: 'user-1' } })
-```
+try {
+  await Promise.all([server.ready, transport.ready]);
 
-`serverPort` and `clientPort` may be DOM, Web Worker, Node worker-thread, or Electron ports. The adapter detects
-`addEventListener`/`removeEventListener` and `on`/`off` listener styles and calls `start()` when the host exposes it.
-Electron can therefore use the renderer's transferred DOM port on one side and `MessagePortMain` on the other without an
-Electron-specific package.
+  const client = createClient(contract, { transport });
+  const result = await client.health();
 
-Calls are correlated by generated IDs, so one port supports concurrent requests whose responses finish in any order. A
-custom `channel` separates independent APIs sharing a port:
-
-```ts
-const server = messagePortAdapter(serverPort, { channel: 'admin-api' }).mount(implementation)
-const transport = messagePortTransport(clientPort, { channel: 'admin-api' })
-```
-
-The client forwards aborts as cancellation messages. A message-port-bound context factory can observe cooperative server
-cancellation and access the normalized endpoint, original port or endpoint, and request envelope:
-
-```ts
-const adapter = messagePortAdapter(serverPort)
-
-const server = defineServer(contract, {
-  context: adapter.context(({ endpoint, message, port, request }) => ({
-    signal: request.signal,
-  })),
-})
-```
-
-Keep the context factory portable when it does not need these values. An implementation bound to a different native
-adapter is rejected when mounted.
-
-## Representations and streams
-
-JSON, text, and byte bodies cross as their encoded wire values. Form data is converted to ordered string/file entries so
-it does not depend on native `FormData` structured-clone support; files retain their bytes, name, media type, and modified
-time. Raw response values must themselves be supported by the endpoint's serialization.
-
-Response streams use pull messages. The server reads one `Uint8Array` chunk for each pending client `next()` call, so a
-slow consumer does not cause the transport to eagerly buffer the complete producer. Returning early from iteration or
-aborting the request closes the remote iterator. Stream cancellation remains cooperative for handler work that has
-already started.
-
-Call `transport.close()` and `server.close()` when their owners shut down. These methods remove listeners and settle
-active work but deliberately do not close the supplied port, because the application owns that port and may share it.
-
-## Tauri, Dioxus, and custom IPC
-
-For ready-made host helpers and JSON-safe relays, see [desktop bridges](./desktop-bridges.md).
-
-Tauri channels and Dioxus eval messaging are not JavaScript `MessagePort` objects: their other endpoint is Rust and their
-serialization and lifecycle are host-defined. Use the exported `MessageEndpoint` interface when an application provides
-an ordered, bidirectional bridge:
-
-```ts
-import type { MessageEndpoint } from '@hulla/api-message-port'
-
-const endpoint: MessageEndpoint = {
-  send: (message) => desktopIpc.send(message),
-  subscribe: async (listener) => desktopIpc.listen(listener),
+  console.log(result.body); // "ok"
+} finally {
+  await transport.close();
+  await server.close();
+  channel.port1.close();
+  channel.port2.close();
 }
 ```
 
-`subscribe` may be asynchronous; `ready` prevents the first call from racing listener installation. The bridge must
-preserve the message union and `Uint8Array` values, or explicitly encode and restore binary values. The protocol message
-types and `MESSAGE_PORT_PROTOCOL_VERSION` are exported for a native implementation.
+`messagePortAdapter()` receives the server-side endpoint. `messagePortTransport()` supplies the client transport. The client still returns the contract's status-discriminated result; only the route between client and implementation has changed.
 
-This endpoint hook is enough for JavaScript-to-JavaScript routing through a Tauri or Dioxus host. A Rust service cannot
-mount a TypeScript `defineServer()` implementation; it must implement the exported protocol on the native side or expose
-an application-specific command transport instead. Port or IPC possession is also not authentication—desktop apps must
-apply their own capability and origin policy when distributing endpoints.
+## Choose the endpoint shape
 
+| Boundary                                                        | What to pass                                                        |
+| --------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Browser, worker, or Node.js `MessagePort`                       | Pass the port directly                                              |
+| Electron `MessagePortMain` or transferred renderer port         | Pass the port directly, or normalize it with `electronEndpoint()`   |
+| Ordered IPC that preserves structured messages and `Uint8Array` | Implement `MessageEndpoint`                                         |
+| Tauri, Dioxus, or another ordered string relay                  | Use a helper from the [desktop bridges](./desktop-bridges.md) guide |
+
+Native ports may expose DOM-style listeners or EventEmitter-style `on`/`off` listeners. The package normalizes both and calls `start()` when the port provides it.
+
+A custom structured endpoint has two operations. In an adapter module where `bridge` is your application-owned ordered IPC object:
+
+```ts
+import type { MessageEndpoint } from "@hulla/api-message-port";
+
+const endpoint: MessageEndpoint = {
+  send: (message) => bridge.send(message),
+  subscribe: (listener) => bridge.subscribe(listener),
+};
+```
+
+Here, `bridge` is application-owned and must preserve message order, the exported `MessagePortMessage` union, and `Uint8Array` values. If the host only transports strings, use `desktopEndpoint()` instead of inventing another serialization format.
+
+The desktop helpers are exported from `/electron`, `/desktop`, `/tauri`, and `/dioxus`; their host-specific setup and lifetime rules are covered in [desktop bridges](./desktop-bridges.md).
+
+## Understand readiness, channels, and ownership
+
+`server.ready` and `transport.ready` resolve after the local endpoint listener has been installed. They are not a handshake with the peer. Client calls wait for the transport listener automatically; awaiting both promises is useful when either endpoint subscribes asynchronously.
+
+One port can carry concurrent calls because every request has a correlation ID. It can also carry independent APIs when each pair uses a different channel:
+
+```ts
+const server = messagePortAdapter(serverPort, {
+  channel: "admin-api",
+}).mount(implementation);
+
+const transport = messagePortTransport(clientPort, {
+  channel: "admin-api",
+});
+```
+
+The default channel is `@hulla/api`, and the current protocol version is `1`. A custom channel must be non-empty and match exactly. Messages for another channel or protocol version are ignored. A channel separates traffic; it does not authenticate the sender or authorize a call.
+
+The application owns port transfer, access policy, host shutdown, and native port closure. `transport.close()` rejects local calls, sends best-effort cancellation messages, and removes its listener; it does not send a close notification to the server. `server.close()` sends that notification, cancels active handlers and streams cooperatively, and removes its listener. Neither method closes the supplied port.
+
+## Cancel work and consume streams
+
+Pass an `AbortSignal` through the generated client call:
+
+```ts
+const controller = new AbortController();
+const pending = client.health({ signal: controller.signal });
+
+controller.abort(new Error("No longer needed"));
+await pending; // rejects with the abort reason
+```
+
+An abort during asynchronous endpoint setup rejects without sending the request. After a request has been sent, the transport sends a cancellation message. The server aborts the request signal and closes an active stream iterator when possible. Handler code must still cooperate with that signal; cancellation cannot forcibly stop arbitrary work.
+
+Response streams are pull-driven. Every client iterator read asks the producer for one `Uint8Array` chunk, so a slow consumer does not make the transport buffer the whole stream. Returning from the generated stream iterator early or aborting the call cancels the remote producer.
+
+## Know what crosses the boundary
+
+Requests support JSON, text, bytes, and form data. Responses additionally support empty values, raw values, and streams. `response.raw()` is transport-native: over this transport the generated client receives the native message-port response envelope. Use an explicit representation or codec when the caller needs a portable body value.
+
+Form data is encoded as ordered string and file entries rather than relying on native `FormData` structured cloning; file bytes, name, media type, and modification time are retained.
+
+Native ports use their host's structured-clone rules. A custom endpoint must serialize the same values itself. In particular, a raw response value must be supported by that endpoint's serialization.
+
+Declared route statuses, including declared `4xx` and `5xx` results, resolve normally. Protocol and session failures reject with `MessagePortTransportError`:
+
+| Code              | Meaning                                                             |
+| ----------------- | ------------------------------------------------------------------- |
+| `closed`          | The local transport or remote server session closed                 |
+| `invalid-message` | A response or stream message did not match the protocol             |
+| `remote-error`    | The server reported a routing, decoding, handler, or stream failure |
+
+Endpoint setup and local send failures may instead reject with the endpoint's own error.
+
+Use the adapter's `onError` mount option when the server must log or replace its default protocol-safe failure response. The transport does not add authentication, retries, reconnection, replay, caching, or deduplication.
+
+## Use transport-specific server context only when needed
+
+Bind context to the adapter when a server needs the original port, request envelope, normalized endpoint, or cancellation signal. Continuing with the same `contract` and server-side port:
+
+```ts
+const adapter = messagePortAdapter(serverPort);
+
+const contextualImplementation = defineServer(contract, {
+  context: adapter.context(({ port, request }) => ({
+    port,
+    signal: request.signal,
+  })),
+}).implement({
+  health: ({ context }) => ({
+    status: 200,
+    body: context.port === serverPort ? "ok" : "unexpected port",
+  }),
+});
+
+const server = adapter.mount(contextualImplementation);
+```
+
+Keep the server portable when it does not need those values. An implementation with context bound to another native adapter cannot be mounted here.
+
+## Next steps
+
+Read [desktop bridges](./desktop-bridges.md) for Electron handoff, Tauri channels, Dioxus eval, and string relays. Use [WebSocket](./websocket.md) when the boundary is a long-lived network connection rather than local IPC.

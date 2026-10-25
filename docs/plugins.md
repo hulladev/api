@@ -1,79 +1,57 @@
-# Client integrations
+# Choose a query-library integration
 
-Client integrations are explicit parallel views over the client described in
-[client authoring](./client-authoring.md). They do not register with `createClient()`, mutate route calls, add `$`
-properties, or run hooks during ordinary client construction. These examples use the shared contract from
-[contract authoring](./contract-authoring.md).
+Your API client fetches data. Add a query library when several components need to share that data, show loading states, or refresh it after a change.
 
-## TanStack Query
+Use the client directly when a framework loader or ordinary function already does what you need.
 
-```ts
-import { createClient } from '@hulla/api/client'
-import { fetchTransport } from '@hulla/api/fetch'
-import { createTanStackQuery } from '@hulla/api-tanstack-query'
-import { contract } from './contract'
+| You use | Add | The helper gives you |
+| --- | --- | --- |
+| TanStack Query v5 | [`@hulla/api-tanstack-query`](./tanstack-query.md) | Query keys and query/mutation options |
+| SWR 2 | [`@hulla/api-swr`](./swr.md) | Keys and fetchers for reads and mutations |
+| A framework loader or plain function | Nothing extra | Call the client directly |
 
-const client = createClient(contract, {
-  transport: fetchTransport({ baseUrl: 'https://api.example.com' }),
-})
+## The shared mental model
 
-const query = createTanStackQuery(client)
-const input = { params: { id: 'user-1' } }
-
-query.users.queryKey() // ['users']
-query.users.byId.queryKey(input) // ['users', 'byId', input]
-query.users.byId.queryOptions(input)
-query.users.byId.mutationOptions() // mutationFn accepts input
-```
-
-Pass those objects directly to the adapter for the UI framework. For example, React consumers use them without another
-wrapper:
-
-```tsx
-import { useMutation, useQuery } from '@tanstack/react-query'
-
-const user = useQuery(query.users.byId.queryOptions(input))
-const renameUser = useMutation(query.users.rename.mutationOptions())
-
-if (user.data?.status === 200) {
-  user.data.body
-}
-
-renameUser.mutate({ params: { id: 'user-1' }, body: { name: 'Ada' } })
-```
-
-The original client remains unchanged and directly callable. The integration is paid for only by applications that
-import and construct it.
-
-## SWR
+Both integrations create a parallel, contract-shaped view over a client that already exists:
 
 ```ts
-import { createSWR } from '@hulla/api-swr'
-
-const swr = createSWR(client)
-const [key, fetcher] = swr.users.byId.queryOptions(input)
+const query = createTanStackQuery(client);
+const swr = createSWR(client);
 ```
 
-Pass the tuple directly to `useSWR` and narrow the declared response status before reading its body:
+They do not mutate `client`, add `$` properties, or run hooks during client creation. They also do not own the
+transport, cache policy, retries, hydration, or framework lifecycle. The selected query library owns those policies;
+the integration only derives typed keys and executable helpers from the client's route tree.
 
-```tsx
-import useSWR from 'swr'
+The helper must receive input for a route that declares request data. An input-free route can use
+`queryOptions()` without an argument. In both views, `queryKey` is reserved as an integration name, so a contract
+node with that name cannot be represented in the generated integration tree.
 
-const user = useSWR(...swr.users.byId.queryOptions(input))
+## Cache scope and response behavior
 
-if (user.data?.status === 200) {
-  user.data.body
-}
+Pass a string-only `prefix` when separate clients share one query-library cache:
+
+```ts
+const query = createTanStackQuery(client, {
+  prefix: ["service", tenantId, sessionVersion],
+});
+const swr = createSWR(client, {
+  prefix: ["service", tenantId, sessionVersion],
+});
 ```
 
-Both integrations expose router prefix keys, exact route keys, bound query helpers, and bound or unbound mutation helpers. Input-free routes use `queryOptions()` without arguments.
+`prefix` is a cache namespace, not a URL prefix. Include the tenant, authentication, or session scope needed to keep
+entries separate, but never put credentials in a key. Recreate the integration when that scope changes and clear
+sensitive cached data when the user signs out.
 
-Server integrations should likewise wrap a completed implementation or adapter explicitly. Core intentionally has no generic lifecycle hook system.
+> A declared 4xx or 5xx response is data by default. Narrow `result.status` before reading its `body`; configure the
+> client with `errorMode: 'throw'` only when named declared errors should reject instead. Operational, transport, and
+> schema failures reject regardless.
 
-## Cache namespaces and error policy
+Choose the focused guide for the cache owner you selected:
 
-Pass `{ prefix: ['api-name', tenantId, sessionVersion] }` as the second argument to `createTanStackQuery` or `createSWR` when clients share a cache. The default remains an empty prefix. Recreate the integration when tenant/auth scope changes, and clear sensitive cached data on logout. Prefixes identify a scope; do not put credentials in keys.
+- [TanStack Query](./tanstack-query.md) shows query and mutation options, cancellation, and prefix invalidation.
+- [SWR](./swr.md) shows key/fetcher tuples, mutation tuples, and revalidation.
 
-TanStack Query uses router keys for prefix invalidation and forwards its query signal. SWR uses structurally serialized route/input keys. The name `queryKey` is reserved at every level of these integration views. Authoring controls such as `use` and `select` are excluded from their types and runtime keys.
-
-Declared error responses are data by default. A query library therefore considers them a successful fetch unless application code throws or the client uses the declared-error `errorMode: 'throw'` policy. Choose this policy deliberately; a transport/schema failure already rejects.
+For the underlying client call and response contract, see [client authoring](./client-authoring.md). For status,
+declared-error, transport, and schema failure behavior, see [errors](./errors.md).

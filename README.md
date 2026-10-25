@@ -83,7 +83,7 @@ Worker, Electron, and custom desktop IPC setup is covered in
 [`docs/message-port.md`](./docs/message-port.md).
 Use ordinary functions for application logic. Use a selected in-process client when local calls need the HTTP contract lifecycle.
 Result-returning clients powered by `@hulla/control` are available through the separate
-[`@hulla/api-control`](./packages/control/README.md) package.
+[`@hulla/api-control`](./docs/control.md) integration guide.
 Explicit TanStack Query/SWR client integrations are covered in
 [`docs/plugins.md`](./docs/plugins.md).
 Structured operational errors, Standard Schema issue compatibility, and protocol problem conversion are covered in
@@ -98,8 +98,10 @@ Hono native routing, middleware, context, and multi-runtime deployment are cover
 H3 v2 native routing, middleware, event context, and multi-runtime deployment are covered in
 [`docs/h3.md`](./docs/h3.md).
 Elysia native routing, lifecycle, context, and deployment are covered in [`docs/elysia.md`](./docs/elysia.md).
-Cloudflare Module Workers and Pages Functions, including native context, file routing, and fallback boundaries, are covered in
-[`docs/cloudflare.md`](./docs/cloudflare.md).
+Cloudflare Module Workers and Pages Functions are covered separately in
+[`docs/cloudflare.md`](./docs/cloudflare.md) and
+[`docs/cloudflare-pages.md`](./docs/cloudflare-pages.md), including native context, file routing, and fallback
+boundaries.
 AWS Lambda HTTP API v2 and Function URL deployment is covered in
 [`docs/aws-lambda.md`](./docs/aws-lambda.md).
 Azure Functions v4 HTTP trigger deployment is covered in
@@ -108,16 +110,18 @@ Google Cloud Run functions HTTP deployment is covered in
 [`docs/google-cloud-functions.md`](./docs/google-cloud-functions.md).
 Netlify Functions routing, native context, and Web handler deployment are covered in
 [`docs/netlify-functions.md`](./docs/netlify-functions.md).
-Next.js Route Handlers, server-side and client-side consumption, caching, and Server Action composition are covered in
-[`docs/next.md`](./docs/next.md).
+Next.js App Router Route Handler mounting and native context are covered in
+[`docs/next.md`](./docs/next.md). Server-side Fetch policy, Data Cache tags, invalidation, Server Actions, and browser
+cache boundaries are covered separately in [`docs/next-data.md`](./docs/next-data.md).
 TanStack Start contract-backed server routes, loader consumption, native context, framework boundaries, and fragment deployment are covered in
 [`docs/tanstack-start.md`](./docs/tanstack-start.md).
 React Router v7 resource routes, loaders and actions, native load context, and fragment deployment are covered in
 [`docs/react-router.md`](./docs/react-router.md).
 SolidStart v2 API routes, Solid Router consumption, native request-event state, and full-stack framework boundaries are covered in
 [`docs/solid-start.md`](./docs/solid-start.md).
-SvelteKit endpoints, remote functions, enhanced Fetch consumption, native request-event state, and full-stack framework boundaries are covered in
-[`docs/sveltekit.md`](./docs/sveltekit.md).
+SvelteKit endpoints, enhanced Fetch consumption, and native request-event state are covered in
+[`docs/sveltekit.md`](./docs/sveltekit.md). Application-local query, command, and form callbacks are covered in
+[`docs/sveltekit-remote-functions.md`](./docs/sveltekit-remote-functions.md).
 Nuxt/Nitro server routes, `useAsyncData`, request-aware fetching, native H3 context, and framework boundaries are covered in
 [`docs/nuxt.md`](./docs/nuxt.md).
 Astro endpoints, native render context, colocated SSR calls, and deferred server islands are covered in
@@ -146,12 +150,13 @@ Framework integrations, OpenAPI tooling, query integrations, MessagePort, and We
 
 The publishable package uses the next major version while the root workspace and benchmarks remain private.
 
-See the [migration guide](./docs/migration.md) for direct client construction, contract selections, response headers and request lifetime changes.
+See the [2.0 migration reference](./docs/migration.md) for removed APIs, package moves, and behavior changes. The website's guided migration starts with one complete route.
 
-For safe server/browser client setup across frameworks, see [hybrid rendering](./docs/hybrid-rendering.md).
+For choosing between local, framework-native, and HTTP calls across rendering boundaries, see
+[server and browser calls](./docs/hybrid-rendering.md).
 
 NestJS integrates through the separate [`@hulla/api-nestjs`](./docs/nestjs.md) package.
-See [WebSocket transport](./docs/websocket.md) and [Bun, Deno and Vercel runtime fixtures](./docs/runtime-hosts.md) for the other runtime integrations.
+See [WebSocket transport](./docs/websocket.md) and the [Web-native runtime guide](./docs/runtime-hosts.md) for the other runtime integrations.
 
 Koa middleware is available through [`@hulla/api-koa`](./docs/koa.md).
 [Desktop bridges](./docs/desktop-bridges.md) cover Electron ports, Tauri channels and Dioxus eval messaging.

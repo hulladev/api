@@ -1,213 +1,253 @@
 # Express
 
-`@hulla/api-express` attaches a complete server implementation or deployable fragment to an existing Express app or
-`Router`. It never creates an Express application.
+Add your contract's routes to an Express app or `Router` with `@hulla/api-express`. Register your body parsers and middleware before mounting the routes.
 
-## Prerequisites
+## Install the adapter
 
-This guide starts at the adapter boundary. First define the shared contract from
-[contract authoring](./contract-authoring.md), then turn it into the server value mounted below:
+The adapter supports Express 4.18 and later, including Express 5.
+
+<!-- docs:package-manager -->
+
+```sh
+# Bun
+bun add @hulla/api @hulla/api-express express zod && bun add --dev @types/express
+
+# npm
+npm install @hulla/api @hulla/api-express express zod && npm install --save-dev @types/express
+
+# pnpm
+pnpm add @hulla/api @hulla/api-express express zod && pnpm add --save-dev @types/express
+
+# Yarn
+yarn add @hulla/api @hulla/api-express express zod && yarn add --dev @types/express
+```
+
+## Mount a route and call it
+
+Declare the HTTP boundary in a shared contract. This route accepts a user ID in the path and a new name in a JSON
+body:
+
+```ts
+// src/api/contract.ts
+import { defineContract, request, response, route } from '@hulla/api'
+import { z } from 'zod'
+
+export const contract = defineContract({
+  basePath: '/api',
+  routes: {
+    renameUser: route.patch('/users/:id', {
+      params: z.object({ id: z.string() }),
+      body: request.json(z.object({ name: z.string().min(1) })),
+      responses: {
+        200: response.json(
+          z.object({ id: z.string(), name: z.string() })
+        ),
+      },
+    }),
+  },
+})
+```
+
+Implement that route in server-only code:
 
 ```ts
 // src/api/server.ts
 import { defineServer } from '@hulla/api/server'
 import { contract } from './contract'
 
-const server = defineServer(contract)
-
-export const implementation = server.implement({
-  health: ({ response }) => response(200, 'ok'),
-  users: {
-    byId: ({ params, response }) => response(200, { id: params.id, name: 'Ada' }),
-    rename: ({ params, body, response }) => response(200, { id: params.id, name: body.name }),
-  },
+export const implementation = defineServer(contract).implement({
+  renameUser: ({ params, body, response }) =>
+    response(200, {
+      id: params.id,
+      name: body.name,
+    }),
 })
 ```
 
-`defineServer(contract)` creates the server authoring scope. `implement()` requires the handler tree to cover the
-contract and returns the complete `implementation` accepted by `mount()`. See
-[server authoring](./server-authoring.md) for context, middleware, declared errors, and independently deployable
-fragments.
+> Register body parsers and request-enriching middleware before `mount()`. Calling
+> `expressAdapter(app)` creates the adapter; `mount()` is the operation that registers routes.
 
-## Mount on Express
+Create the Express app, install its JSON parser, and mount the implementation:
 
 ```ts
-import express from 'express'
+// src/server.ts
 import { expressAdapter } from '@hulla/api-express'
+import express from 'express'
 import { implementation } from './api/server'
 
 const app = express()
-const adapter = expressAdapter(app)
-const host = process.env.HOST ?? '127.0.0.1'
-const preferredPort = Number(process.env.PORT ?? 43187)
 
-app.use(express.json())
+app.use(express.json({ limit: '1mb' }))
+
+const adapter = expressAdapter(app)
 adapter.mount(implementation)
 
-function listen(port: number): void {
-  const server = app.listen(port, host, () => {
-    const address = server.address()
-    if (address !== null && typeof address !== 'string') {
-      console.log(`Listening on http://${host}:${address.port}`)
-    }
-  })
-
-  server.once('error', (error) => {
-    if ((error as NodeJS.ErrnoException).code === 'EADDRINUSE' && port !== 0) {
-      console.warn(`Port ${port} is occupied; selecting an available port instead`)
-      listen(0)
-      return
-    }
-
-    throw error
-  })
-}
-
-listen(preferredPort)
+app.listen(3000, '127.0.0.1', () => {
+  console.log('API listening on http://127.0.0.1:3000')
+})
 ```
 
-The explicit IPv4 loopback address avoids `localhost` resolving differently across machines. Port `43187` is the
-development default, while `HOST` and `PORT` can override either value. If the requested port is occupied, passing
-port `0` lets the operating system select a free ephemeral port atomically; the logged URL reports the actual port.
+`mount()` returns that same `app`. Once the server is running, send a request through Express:
 
-Each selected contract route is registered with its exact HTTP method and path. A fragment therefore scopes
-registration naturally:
+```sh
+curl -i -X PATCH http://127.0.0.1:3000/api/users/u_123 \
+  -H 'content-type: application/json' \
+  --data '{"name":"Grace"}'
+```
+
+The response has status `200`, an `application/json` content type, and this body:
+
+```json
+{"id":"u_123","name":"Grace"}
+```
+
+The request crossed Express's native router. It was not a direct call to the implementation.
+
+## Keep middleware in execution order
+
+The adapter registers one native Express route handler for every selected contract route. For a matching request:
+
+1. Express runs middleware registered before the route, including parsers, authentication, and request enrichment.
+2. Express matches the method and path and supplies `req.params`, `req.query`, `req.headers`, and `req.body`.
+3. The adapter decodes and validates those values against the contract.
+4. `@hulla/api` creates server context, runs its middleware, and calls the route handler.
+5. The adapter writes the declared result through the Node response.
+
+A successful adapter response finishes the request, so ordinary middleware registered later does not run. Unmatched
+requests continue to later Express routes and middleware. Express error middleware still handles failures raised by
+earlier Express middleware.
+
+Express also owns matching details such as router prefixes, case sensitivity, and trailing-slash behavior. The adapter
+passes the compiled contract method and path to Express instead of adding a catch-all route.
+
+## Parse request bodies in Express
+
+The adapter uses the parsed value already stored in `req.body`. Choose a parser and limit that match each contract
+representation:
+
+| Contract body | Middleware before `mount()` | Value supplied in `req.body` |
+| --- | --- | --- |
+| JSON | `express.json({ limit: '1mb' })` | Parsed JSON value |
+| Text | `express.text({ type: 'text/*', limit: '1mb' })` | String |
+| Bytes | `express.raw({ type: 'application/octet-stream', limit: '5mb' })` | `Buffer` or `Uint8Array` |
+| Form data | Application-selected multipart middleware and mapping | Native `FormData` |
+
+There is no adapter-side body-size option because Express performs the read. Parser limits and malformed-body errors
+therefore belong to Express middleware and its error handler.
+
+If a contract route expects a body but no earlier parser supplied one, the adapter returns an
+`invalid-request-body` problem with status `400`. If the request content type does not match the declared
+representation, it returns `unsupported-media-type` with status `415`.
+
+## Scope routes with an Express Router
+
+Mount an implementation fragment on a `Router` when a route group needs its own Express middleware or prefix:
 
 ```ts
-const users = server.implement(contract.routes.users, userHandlers)
-const usersRouter = express.Router()
-const usersAdapter = expressAdapter(usersRouter)
+import { expressAdapter } from '@hulla/api-express'
+import express from 'express'
+import { userFragment } from './api/users'
+import { requireUser } from './middleware/require-user'
 
-usersRouter.use(requireUser)
-usersRouter.use(rateLimit())
-usersAdapter.mount(users)
-app.use(usersRouter)
+const router = express.Router()
+
+router.use(requireUser)
+expressAdapter(router).mount(userFragment)
+
+app.use('/account', router)
 ```
 
-There is no separate route-descriptor API. Pass either a fragment or a complete implementation to `mount()`.
-Express middleware stays in Express: use `app.use()` globally or a dedicated `Router` when it should apply only to a
+Express prepends `/account` to the contract paths registered on this router. Only the routes selected by
+`userFragment` are registered. See [server fragments and composition](./server-composition.md) for creating the
 fragment.
 
-## Client consumption
+## Add Express state to server context
 
-Express only hosts the server implementation. A browser, mobile application, or another service consumes the contract
-through the ordinary typed Fetch client:
+Keep the context factory portable when it only needs application services or route metadata. Use
+`adapter.context()` when handlers need the native Express request, response, or `res.locals`.
 
 ```ts
-import { createClient } from '@hulla/api/client'
-import { fetchTransport } from '@hulla/api/fetch'
+import { defineServer } from '@hulla/api/server'
+import { expressAdapter } from '@hulla/api-express'
+import express from 'express'
 import { contract } from './api/contract'
 
-export const api = createClient(contract, {
-  transport: fetchTransport({ baseUrl: 'https://api.example.com' }),
-})
-
-export async function getUser(id: string) {
-  const result = await api.users.byId({ params: { id } })
-
-  if (result.status === 200) return result.body
-  if (result.status === 404) return undefined
-  throw new Error(`Could not load user: ${result.status}`)
+type Locals = {
+  tenantId: string
 }
-```
-
-The host framework does not change the client call surface. The returned value is a status-discriminated union, so each
-declared response narrows its body and headers. Put loading state, caching, retries, and mutations in the consuming
-application; see [client authoring](./client-authoring.md) and [client integrations](./plugins.md).
-
-## Middleware order
-
-Express middleware composes normally because the adapter registers native Express route handlers. Registration order
-is execution order:
-
-```ts
-app.use(cors())
-app.use(express.json())
-app.use(authenticate)
-
-adapter.mount(implementation)
-
-app.use(expressErrorHandler)
-```
-
-For a matching route, execution proceeds as follows:
-
-1. Express middleware registered before `mount()` runs, including CORS, body parsing, and authentication.
-2. The adapter reads native Express params, query, headers, and parsed body values and decodes the declared contract input.
-3. The `@hulla/api` context factory, middleware, and route implementation run.
-4. The adapter writes the result through the Express response.
-
-An ordinary Express middleware registered after the routes does not run after a successful response. Express error
-middleware placed there receives adapter transport failures through `next(error)`. Unmatched requests continue to
-later Express routes and middleware.
-
-The adapter reuses `req.params`, `req.query`, `req.headers`, and a body parsed by earlier Express middleware directly.
-Install the parser matching each contract representation before `mount()`: `express.json()` for JSON,
-`express.text()` for text, `express.raw()` for bytes, and an application-selected multipart parser for form data. `@hulla/api`
-does not buffer or parse the underlying Node stream as a fallback; this keeps body limits, content-type selection, and
-parser errors under Express's native middleware policy. A missing parser produces an `invalid-request-body` response,
-and its setup error is available to `onError`. Responses use Express's native status, header, JSON, send, and streaming
-APIs with backpressure.
-
-## Express state in `@hulla/api` context
-
-Portable handlers do not receive a Fetch-shaped request. Use `expressAdapter()` when context construction needs
-Express state installed by earlier middleware, such as Passport's `user`, session data, or `res.locals`:
-
-```ts
-import express from 'express'
-import { expressAdapter } from '@hulla/api-express'
-import { defineServer } from '@hulla/api/server'
 
 const app = express()
-const adapter = expressAdapter<{ tenant: string }>(app)
 
-const server = defineServer(contract, {
-  context: adapter.context(({ request, response, locals, route }) => ({
-    route,
-    user: request.user,
-    tenant: locals.tenant,
-    requestId: response.getHeader('x-request-id'),
-  })),
+app.use((request, response, next) => {
+  response.locals.tenantId = request.header('x-tenant-id') ?? 'public'
+  next()
 })
 
-const implementation = server.implement(handlers)
-adapter.mount(implementation)
-```
+const adapter = expressAdapter<Locals>(app)
 
-Inside the factory:
-
-- `request` is Express's native `Request`, including declaration-merging additions from middleware packages.
-- `response` is Express's native `Response`.
-- `locals` is the current `res.locals` object. Supply its object type to `expressAdapter<Locals>()`; omit the type when
-  custom locals typing is unnecessary.
-
-`expressAdapter()` binds the caller-owned app or router once. Its `context()` method declares a native context
-requirement, while `mount()` performs route registration. `@hulla/api` still owns the declared response write, so context code should not
-independently finish the response.
-
-That context factory is bound to the Express adapter. Mounting it through Next.js, the generic Fetch adapter, or
-`inProcessAdapter().mount()` fails immediately instead of passing an incompatible request object. Use an ordinary portable
-context factory when it needs only contract route metadata or request-independent services.
-
-The optional second argument to `expressAdapter()` sets transport defaults shared by every fragment mounted through that
-adapter. This is the natural place for a common lower-level runtime error hook; it does not introduce another middleware
-system:
-
-```ts
-const adapter = expressAdapter(app, {
-  onError({ error, phase, request, response, locals, defaultResponse }) {
-    console.error(phase, request.originalUrl, response.statusCode, locals, error)
-    return defaultResponse
+const implementation = defineServer(contract, {
+  context: adapter.context(({ request, response, locals, route }) => ({
+    originalUrl: request.originalUrl,
+    requestId: response.getHeader('x-request-id'),
+    routeKey: route.key.join('.'),
+    tenantId: locals.tenantId,
+  })),
+}).implement({
+  renameUser: ({ params, body, context, response }) => {
+    console.info(context.tenantId, context.originalUrl)
+    return response(200, { id: params.id, name: body.name })
   },
 })
 
 adapter.mount(implementation)
 ```
 
-The hook receives the native Express request, response, and `res.locals` in the same input object as the portable error
-fields. Returning `undefined` keeps the default response. Errors raised while Express reads or writes the transport are
-passed to the next Express error handler.
+Supply the `Locals` type to `expressAdapter<Locals>()`; the generic does not populate `res.locals` at runtime.
+Express middleware must set those values before the route runs. Declaration-merging additions from packages such as
+authentication middleware remain available on the native `request` type.
 
-Options passed to `mount()` shallowly override these defaults for that mount. Set `onError: undefined` there to restore
-the protocol-safe default handling for one fragment.
+`adapter.context()` binds the implementation to Express. Mounting it with another adapter fails immediately instead
+of providing an incompatible request object. Context code may inspect the native response, but it should not finish
+the response independently; the route handler returns the declared result that the adapter writes.
+
+## Separate adapter errors from Express errors
+
+Use `onError` to observe or replace failures from contract input decoding, server context, `@hulla/api` middleware,
+the route handler, response serialization, or the adapter's transport write:
+
+```ts
+const adapter = expressAdapter(app, {
+  onError({ error, phase, request, locals, defaultResponse }) {
+    console.error(phase, request.originalUrl, locals, error)
+    return defaultResponse
+  },
+})
+```
+
+`defaultResponse` is an adapter response value, not an Express `Response`. Return it to keep the protocol-safe
+fallback, return another adapter response to replace it, or return `undefined` to keep the fallback automatically.
+Options passed to `mount()` override adapter defaults for that mount; `onError: undefined` disables an inherited
+hook.
+
+Express parser and middleware failures that occur before the route do not enter `onError`; place an Express error
+handler after the routes for those failures. If the adapter cannot write its fallback before headers are sent, it
+passes that write failure to `next(error)`. If headers have already been sent, it closes the response because a new
+status and body can no longer be written.
+
+## Handle streams and disconnects
+
+Declared stream responses are written as `Uint8Array` chunks with Node backpressure. The adapter also connects the
+request lifetime to the handler's `AbortSignal`:
+
+- aborting the request or closing the response early aborts cooperative handler work;
+- closing a streaming response calls the source iterator's `return()` method;
+- a failure after response headers have been sent cannot replace the response already in flight.
+
+Use the handler's `signal` with database queries, fetch calls, and stream producers that support cancellation.
+
+## Next steps
+
+- [Server context and middleware](./server-context.md) explains portable context and route policies.
+- [Server fragments and composition](./server-composition.md) shows how to build independently mountable route groups.
+- [Typed clients](./client-authoring.md) calls the same contract from a browser or another service.
+- [Express documentation](https://expressjs.com/) covers middleware, routers, and deployment.

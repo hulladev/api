@@ -1,226 +1,302 @@
 # TanStack Start
 
-For the recommended local/browser setup and enforced module boundaries, see [hybrid rendering](./hybrid-rendering.md). Its examples link to the production-build fixtures used by this integration.
+Serve your API from a TanStack Start wildcard [server route](https://tanstack.com/start/latest/docs/framework/react/guide/server-routes). Browser code and other apps can then call the contract's routes over HTTP.
 
-`@hulla/api-tanstack-start` mounts an `@hulla/api` server implementation in a TanStack Start server route. The contract remains
-the API source of truth; Start owns the wildcard host route, request middleware, rendering, loaders, and application
-caches.
+For an operation used only by your Start app, a [server function](https://tanstack.com/start/latest/docs/framework/react/guide/server-functions) can call the implementation directly. We'll cover both approaches after mounting the API.
 
-Use the adapter for a shared or public HTTP boundary: independently deployed clients, generated clients or OpenAPI,
-runtime response validation, or an API consumed outside the Start application. Prefer Start's native server functions
-for application-local RPC, native loaders for route-local orchestration, and native server routes for one-off framework
-endpoints such as OAuth callbacks, webhook byte verification, redirects, or file handling. The package intentionally
-does not generate server functions, loaders, query options, middleware, or cache behavior.
+## Install the integration
 
-## Prerequisites
+Start with an existing TanStack Start application. Its Start and Vite configuration should already work before you add the API packages.
 
-This guide starts at the adapter boundary. First define the shared contract from
-[contract authoring](./contract-authoring.md), then turn it into the server value mounted below:
+<!-- docs:package-manager -->
+
+```sh
+# Bun
+bun add @hulla/api @hulla/api-tanstack-start zod
+
+# npm
+npm install @hulla/api @hulla/api-tanstack-start zod
+
+# pnpm
+pnpm add @hulla/api @hulla/api-tanstack-start zod
+
+# Yarn
+yarn add @hulla/api @hulla/api-tanstack-start zod
+```
+
+The adapter declares `@tanstack/react-start ^1.160.0` as a peer dependency. Keep the Start packages in the application on compatible versions.
+
+## Define the contract and implementation
+
+Keep the contract in shared code so server code and HTTP clients use the same paths and response variants. This example declares `GET /api/health` and `POST /api/users`:
+
+```ts
+// src/api/contract.ts
+import { defineContract, response, route, router } from "@hulla/api";
+import { z } from "zod";
+
+const user = z.object({
+  id: z.string(),
+  name: z.string(),
+});
+
+export const contract = defineContract({
+  basePath: "/api",
+  routes: {
+    health: route.get("/health", {
+      responses: { 200: response.json(z.literal("ok")) },
+    }),
+    users: router("/users", {
+      routes: {
+        create: route.post("/", {
+          body: z.object({ name: z.string().min(1) }),
+          responses: { 201: response.json(user) },
+        }),
+      },
+    }),
+  },
+});
+```
+
+Implement the same route tree in server code:
 
 ```ts
 // src/api/server.ts
-import { defineServer } from '@hulla/api/server'
-import { contract } from './contract'
+import { defineServer } from "@hulla/api/server";
+import { contract } from "./contract";
 
-const server = defineServer(contract)
-
-export const implementation = server.implement({
-  health: ({ response }) => response(200, 'ok'),
+export const implementation = defineServer(contract).implement({
+  health: ({ response }) => response(200, "ok"),
   users: {
-    byId: ({ params, response }) => response(200, { id: params.id, name: 'Ada' }),
-    rename: ({ params, body, response }) => response(200, { id: params.id, name: body.name }),
+    create: ({ body, response }) =>
+      response(201, { id: "user-1", name: body.name }),
   },
-})
+});
 ```
 
-`defineServer(contract)` creates the server authoring scope. `implement()` requires the handler tree to cover the
-contract and returns the complete `implementation` accepted by `mount()`. See
-[server authoring](./server-authoring.md) for context, middleware, declared errors, and independently deployable
-fragments.
+The contract's `basePath` is `/api`, so the host route must pass requests beneath `/api` to the adapter. See [contract authoring](./contract-authoring.md) and [server implementations](./server-authoring.md) for the complete authoring APIs.
 
-## Contract-backed server route
+## Mount a wildcard server route
 
-Mount a complete implementation or fragment under one wildcard file route:
+Create a `$` wildcard route and give its server configuration the handler map returned by `mount()`:
 
 ```ts
 // src/routes/api/$.ts
-import { tanStackStartAdapter } from '@hulla/api-tanstack-start'
-import { createFileRoute } from '@tanstack/react-router'
-import { implementation } from '~/api/server'
+import { tanStackStartAdapter } from "@hulla/api-tanstack-start";
+import { createFileRoute } from "@tanstack/react-router";
+import { implementation } from "~/api/server";
 
-export const Route = createFileRoute('/api/$')({
+export const Route = createFileRoute("/api/$")({
   server: {
     handlers: tanStackStartAdapter().mount(implementation),
   },
-})
+});
 ```
 
-The returned object contains one shared handler for each HTTP method selected by the implementation. Start matches the
-host route and supplies a native `Request`; `@hulla/api` then matches the operation using the contract's complete method and
-path, decodes its declared input, runs context and middleware, and serializes a declared response.
+`mount()` returns one handler for each supported HTTP method present in the implementation or fragment: `DELETE`, `GET`, `PATCH`, `POST`, and `PUT`. Start matches `/api/$` first; `@hulla/api` then matches the native method and complete URL against the mounted contract.
 
-The two parameter layers remain separate:
+The host wildcard and contract parameters are separate:
 
-- Start's wildcard `params._splat` identifies the remainder of the host route.
-- An `@hulla/api` operation handler receives the decoded `params` declared by its contract route.
+- Start's `params._splat` identifies the remainder captured by `/api/$`.
+- A contract handler receives the decoded parameters declared by its operation.
 
-TanStack Start server routes cannot expose `@hulla/api`'s `QUERY` method. `mount()` rejects an implementation
-or fragment containing one instead of silently leaving the operation unreachable.
+TanStack Start server routes cannot expose `@hulla/api`'s `QUERY` method. `mount()` rejects an implementation or fragment containing a `QUERY` route during setup.
 
-Set the optional error hook once on the adapter to reuse it for every mounted fragment. It receives one object containing
-`@hulla/api`'s protocol-safe default `Response`, the native request, Start middleware context, host-route params, and route
-metadata:
+## Verify the HTTP boundary
 
-```ts
-const adapter = tanStackStartAdapter<StartContext, StartParams>({
-  onError({ error, phase, request, startContext, startParams, defaultResponse }) {
-    console.error(phase, request.url, startContext, startParams, error)
-    return defaultResponse
-  },
-})
+Start the application with its normal development command. The port may differ in your project; the examples use `http://localhost:3000`.
 
-const handlers = adapter.mount(implementation)
+Call the read route:
+
+```sh
+curl -i http://localhost:3000/api/health
 ```
 
-Options passed to `mount()` shallowly override the adapter defaults for that handler map.
+The server route returns:
 
-## Consume the API from Start
+```http
+HTTP/1.1 200 OK
+content-type: application/json
 
-The server-route adapter does not replace TanStack Router's data APIs. Create the ordinary client once and use its route
-calls inside loaders, which continue to own navigation preloading and route-cache behavior:
+"ok"
+```
+
+Call the mutation route:
+
+```sh
+curl -i \
+  -X POST \
+  -H 'content-type: application/json' \
+  -d '{"name":"Ada"}' \
+  http://localhost:3000/api/users
+```
+
+The server route returns the declared `201` variant:
+
+```http
+HTTP/1.1 201 Created
+content-type: application/json
+
+{"id":"user-1","name":"Ada"}
+```
+
+## Choose a caller for each boundary
+
+| Caller or data flow                                              | Use                                                               |
+| ---------------------------------------------------------------- | ----------------------------------------------------------------- |
+| Browser or external process calling the HTTP API                 | `fetchTransport()` pointed at the wildcard server route           |
+| Start loader or component calling application-local server logic | A Start server function backed by a server-only in-process client |
+| Server-only code that already runs beside the implementation     | `inProcessTransport(implementation)` directly                     |
+| Data shared through a browser cache                              | `@hulla/api-tanstack-query` around the appropriate client         |
+
+Use a browser-safe client with `fetchTransport()` when the browser or another process must call the mounted HTTP route:
 
 ```ts
-// src/api/client.ts
-import { createClient } from '@hulla/api/client'
-import { fetchTransport } from '@hulla/api/fetch'
-import { contract } from './contract'
-
-const baseUrl: string | undefined = import.meta.env.VITE_API_ORIGIN
-
-if (typeof window === 'undefined' && (!baseUrl || !URL.canParse(baseUrl))) {
-  throw new Error('VITE_API_ORIGIN must be an absolute URL during SSR')
-}
+// src/api/browser-client.ts
+import { createClient } from "@hulla/api/client";
+import { fetchTransport } from "@hulla/api/fetch";
+import { contract } from "./contract";
 
 export const api = createClient(contract, {
-  transport: fetchTransport({ baseUrl }),
-})
+  transport: fetchTransport(),
+});
 ```
 
-```tsx
-// src/routes/users/$id.tsx
-import { createFileRoute } from '@tanstack/react-router'
-import { api } from '~/api/client'
+For another origin, pass an absolute `baseUrl` to `fetchTransport()`. Server-rendered callers need an absolute origin unless the application supplies a request-aware Fetch, and authenticated server calls must explicitly forward the credentials they need.
 
-export const Route = createFileRoute('/users/$id')({
-  loader: async ({ params }) => {
-    const result = await api.users.byId({ params: { id: params.id } })
-
-    if (result.status !== 200) {
-      throw new Error(`Could not load user: ${result.status}`)
-    }
-
-    return result.body
-  },
-  component: UserPage,
-})
-
-function UserPage() {
-  const user = Route.useLoaderData()
-  return <h1>{user.name}</h1>
-}
-```
-
-An omitted `baseUrl` is appropriate for browser-only calls. Loaders can run during SSR, where Fetch requires an
-absolute origin, so configure the public API origin for an isomorphic loader. Authenticated server-side calls must also
-forward only the required credentials; a server-side fetch does not inherit the incoming browser request's cookies.
-
-For data shared outside one route, wrap the same client with `createTanStackQuery()` from
-`@hulla/api-tanstack-query`, pass its `queryOptions()` to `ensureQueryData()` in the loader and `useSuspenseQuery()` in
-the component, and use its `mutationOptions()` for writes. TanStack Query remains responsible for caching, hydration,
-optimistic updates, and invalidation.
-
-## Native Start context
-
-Use `tanStackStartAdapter()` when `@hulla/api` context construction needs the native request, wildcard params, or context
-installed by Start request middleware. Pass the middleware context and host parameter types to the helper:
+Use a Start server function for application-local RPC. Its handler can dynamically import a server-only client so the implementation never enters a browser bundle:
 
 ```ts
-import { defineServer } from '@hulla/api/server'
-import { tanStackStartAdapter } from '@hulla/api-tanstack-start'
+// src/api/local.server.ts
+import { createClient } from "@hulla/api/client";
+import { inProcessTransport } from "@hulla/api/in-process";
+import { contract } from "./contract";
+import { implementation } from "./server";
+
+export const api = createClient(contract, {
+  transport: inProcessTransport(implementation),
+});
+```
+
+```ts
+// src/api/health.functions.ts
+import { createServerFn } from "@tanstack/react-start";
+
+export const getHealth = createServerFn({ method: "GET" }).handler(async () => {
+  const { api } = await import("./local.server");
+  const result = await api.health();
+  return result.body;
+});
+```
+
+Import that server function from a route loader:
+
+```tsx
+// src/routes/index.tsx
+import { createFileRoute } from "@tanstack/react-router";
+import { getHealth } from "../api/health.functions";
+
+export const Route = createFileRoute("/")({
+  loader: () => getHealth(),
+  component: Page,
+});
+
+function Page() {
+  const health = Route.useLoaderData();
+  return <main>API status: {health}</main>;
+}
+```
+
+Start loaders are isomorphic: they can run during server rendering and again in the browser. Keeping the local client behind a server function prevents the implementation and its dependencies from crossing into the browser build.
+
+The in-process transport applies the contract client/server boundary, but it does not enter the mounted HTTP route, match its URL, or run Start route middleware. It still runs the `@hulla/api` context, middleware, handler, and response pipeline. Use the HTTP client when the native HTTP boundary is part of the behavior you need.
+
+For data shared across routes, optionally use [`@hulla/api-tanstack-query`](./tanstack-query.md) with `createTanStackQuery()`. TanStack Query owns cache keys, hydration, optimistic updates, mutations, and invalidation; the Start adapter does not create query options or cache policy.
+
+## Use native Start context
+
+Use `adapter.context()` when a contract handler needs the native request, Start middleware context, or host-route parameters:
+
+```ts
+// src/api/server-with-context.ts
+import { defineServer } from "@hulla/api/server";
+import { tanStackStartAdapter } from "@hulla/api-tanstack-start";
+import { contract } from "./contract";
 
 type StartContext = {
-  readonly session: { readonly userId: string }
-}
+  readonly session: { readonly userId: string };
+};
 
 type StartParams = {
-  readonly _splat: string | undefined
-}
+  readonly _splat: string | undefined;
+};
 
-const adapter = tanStackStartAdapter<StartContext, StartParams>()
-const server = defineServer(contract, {
+const adapter = tanStackStartAdapter<StartContext, StartParams>();
+
+export const server = defineServer(contract, {
   context: adapter.context(({ request, route, startContext, startParams }) => ({
+    request,
     operation: route.key,
     session: startContext.session,
     splat: startParams._splat,
-    userAgent: request.headers.get('user-agent'),
   })),
-})
+});
 ```
 
-`route` is still the contract-derived operation metadata. The resulting factory is bound to the TanStack Start adapter;
-mounting it through Express, Next.js, generic Fetch, or `inProcessAdapter().mount()` fails immediately. Use an ordinary
-context factory when it needs only portable route metadata or request-independent services.
+The context factory receives `request`, `startContext`, `startParams`, and the matched contract `route`. An implementation created with this adapter-bound context cannot be passed to `inProcessTransport()` or another adapter because those transports cannot supply Start's native context. Keep context construction portable when it needs only contract metadata or request-independent services.
 
-## Split large APIs with fragments
+## Customize adapter errors
 
-A single wildcard route imports the implementation it mounts. For a large API, avoid forcing unrelated route groups
-into one server chunk: create independently executable `@hulla/api` fragments and mount each fragment under the matching Start
-wildcard. Only the selected contract routes are compiled into that fragment.
+Use `onError` for Start-aware logging or to replace the protocol-safe default response:
 
 ```ts
-// src/api/public.server.ts
-import { server } from './definition'
-import { contract } from './contract'
+import { tanStackStartAdapter } from "@hulla/api-tanstack-start";
+import { implementation } from "./server";
 
-export const publicImplementation = server.implement(contract.routes.public, {
-  health: () => ({ status: 200, body: 'ok' }),
-  users: {
-    byId: async ({ params }) => {
-      const user = await findPublicUser(params.id)
-      return user
-        ? { status: 200, body: user }
-        : { status: 404, body: { message: 'User not found' } }
-    },
+const adapter = tanStackStartAdapter({
+  onError({ error, phase, request, route, defaultResponse }) {
+    console.error(phase, request.url, route?.key, error);
+    return defaultResponse;
   },
-})
+});
+
+export const handlers = adapter.mount(implementation);
 ```
 
-```ts
-// src/routes/api/public/$.ts
-import { tanStackStartAdapter } from '@hulla/api-tanstack-start'
-import { createFileRoute } from '@tanstack/react-router'
-import { publicImplementation } from '~/api/public.server'
+The hook receives the native request, matched contract route when available, error phase, and `@hulla/api`'s protocol-safe default `Response`. Return a replacement `Response` to customize the result, or return `undefined` to keep the default.
 
-export const Route = createFileRoute('/api/public/$')({
+## Mount only the contract subtree a boundary owns
+
+Use a fragment when a server route or deployment owns only part of the contract. This fragment selects the `users` router declared earlier and therefore exposes only its `POST` method:
+
+```ts
+// src/api/users.server.ts
+import { defineServer } from "@hulla/api/server";
+import { contract } from "./contract";
+
+const server = defineServer(contract);
+
+export const usersImplementation = server.implement(contract.routes.users, {
+  create: ({ body, response }) =>
+    response(201, { id: "user-1", name: body.name }),
+});
+```
+
+Mount the fragment instead of the complete implementation in the boundary that owns `/api/users`:
+
+```ts
+// src/routes/api/$.ts
+import { tanStackStartAdapter } from "@hulla/api-tanstack-start";
+import { createFileRoute } from "@tanstack/react-router";
+import { usersImplementation } from "~/api/users.server";
+
+export const Route = createFileRoute("/api/$")({
   server: {
-    handlers: tanStackStartAdapter().mount(publicImplementation),
+    handlers: tanStackStartAdapter().mount(usersImplementation),
   },
-})
+});
 ```
 
-Use separate fragments for groups with different deployment, cold-start, middleware, or ownership requirements. Keep
-raw Start routes separate when an endpoint benefits more from Start's native `Request`/`Response` model than from a
-shared contract.
+The host route still passes the complete `/api/users` URL to the adapter; selecting a fragment does not rewrite its contract paths. Use fragments for separate deployment, middleware, cold-start, or ownership boundaries—not merely to shorten one handler file. Keep raw Start routes for endpoints that benefit more from Start's native `Request`/`Response` behavior than from a shared contract.
 
-## Boundary with Start data APIs
-
-- Route loaders own navigation-time preloading and route-cache behavior. They may call an `@hulla/api` client when an existing
-  HTTP contract is the data source, but this package adds no loader abstraction.
-- TanStack Query owns shared client caching, mutations, optimistic updates, hydration, and invalidation. The existing
-  framework-neutral `@hulla/api-tanstack-query` integration can wrap an `@hulla/api` client when needed.
-- Start server functions own same-origin application RPC and their serialization boundary. Do not wrap them around a
-  `@hulla/api` HTTP call merely to reuse this adapter; use a native server function for internal operations.
-- Start request middleware owns request-wide authentication, logging, and platform context. Declare the Start adapter to
-  consume the established context inside contract handlers rather than repeating that work in `@hulla/api` middleware.
-
-This keeps one owner for each concern: Start for application execution and data flow, `@hulla/api` for shared HTTP contracts.
+For shared context and middleware, continue to [context and middleware](./server-context.md). For declared application failures, see [errors](./errors.md). For fragment composition rules, see [fragments and composition](./server-composition.md).

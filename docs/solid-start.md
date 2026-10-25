@@ -1,48 +1,83 @@
 # SolidStart
 
-For the recommended local/browser setup and enforced module boundaries, see [hybrid rendering](./hybrid-rendering.md). Its examples link to the production-build fixtures used by this integration.
+Serve your API from a SolidStart v2 API route, then call it with browser Fetch or a Solid Router query or action.
 
-`@hulla/api-solid-start` mounts an `@hulla/api` server implementation in a SolidStart v2 API route. SolidStart owns file
-routing, request middleware, rendering, server functions, and deployment; `@hulla/api` owns the shared HTTP contract, input
-decoding, middleware and handler execution, and declared response serialization.
+The API route makes the contract available to other apps over HTTP. If an operation is used only by your SolidStart UI, you can use a server-only query with a [local client](https://hulla.dev/docs/api/transports/in-process) instead.
 
-Use this adapter for an HTTP boundary shared with generated clients, mobile applications, other services, or an OpenAPI
-description. Prefer SolidStart server functions for application-local RPC and native API routes for one-off endpoints
-such as OAuth callbacks, signed webhooks, redirects, or file handling. The package does not wrap loaders, actions,
-server functions, middleware, or Nitro.
+## Install the integration
 
-SolidStart v2 requires Node.js 24 or newer and Vite 8. The adapter follows that runtime floor and does not support the
-Vinxi event shape from SolidStart v1.
+Start with an existing SolidStart v2 application whose `vite.config.ts` already runs with the SolidStart Vite plugin. SolidStart v2 requires Node.js 24 or newer and [Vite 8 or 9](https://docs.solidjs.com/solid-start/v2/reference/entrypoints/vite-config); production deployment configuration remains application-owned.
 
-## Prerequisites
+<!-- docs:package-manager -->
+```sh
+# Bun
+bun add @hulla/api @hulla/api-solid-start zod
 
-This guide starts at the adapter boundary. First define the shared contract from
-[contract authoring](./contract-authoring.md), then turn it into the server value mounted below:
+# npm
+npm install @hulla/api @hulla/api-solid-start zod
+
+# pnpm
+pnpm add @hulla/api @hulla/api-solid-start zod
+
+# Yarn
+yarn add @hulla/api @hulla/api-solid-start zod
+```
+
+The adapter's peer dependency is `@solidjs/start` `^2.0.0`. It does not support the Vinxi event shape from SolidStart v1.
+
+## Define the contract and implementation
+
+Keep the contract in shared code. This example declares `GET /api/health` and `POST /api/users`:
+
+```ts
+// src/api/contract.ts
+import { defineContract, response, route, router } from '@hulla/api'
+import { z } from 'zod'
+
+const user = z.object({
+  id: z.string(),
+  name: z.string(),
+})
+
+export const contract = defineContract({
+  basePath: '/api',
+  routes: {
+    health: route.get('/health', {
+      responses: { 200: response.json(z.literal('ok')) },
+    }),
+    users: router('/users', {
+      routes: {
+        create: route.post('/', {
+          body: z.object({ name: z.string().min(1) }),
+          responses: { 201: response.json(user) },
+        }),
+      },
+    }),
+  },
+})
+```
+
+Implement the same route tree in server code:
 
 ```ts
 // src/api/server.ts
 import { defineServer } from '@hulla/api/server'
 import { contract } from './contract'
 
-const server = defineServer(contract)
-
-export const implementation = server.implement({
+export const implementation = defineServer(contract).implement({
   health: ({ response }) => response(200, 'ok'),
   users: {
-    byId: ({ params, response }) => response(200, { id: params.id, name: 'Ada' }),
-    rename: ({ params, body, response }) => response(200, { id: params.id, name: body.name }),
+    create: ({ body, response }) =>
+      response(201, { id: 'user-1', name: body.name }),
   },
 })
 ```
 
-`defineServer(contract)` creates the server authoring scope. `implement()` requires the handler tree to cover the
-contract and returns the complete `implementation` accepted by `mount()`. See
-[server authoring](./server-authoring.md) for context, middleware, declared errors, and independently deployable
-fragments.
+The contract's `basePath` is `/api`, so the catch-all route must pass requests below `/api` to the adapter. See [contract authoring](./contract-authoring.md) and [server implementations](./server-authoring.md) for the complete APIs.
 
-## Catch-all API route
+## Mount the catch-all API route
 
-Create a catch-all route and export the mounted handler under every HTTP method used by the implementation:
+Create a catch-all file route and export the mounted handler only under the methods declared by the sample contract:
 
 ```ts
 // src/routes/api/[...api].ts
@@ -51,29 +86,67 @@ import { implementation } from '~/api/server'
 
 const handler = solidStartAdapter().mount(implementation)
 
-export { handler as DELETE, handler as GET, handler as PATCH, handler as POST, handler as PUT }
+export { handler as GET, handler as POST }
 ```
 
-Only export methods the mounted implementation actually contains. SolidStart discovers API methods from static named
-exports, so the adapter returns one handler rather than a dynamically generated method map. The host catch-all chooses
-the route file; `@hulla/api` then matches the complete request method and URL against the mounted contract fragment.
+SolidStart discovers API methods from static named exports, so `mount()` returns one handler rather than a dynamically generated method map. The host catch-all chooses the file route; `@hulla/api` then matches the complete request method and URL against the mounted contract.
 
-`[...api].ts` covers paths below `/api`. If the contract declares an operation exactly at `/api`, re-export the same
-handler from `src/routes/api/index.ts` as well. SolidStart maps `GET` exports to `HEAD` when there is no explicit `HEAD`
-export. The adapter dispatches that synthesized request through the contract's `GET` route and returns its status and
-headers without a body. During that request, the direct `@hulla/api` `request` has method `GET`, while
-`solidStartEvent.request` retains the native `HEAD` method.
+> Export only the methods present in the mounted implementation. Static method exports are part of SolidStart's route contract; do not export every HTTP method merely because the handler can reject unsupported requests.
 
-SolidStart API routes cannot expose `@hulla/api`'s `QUERY` method. `mount()` rejects a complete implementation or fragment
-containing one rather than leaving it unreachable. Native `OPTIONS` handling can remain in the route file or surrounding
-deployment middleware.
+The `[...api].ts` route covers paths below `/api`. If the contract also declares an operation exactly at `/api`, export the same handler methods from `src/routes/api/index.ts`.
 
-## Consume the API from Solid
+When an API route exports `GET` but not `HEAD`, SolidStart calls the `GET` handler for `HEAD` requests. The adapter dispatches that request through the contract's `GET` route and removes the response body. During native context construction, the direct `request` has method `GET`, while `solidStartEvent.request` retains the incoming `HEAD` method.
 
-The server adapter does not replace Solid's data primitives. Create the ordinary typed `@hulla/api` client, then use its route
-calls as the fetchers inside the application's data layer. The examples below use the official Solid Router; a
-SolidStart application configured with TanStack Solid Router should keep using its loaders and query APIs around the
-same client.
+SolidStart API routes cannot expose `@hulla/api`'s `QUERY` method. `mount()` rejects an implementation or fragment containing one. Keep `OPTIONS` behavior in the route or surrounding middleware when the application needs custom CORS handling.
+
+## Verify the HTTP boundary
+
+Start the application with its normal development command. The port may differ in your project; the examples use `http://localhost:3000`.
+
+```sh
+curl -i http://localhost:3000/api/health
+```
+
+The route returns the declared response:
+
+```http
+HTTP/1.1 200 OK
+content-type: application/json
+
+"ok"
+```
+
+```sh
+curl -i \
+  -X POST \
+  -H 'content-type: application/json' \
+  -d '{"name":"Ada"}' \
+  http://localhost:3000/api/users
+```
+
+The route returns the declared `201` variant:
+
+```http
+HTTP/1.1 201 Created
+content-type: application/json
+
+{"id":"user-1","name":"Ada"}
+```
+
+## Choose a caller
+
+| Caller | Use | Owner of data flow |
+| --- | --- | --- |
+| Browser or external service | `fetchTransport()` against the mounted route | HTTP route and caller |
+| SolidStart UI read | Solid Router `query()` + `createAsync()` | Solid Router query cache and revalidation |
+| SolidStart UI mutation | Solid Router `action()` and a form | Solid Router submission and revalidation |
+| Application-local server code | Server-only query/function + `inProcessTransport()` | The current server process |
+
+For a complete transport decision, see [server and browser calls](./hybrid-rendering.md).
+
+### Browser and external HTTP calls
+
+Create a browser-safe client when the HTTP route itself is the boundary:
 
 ```ts
 // src/api/client.ts
@@ -81,143 +154,139 @@ import { createClient } from '@hulla/api/client'
 import { fetchTransport } from '@hulla/api/fetch'
 import { contract } from './contract'
 
-const baseUrl: string | undefined = import.meta.env.VITE_API_ORIGIN
-
-if (import.meta.env.SSR && (!baseUrl || !URL.canParse(baseUrl))) {
-  throw new Error('VITE_API_ORIGIN must be an absolute URL during SSR')
-}
-
 export const api = createClient(contract, {
-  transport: fetchTransport({ baseUrl }),
+  transport: fetchTransport(),
 })
 ```
 
-An omitted `baseUrl` produces same-origin relative requests in the browser. A Solid Router query can also execute during
-server rendering, where the native `Request` constructor requires an absolute URL, so configure the application's public
-origin when SSR is enabled. If the API is on another origin, configure its origin instead and set the required CORS and
-credential policy there.
+An isomorphic HTTP query needs an absolute public origin during SSR because the server's `Request` constructor cannot resolve a relative URL. A server-side HTTP call also does not inherit browser cookies or authorization headers; forward only the credentials the API requires. Configure an absolute `baseUrl` and the required CORS policy for an API on another origin.
 
-Wrap reads with Solid Router's `query()` and consume them with `createAsync()`. This retains SolidStart's request-scoped
-SSR cache, hydration, navigation preload, and revalidation behavior while `@hulla/api` retains input and response typing:
+### Solid Router query and action
+
+Solid Router's `query()` and `createAsync()` own read caching, preload, and revalidation. Its `action()` owns form submission and pending/error state. Keep this page focused on the boundary; use SolidStart's [data fetching](https://docs.solidjs.com/solid-start/v2/building-your-application/data-fetching) and [data mutation](https://docs.solidjs.com/solid-start/v2/building-your-application/data-mutation) guides for deeper cache and invalidation behavior.
+
+```ts
+// src/api/local.ts
+import 'server-only'
+
+import { createClient } from '@hulla/api/client'
+import { inProcessTransport } from '@hulla/api/in-process'
+import { contract } from './contract'
+import { implementation } from './server'
+
+export const api = createClient(contract, {
+  transport: inProcessTransport(implementation),
+})
+```
+
+```ts
+// src/api/health.ts
+import { query } from '@solidjs/router'
+
+export const getHealth = query(async () => {
+  'use server'
+
+  const { api } = await import('./local')
+  const result = await api.health()
+
+  if (result.status !== 200) throw new Error('Health check failed')
+  return result.body
+}, 'health')
+```
 
 ```tsx
-// src/routes/users/[id].tsx
-import { createAsync, query, type RouteDefinition } from '@solidjs/router'
-import { Show } from 'solid-js'
-import { api } from '~/api/client'
+// src/routes/index.tsx
+import { createAsync } from '@solidjs/router'
+import { getHealth } from '../api/health'
 
-const getUser = query(async (id: string) => {
-  const result = await api.users.byId({ params: { id } })
-
-  if (result.status !== 200) {
-    throw new Error(`Could not load user: ${result.status}`)
-  }
-
-  return result.body
-}, 'user')
-
-export const route = {
-  preload: ({ params }) => getUser(params.id),
-} satisfies RouteDefinition
-
-export default function UserPage(props: { params: { id: string } }) {
-  const user = createAsync(() => getUser(props.params.id))
-
-  return <Show when={user()}>{(value) => <h1>{value().name}</h1>}</Show>
+export default function Home() {
+  const health = createAsync(() => getHealth())
+  return <main>API status: {health()}</main>
 }
 ```
 
-Use an `action()` for writes so forms, pending and error state, progressive enhancement, and query revalidation remain
-Solid Router concerns:
+For a form mutation, keep the same server-only import boundary:
 
 ```tsx
+// src/api/users.ts
 import { action, useSubmission } from '@solidjs/router'
 import { Show } from 'solid-js'
-import { api } from '~/api/client'
 
-const renameUser = action(async (id: string, formData: FormData) => {
-  const result = await api.users.rename({
-    params: { id },
+export const createUser = action(async (formData: FormData) => {
+  'use server'
+
+  const { api } = await import('./local')
+  const result = await api.users.create({
     body: { name: String(formData.get('name') ?? '') },
   })
 
-  if (result.status !== 200) {
-    throw new Error(`Could not rename user: ${result.status}`)
-  }
-
+  if (result.status !== 201) throw new Error('User creation failed')
   return result.body
-}, 'renameUser')
+}, 'createUser')
 
-export default function RenameUser(props: { params: { id: string } }) {
-  const submission = useSubmission(renameUser)
+export function CreateUserForm() {
+  const submission = useSubmission(createUser)
 
   return (
-    <form action={renameUser.with(props.params.id)} method="post">
+    <form action={createUser} method="post">
       <input name="name" />
-      <button disabled={submission.pending}>{submission.pending ? 'Saving…' : 'Save'}</button>
-      <Show when={submission.error}>{(error) => <p>{error().message}</p>}</Show>
+      <button disabled={submission.pending}>
+        {submission.pending ? 'Creating…' : 'Create user'}
+      </button>
+      <Show when={submission.error}>
+        {(error) => <p>{error().message}</p>}
+      </Show>
     </form>
   )
 }
 ```
 
-A successful action revalidates active page queries by default. Use the query's `key` or `keyFor()` with Solid Router's
-revalidation APIs when a mutation needs narrower invalidation.
+The `'use server'` directive makes the query or action a SolidStart server function. Its dynamic import keeps the in-process client and implementation behind that server boundary. The in-process transport avoids a loopback HTTP request and does not enter the mounted API route or run SolidStart API-route middleware; it still runs the `@hulla/api` context, middleware, handler, and response pipeline. Use `fetchTransport()` when the native HTTP boundary is part of the behavior you need.
 
-Browser requests automatically follow Fetch's same-origin credential behavior. A server-side HTTP call does not inherit
-the incoming browser request's cookies or authorization headers; authenticated SSR must deliberately forward only the
-required credentials. If the data is private to this SolidStart UI and does not need the HTTP contract, keep it in a
-server-only query or server function instead of adding an extra HTTP hop.
+## Use native API-event context
 
-## Native API event context
-
-Use `adapter.context()` when context construction needs SolidStart request state:
+Use `adapter.context()` when contract handlers need SolidStart request state. The adapter exposes the native `APIEvent` alongside the matched contract route:
 
 ```ts
+// src/api/server-with-context.ts
 import { defineServer } from '@hulla/api/server'
 import { solidStartAdapter } from '@hulla/api-solid-start'
+import { contract } from './contract'
+
+declare global {
+  namespace App {
+    interface RequestEventLocals {
+      actor: { readonly userId: string }
+    }
+  }
+}
 
 const adapter = solidStartAdapter()
 
-const server = defineServer(contract, {
+export const server = defineServer(contract, {
   context: adapter.context(({ request, route, solidStartEvent }) => ({
     actor: solidStartEvent.locals.actor,
     clientAddress: solidStartEvent.clientAddress,
-    h3Event: solidStartEvent.nativeEvent,
+    nativeEvent: solidStartEvent.nativeEvent,
     operation: route.key,
     request,
   })),
 })
 ```
 
-`solidStartEvent` is SolidStart's complete `APIEvent`: `request`, file-route `params`, mutable response metadata,
-request `locals`, optional `clientAddress`, and the native H3 event remain available. `request` is also exposed directly
-for consistency with the other `@hulla/api` Fetch-based adapters. The `route` value remains contract-derived operation
-metadata; it is separate from `solidStartEvent.params`, which describes the host file route.
+`solidStartEvent` contains the native `APIEvent`: request-scoped `locals`, file-route `params`, mutable response metadata, optional `clientAddress`, and the underlying H3 event. `request` is also exposed directly, while `route` remains contract-derived operation metadata. SolidStart middleware should authenticate the request and populate `event.locals` before the adapter constructs contract context.
 
-Type request locals through SolidStart's standard application augmentation:
+Context created with `adapter.context()` is bound to `solid-start`; another adapter or `inProcessTransport()` cannot supply its native event and rejects the implementation.
 
-```ts
-declare global {
-  namespace App {
-    // Interface declaration is required here because SolidStart uses declaration merging.
-    interface RequestEventLocals {
-      actor: { readonly userId: string }
-    }
-  }
-}
-```
+## Handle adapter errors
 
-SolidStart middleware should authenticate the request and populate `event.locals`. The `@hulla/api` context can then translate
-that framework state into the smaller application context used by contract handlers. A context factory wrapped with
-`adapter.context()` is bound to `solid-start`; mounting it through another adapter or the in-process transport fails
-immediately.
-
-## Errors
-
-Set a shared error hook on the adapter, or override it for one mounted fragment:
+Use `onError` for SolidStart-aware logging or to replace `@hulla/api`'s protocol-safe default response:
 
 ```ts
+// src/routes/api/[...api].ts
+import { solidStartAdapter } from '@hulla/api-solid-start'
+import { implementation } from '~/api/server'
+
 const adapter = solidStartAdapter({
   onError({ error, phase, request, route, solidStartEvent, defaultResponse }) {
     console.error(phase, request.url, route?.key, solidStartEvent.clientAddress, error)
@@ -226,27 +295,16 @@ const adapter = solidStartAdapter({
 })
 
 const handler = adapter.mount(implementation)
+
+export { handler as GET, handler as POST }
 ```
 
-The hook receives `@hulla/api`'s protocol-safe default `Response`, the original SolidStart event, the request, and matched
-contract metadata when available. Return a replacement `Response` or `undefined` to retain the default. Options passed
-to `mount()` shallowly override adapter defaults.
+The hook receives the native event, request, matched contract metadata when available, error phase, and protocol-safe default `Response`. Return a replacement `Response` to customize the result, or `undefined` to keep the default. Model expected application failures as declared contract responses; use this hook for adapter or handler failures.
 
-## Split large APIs with fragments
+## Keep fragments for real host boundaries
 
-A catch-all route imports everything in the implementation it mounts. Large APIs can preserve code-splitting and
-ownership boundaries by creating independently executable fragments and mounting each one below a narrower file route:
+Use an implementation fragment when a route group needs separate code-splitting, middleware, deployment, or ownership boundaries. Mount that fragment from a narrower catch-all file and export only the methods declared by the fragment. See [fragments and composition](./server-composition.md) for the complete `defineServer(contract.routes...)` patterns.
 
-```ts
-// src/routes/api/admin/[...api].ts
-import { solidStartAdapter } from '@hulla/api-solid-start'
-import { adminImplementation } from '~/api/admin.server'
+Keep raw SolidStart API routes for endpoints that benefit more from SolidStart's native `Request`/`Response` and event APIs than from a shared contract. For request-wide authentication and logging, use [SolidStart middleware](https://docs.solidjs.com/solid-start/v2/reference/config/solid-start) and translate its locals through the adapter context above.
 
-const handler = solidStartAdapter().mount(adminImplementation)
-
-export { handler as DELETE, handler as GET, handler as PATCH, handler as POST }
-```
-
-Keep SolidStart's application data flow native: route loaders orchestrate navigation, server functions handle colocated
-RPC, and request middleware owns framework-wide concerns. `@hulla/api` should remain the owner only where a durable HTTP
-contract is useful.
+Next, read [server and browser calls](./hybrid-rendering.md) to choose a transport, [context and middleware](./server-context.md) for shared contract policy, and [errors](./errors.md) for declared application failures.

@@ -1,22 +1,14 @@
-# Contract authoring
+# Contracts
 
-An `@hulla/api` contract declares the HTTP boundary shared by the server implementation and every typed client. Define
-it in a module that is safe to import from both server and client code: schemas, paths, request representations, and
-declared responses belong here; database access and framework state do not.
+A [contract](https://hulla.dev/docs/api/mental-model) lists your API's routes and describes what each accepts and returns. The server uses it to check requests. The client uses it to type your calls.
 
-Install `@hulla/api` and one Standard Schema implementation. The examples use Zod, but Valibot and other Standard
-Schema libraries work without an adapter:
+Keep the contract in a shared file so both can import it. The handlers live separately on the server.
 
-```sh
-bun add @hulla/api zod
-```
+## Declare the endpoints
 
-## Define a contract
-
-This contract is used by the framework adapter guides:
+In `src/api/contract.ts`, compose paths from a base path, router paths, and route paths. The object keys name the typed call tree; they are not URL segments.
 
 ```ts
-// src/api/contract.ts
 import { defineContract, request, response, route, router } from '@hulla/api'
 import { z } from 'zod'
 
@@ -57,40 +49,42 @@ export const contract = defineContract({
 })
 ```
 
-The effective endpoints are `GET /api/health`, `GET /api/users/:id`, and `PATCH /api/users/:id`. `basePath`, router
-paths, and route paths compose structurally; object keys such as `users.byId` form the typed server and client call tree
-but do not add URL segments themselves.
+| Route key | Effective endpoint |
+| --- | --- |
+| `health` | `GET /api/health` |
+| `users.byId` | `GET /api/users/:id` |
+| `users.rename` | `PATCH /api/users/:id` |
 
-Declared base, router, and route paths cannot contain percent signs or control characters. Use path parameters for
-values containing literal percent signs or other characters requiring URL encoding; the client encodes those values
-and the server decodes them once. Pre-encoded path declarations, including encoded dot segments, are rejected at setup.
+`basePath`, router path, and route path combine to form each URL. Object keys form the typed call tree; renaming a key changes client/server calls, not the URL. Every `:param` placeholder needs a matching key in that route or router's object-shaped `params` schema. Router params are inherited by child routes; route-level params can add route-specific keys.
 
-## Requests and responses
+Declared paths describe route structure, not already encoded URLs. They cannot contain percent signs, control characters, query strings, hash fragments, empty segments, backslashes, or literal `.` and `..` segments. Put dynamic values in path parameters instead. The client encodes parameter values and the server decodes them once; literal parameter values `.` and `..` are rejected so URL normalization cannot change the endpoint.
 
-Route inputs are opt-in. Declare `params`, `query`, `headers`, and `body` only when the endpoint accepts them. A request
-body also declares its HTTP representation through helpers such as `request.json()`, `request.text()`, or
-`request.bytes()`.
+## Declare only accepted request inputs
 
-Every concrete response status must be declared. Its representation and schema determine both runtime validation and
-the status-discriminated server/client result type. A handler for `users.byId`, for example, can construct only its
-declared `200` and `404` responses, and a client can narrow `result.status` before reading the corresponding body.
+Inputs are opt-in. Add `params`, `query`, `headers`, or `body` only when a route accepts that input. In the example, both user routes accept an `id` path parameter, while only `rename` accepts a JSON body. `GET` routes cannot declare a body. A body declaration also names its HTTP representation; use `request.json()`, `request.text()`, `request.bytes()`, or `request.formData()` for JSON, text, bytes, or form data.
 
-For native JSON with compile-time types only, use `request.json<Input>()` and `response.json<Output>()`. Passing a schema explicitly adds runtime validation; passing a transforming schema or codec explicitly adds conversion. There is no client-wide validation switch. Type-only declarations do not verify application data at runtime.
+## Declare every response the route can return
 
-Ordinary Standard Schemas validate one direction. Use an explicit `codec()` when the application value and HTTP wire
-value differ—for example, when a `Date` is encoded as an ISO string. The detailed representation and codec rules are in
-[request transport](./request-transport.md).
+Each route lists its concrete response statuses and representations. Here, `users.byId` and `users.rename` may return JSON with status `200` or `404`; `health` returns the text `ok` with status `200`. A status is not implicit: declare each result the handler may produce, using `response.json()`, `response.text()`, or another response helper for its representation.
+
+These declarations shape both sides of the boundary. A server implementation is typed against the declared status/body alternatives, and a client receives a status-discriminated result that it can narrow before reading the body. For example, after calling `users.byId`, check `result.status` before treating its body as either the user object or the not-found message.
+
+Contract-declared errors are separate reusable application failures, not route response schemas. A declared error status cannot also be used by a route response; see [the error model](./errors.md).
+
+## Choose type-only declarations, schemas, or codecs
+
+Choose the declaration according to what should happen at runtime:
+
+| Declaration | What it provides | Use it when |
+| --- | --- | --- |
+| `request.json<Input>()` or `response.json<Output>()` | Compile-time types for native JSON; no application-shape validation | The producer already guarantees the shape and runtime checks are not needed |
+| An explicit Standard Schema, such as a Zod schema | Runtime validation; a transforming schema can also convert values in its validation direction | You want the server to validate decoded request input or validate/transform a response |
+| An explicit `codec()` | Conversion between an application value and its wire representation | Both sides should use a richer value than the HTTP representation, such as `Date` in the application and an ISO string on the wire |
+
+For example, replacing the `request.json(...)` declaration with `request.json<{ name: string }>()` preserves a TypeScript input type but does not check the parsed application's data against that shape. Supplying the Zod schema shown above opts into runtime validation. Do the same for responses with `response.json<Output>()` versus `response.json(schema)`.
+
+Clients do not run ordinary request schemas: the server validates the decoded request before calling the handler. The server validates and transforms an ordinary response before serialization; the client trusts that output and does not rerun the schema. Defaults, transformations, and unknown-field stripping therefore affect the handler's request value or the client's response value. A codec encodes at the sending boundary and decodes at the receiving boundary. Native JSON parsing still rejects malformed JSON when the declaration is type-only, but type-only declarations do not validate application data shape. See [request transport](./request-transport.md) for representation details and [value round trips](./value-round-trips.md) for schema and codec examples.
 
 ## Next steps
 
-The contract has no handlers and does not listen for requests. Continue with [server authoring](./server-authoring.md)
-to create an implementation with `defineServer()`, then choose a framework adapter to mount it. Client applications use
-the same contract with `createClient()` as described in [client authoring](./client-authoring.md).
-
-## Validation direction
-
-Use ordinary schemas as the default for checked HTTP contracts. Request schemas run on the server after parsing. Response schemas run on the server before serialization, and their output is sent to the client. This includes stripping unknown object fields, defaults, and transformations. Handler return types describe schema input; client response types describe schema output. Ordinary response outputs must match their representation: JSON-compatible values for JSON, strings for text and headers, and bytes for byte bodies.
-
-Use `codec()` when both client and handler should work with a richer application value, such as `Date`. The codec encodes at the sending boundary and decodes at the receiving boundary. Native type-only declarations remain available when runtime shape checks are unnecessary. There is no validation mode setting.
-
-See [value round trips](./value-round-trips.md) for numeric and date examples across these declarations.
+The contract declares the API but has no handlers and does not listen for requests. Continue to [server implementations](./server-authoring.md) to implement the routes, then choose an adapter to mount it in your framework. In a client application, use the same contract with `createClient()` as described in [client authoring](./client-authoring.md).

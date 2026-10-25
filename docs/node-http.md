@@ -1,45 +1,78 @@
 # Node.js HTTP
 
-`@hulla/api-node/http` turns a complete `@hulla/api` server implementation or deployable fragment into a Node.js
-`RequestListener`. It uses only `node:http` and does not create or start a server.
+Pass a mounted `@hulla/api-node/http` listener to Node's `createServer()` to serve your API without a framework.
 
-Install `@hulla/api-node` alongside `@hulla/api`, then import `nodeHttpAdapter` from
-`@hulla/api-node/http`. The package root exports the shared Node header, body, lifetime,
-and response helpers used by framework adapters.
+If your app already uses Express, Fastify, or Koa, use its [adapter](https://hulla.dev/docs/api/servers) to share the existing routes and middleware.
+
+## Install the adapter
+
+For TypeScript projects, `@hulla/api-node` expects `@types/node` 22 or later. This example uses Zod for request and
+response schemas.
+
+<!-- docs:package-manager -->
 
 ```sh
-bun add @hulla/api @hulla/api-node
+# Bun
+bun add @hulla/api @hulla/api-node zod && bun add --dev @types/node
+
+# npm
+npm install @hulla/api @hulla/api-node zod && npm install --save-dev @types/node
+
+# pnpm
+pnpm add @hulla/api @hulla/api-node zod && pnpm add --save-dev @types/node
+
+# Yarn
+yarn add @hulla/api @hulla/api-node zod && yarn add --dev @types/node
 ```
 
-## Prerequisites
+## Mount a route and call it
 
-This guide starts at the adapter boundary. First define the shared contract from
-[contract authoring](./contract-authoring.md), then turn it into the server value mounted below:
+Declare the HTTP boundary in a module shared by server and client code:
+
+```ts
+// src/api/contract.ts
+import { defineContract, request, response, route } from '@hulla/api'
+import { z } from 'zod'
+
+export const contract = defineContract({
+  basePath: '/api',
+  routes: {
+    renameUser: route.patch('/users/:id', {
+      params: z.object({ id: z.string() }),
+      body: request.json(z.object({ name: z.string().min(1) })),
+      responses: {
+        200: response.json(
+          z.object({ id: z.string(), name: z.string() })
+        ),
+      },
+    }),
+  },
+})
+```
+
+Implement the route in server-only code. The handler receives decoded, validated inputs, and `response()` only
+accepts a status and body declared by the contract:
 
 ```ts
 // src/api/server.ts
 import { defineServer } from '@hulla/api/server'
 import { contract } from './contract'
 
-const server = defineServer(contract)
-
-export const implementation = server.implement({
-  health: ({ response }) => response(200, 'ok'),
-  users: {
-    byId: ({ params, response }) => response(200, { id: params.id, name: 'Ada' }),
-    rename: ({ params, body, response }) => response(200, { id: params.id, name: body.name }),
-  },
+export const implementation = defineServer(contract).implement({
+  renameUser: ({ params, body, response }) =>
+    response(200, {
+      id: params.id,
+      name: body.name,
+    }),
 })
 ```
 
-`defineServer(contract)` creates the server authoring scope. `implement()` requires the handler tree to cover the
-contract and returns the complete `implementation` accepted by `mount()`. See
-[server authoring](./server-authoring.md) for context, middleware, declared errors, and independently deployable
-fragments.
+> `mount()` returns a Node request listener. It does not create a server, open a port, or choose deployment policy.
 
-## Create a Node server
+Give that listener to Node's `createServer()` and start the caller-owned server:
 
 ```ts
+// src/server.ts
 import { createServer } from 'node:http'
 import { nodeHttpAdapter } from '@hulla/api-node/http'
 import { implementation } from './api/server'
@@ -48,108 +81,164 @@ const handler = nodeHttpAdapter().mount(implementation)
 const server = createServer(handler)
 
 server.listen(3000, '127.0.0.1', () => {
-  console.log('Listening on http://127.0.0.1:3000')
+  console.log('API listening on http://127.0.0.1:3000')
 })
 ```
 
-The adapter receives Node's `IncomingMessage` and `ServerResponse`, then delegates method and pathname selection to the
-compiled `@hulla/api` matcher. It preserves repeated query fields, decodes percent-encoded route parameters, normalizes
-native headers, reads the declared request representation, and writes the selected response directly to the Node
-response. A `HEAD` request executes the matching `GET` route while suppressing its body.
+Once the server is running, send a real HTTP request:
 
-`mount()` also accepts one implementation fragment. Because the returned value is a catch-all listener, mount one
-implementation or one composed fragment set per Node server:
-
-```ts
-const publicApi = serverDefinition.implement(contract.routes.public, publicHandlers)
-const handler = nodeHttpAdapter().mount(publicApi)
+```sh
+curl -i -X PATCH http://127.0.0.1:3000/api/users/u_123 \
+  -H 'content-type: application/json' \
+  --data '{"name":"Grace"}'
 ```
 
-Routes outside the selected fragment produce the same protocol-safe `404` response as any other unmatched path.
+The response has status `200`, an `application/json` content type, and this body:
 
-## Client consumption
-
-The Node adapter only hosts the server implementation. Browser, mobile, and service consumers use the ordinary typed
-Fetch client:
-
-```ts
-import { createClient } from '@hulla/api/client'
-import { fetchTransport } from '@hulla/api/fetch'
-import { contract } from './api/contract'
-
-export const api = createClient(contract, {
-  transport: fetchTransport({ baseUrl: 'http://127.0.0.1:3000' }),
-})
+```json
+{"id":"u_123","name":"Grace"}
 ```
 
-The result remains a status-discriminated union of the contract's responses. See
-[client authoring](./client-authoring.md) and [client integrations](./plugins.md) for consumer-side composition.
+The request crossed Node's network server and the adapter boundary; it was not a direct call to the implementation.
 
-## Native Node context
+## Follow the native request lifecycle
 
-Use the adapter object's `context()` method when request context needs the Node socket, TLS state, remote address, or
-headers:
+For each request passed to the listener:
+
+1. Node supplies an `IncomingMessage` and its paired `ServerResponse`.
+2. The adapter matches the method and pathname against the selected contract routes.
+3. It decodes path parameters, preserves repeated query values, normalizes declared headers, and reads any declared
+   body representation.
+4. `@hulla/api` validates those inputs, creates server context, runs server middleware, and calls the handler.
+5. The adapter serializes the declared result and writes it to the Node response.
+
+Routing produces protocol-safe results without another router:
+
+- an unmatched path returns `404`;
+- a known path with the wrong method returns `405` and an `Allow` header;
+- a `HEAD` request can execute a matching `GET` route, but the adapter suppresses its response body.
+
+The listener handles every request passed to it, so mount one complete implementation or one composed fragment set
+per Node server. When you mount a fragment, only its selected routes match; other paths return `404`. See
+[server fragments and composition](./server-composition.md) for selecting and combining route groups.
+
+## Choose request-body limits
+
+For JSON, text, bytes, and form-data declarations, the adapter reads the one-shot `IncomingMessage` body once before
+creating context or calling the handler. Use the handler's typed `body` field instead of reading the native stream a
+second time.
+
+The request outcome depends on both the contract and the configured byte limit:
+
+| Condition | Result |
+| --- | --- |
+| Content type does not match the contract representation | `415` unsupported media type |
+| Body cannot be decoded or validated | `400` invalid request |
+| Body exceeds `maxBodyBytes` | `413` request body too large |
+
+`maxBodyBytes` defaults to `Infinity`. Set a finite number to bound the bytes read by the adapter, including chunked
+requests without a `Content-Length` header:
 
 ```ts
+const adapter = nodeHttpAdapter({ maxBodyBytes: 1_048_576 })
+const handler = adapter.mount(implementation)
+```
+
+Adapter defaults apply to every mount. Options passed to `mount()` shallowly override those defaults for that
+implementation or fragment. A reverse proxy or deployment environment can enforce an additional limit before the
+request reaches Node.
+
+## Add Node state to server context
+
+Keep context portable when it only needs application services or route metadata. Use `adapter.context()` when a
+handler needs the native request, response, socket, or Node headers:
+
+```ts
+// src/api/server-with-node-context.ts
 import { defineServer } from '@hulla/api/server'
 import { nodeHttpAdapter } from '@hulla/api-node/http'
+import { contract } from './contract'
 
 const adapter = nodeHttpAdapter()
-const serverDefinition = defineServer(contract, {
-  context: adapter.context(({ request, response, route }) => ({
+
+export const implementation = defineServer(contract, {
+  context: adapter.context(({ request, route }) => ({
     remoteAddress: request.socket.remoteAddress,
     requestId: request.headers['x-request-id'],
-    response,
-    route,
+    routeKey: route.key.join('.'),
   })),
+}).implement({
+  renameUser: ({ params, body, context, response }) => {
+    console.info(context.requestId, context.routeKey)
+    return response(200, { id: params.id, name: body.name })
+  },
 })
+
+export const handler = adapter.mount(implementation)
 ```
 
-The factory receives the original `IncomingMessage` as `request` and its paired `ServerResponse` as `response`.
-`@hulla/api` owns the response write, so context code should not call `response.end()` independently.
+The factory also receives the paired `ServerResponse` as `response`. For routes with a declared body, the native
+request has already been consumed before the factory runs. Inspect request metadata there, but use the handler's
+decoded `body` value and let the adapter finish the response.
 
-Request bodies are one-shot Node streams. For a route with a declared body, the adapter reads and decodes that stream
-before invoking the context factory and handler; the native request is therefore already consumed there. Read body data
-from the handler's typed `body` field. Context factories should use the native request for metadata rather than attempt
-to read its body a second time.
+`adapter.context()` binds this implementation to the `node-http` adapter. Mounting it through Fetch, Express, or the
+in-process transport fails during setup instead of supplying an incompatible native request.
 
-A context factory created with `adapter.context()` is bound to the `node-http` adapter. Mounting its implementation
-through Fetch, Express, or the in-process transport fails during setup. Use a portable context factory when it only
-needs route metadata or request-independent services.
+## Write responses and streams
 
-## Request and response lifecycle
+The adapter writes JSON, text, and byte responses directly to `ServerResponse`. Raw Fetch responses and form-data
+responses use Web `Response` serialization, which preserves multipart boundaries and separate `set-cookie` values.
 
-JSON, text, bytes, and form-data request bodies are decoded directly from the native request stream. The adapter does
-not impose a second body-size policy; configure request limits at the reverse proxy or another boundary appropriate for
-the deployment. Content types still have to match the contract declaration before a body is read.
+Declared stream responses must yield `Uint8Array` chunks. The adapter:
 
-JSON, text, and byte responses are written without constructing an intermediate Fetch response. Contract streams are
-written chunk by chunk and pause when `ServerResponse.write()` signals backpressure. Raw Fetch responses and form data
-retain their Web `Response` serialization, including multipart boundaries and multiple `set-cookie` headers. A closed
-client connection stops further response writes.
+- waits for Node's `drain` event when `ServerResponse.write()` signals backpressure;
+- calls the source iterator's `return()` when the response closes early;
+- aborts the handler's `signal` when the request or response connection closes.
 
-## Error handling
+Pass that signal to database queries, upstream `fetch()` calls, and stream producers that support cooperative
+cancellation. A stream failure after response headers have been sent cannot replace the response already in flight.
 
-Set defaults once on the adapter or override them for one mount:
+## Handle adapter failures
+
+Use `onError` to observe or replace failures while the adapter reads and validates inputs, creates context, runs
+server middleware or the handler, serializes the declared response, or writes it through Node:
 
 ```ts
 const adapter = nodeHttpAdapter({
   onError({ error, phase, request, response, defaultResponse }) {
-    console.error(phase, request.method, request.url, response.headersSent, error)
+    console.error(
+      phase,
+      request.method,
+      request.url,
+      response.headersSent,
+      error
+    )
     return defaultResponse
   },
 })
-
-const handler = adapter.mount(implementation)
 ```
 
-The hook receives the native request and response plus the protocol-safe default adapter response. It may return a
-replacement adapter response or `undefined` to keep the default. Options passed to `mount()` shallowly override adapter
-defaults. Errors that occur after response headers have already been written cannot be replaced; the adapter closes
-that response instead.
+The hook receives the native request and response plus a protocol-safe default adapter response. Return another
+adapter response to replace it, or return `undefined` to keep the default. Response-write failures use
+`phase: 'transport'`. Options passed to `mount()` override adapter defaults; `onError: undefined` disables an
+inherited hook for that mount.
 
-## Scope
+If response headers have already been sent, the hook can observe the failure but cannot replace the status or body.
+The adapter closes that response instead.
 
-The adapter targets Node's stable HTTP/1 server API. HTTPS uses the same listener with `node:https.createServer()`.
-HTTP/2 compatibility mode, WebSocket upgrades, `checkContinue`, `clientError`, TLS configuration, timeouts, connection
-limits, and graceful shutdown remain server concerns and should be configured on the caller-owned Node server.
+## Keep server policy in the application
+
+The adapter targets the `node:http` HTTP/1 request listener. The same listener can be passed to
+`node:https.createServer()` when the application supplies TLS options. It does not provide a `node:http2` adapter.
+
+The caller-owned server remains responsible for TLS, WebSocket upgrades, `checkContinue`, `clientError`, timeouts,
+connection limits, and graceful shutdown. Configure those concerns on the Node server or at the deployment boundary;
+they are not contract behavior.
+
+## Next steps
+
+- [Server context and middleware](./server-context.md) explains portable context and route policies.
+- [Server fragments and composition](./server-composition.md) shows how to build one listener from selected route
+  groups.
+- [Typed clients](./client-authoring.md) calls this server through the same contract.
+- [Node.js HTTP documentation](https://nodejs.org/api/http.html) covers the server lifecycle and native events.

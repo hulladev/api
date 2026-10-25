@@ -1,27 +1,62 @@
 # React Router v7
 
-For the recommended local/browser setup and enforced module boundaries, see [hybrid rendering](./hybrid-rendering.md). Its examples link to the production-build fixtures used by this integration.
+Add your API to a React Router v7 Framework Mode app with `@hulla/api-react-router`. The adapter creates `loader` and `action` exports for a resource route, so clients can send HTTP requests to it.
 
-`@hulla/api-react-router` mounts an `@hulla/api` server implementation in a React Router v7 Framework Mode resource
-route. React Router owns the host route, request middleware, rendering, loaders, actions, and revalidation;
-`@hulla/api` owns the shared HTTP contract, request decoding, server middleware and handler execution, and declared
-response serialization.
+If only your own pages need the data, a page loader or action can [call the implementation directly](https://hulla.dev/docs/api/transports/in-process). Expose a resource route when other apps need to call it too.
 
-Use this adapter for an HTTP boundary shared with independently deployed clients, mobile applications, generated
-clients, other services, or an OpenAPI description. Keep page data orchestration in React Router loaders and actions,
-and use an ordinary resource route for one-off framework endpoints such as OAuth callbacks, redirects, signed webhooks,
-or file responses. The package does not generate page loaders, form actions, route middleware, or cache behavior.
+## Install the integration
 
-## Prerequisites
+Start with an existing React Router v7 Framework Mode application. Its Vite plugin, server adapter, and `app/routes.ts` setup should already work before adding the API packages.
 
-Install React Router v7 and the adapter alongside the core package:
-
+<!-- docs:package-manager -->
 ```sh
-npm install @hulla/api @hulla/api-react-router react-router@7
+# Bun
+bun add @hulla/api @hulla/api-react-router zod
+
+# npm
+npm install @hulla/api @hulla/api-react-router zod
+
+# pnpm
+pnpm add @hulla/api @hulla/api-react-router zod
+
+# Yarn
+yarn add @hulla/api @hulla/api-react-router zod
 ```
 
-First define the shared contract from [contract authoring](./contract-authoring.md), then create the server value mounted
-below:
+This guide adds one read and one mutation beneath `/api`.
+
+## Define the API
+
+Keep the contract in shared code so server code and HTTP clients use the same paths and response variants:
+
+```ts
+// app/api/contract.ts
+import { defineContract, request, response, route, router } from '@hulla/api'
+import { z } from 'zod'
+
+const user = z.object({ id: z.string(), name: z.string() })
+
+export const contract = defineContract({
+  basePath: '/api',
+  routes: {
+    health: route.get('/health', {
+      responses: {
+        200: response.json(z.object({ status: z.literal('ok') })),
+      },
+    }),
+    users: router('/users', {
+      routes: {
+        create: route.post('/', {
+          body: request.json(z.object({ name: z.string().min(1) })),
+          responses: { 201: response.json(user) },
+        }),
+      },
+    }),
+  },
+})
+```
+
+Implement the same route tree in server code:
 
 ```ts
 // app/api/server.ts
@@ -29,28 +64,33 @@ import { defineServer } from '@hulla/api/server'
 import { contract } from './contract'
 
 export const implementation = defineServer(contract).implement({
-  health: ({ response }) => response(200, 'ok'),
+  health: ({ response }) => response(200, { status: 'ok' }),
   users: {
-    byId: ({ params, response }) => response(200, { id: params.id, name: 'Ada' }),
-    rename: ({ params, body, response }) => response(200, { id: params.id, name: body.name }),
+    create: ({ body, response }) =>
+      response(201, { id: 'user-1', name: body.name }),
   },
 })
 ```
 
-See [server authoring](./server-authoring.md) for context, middleware, declared errors, and independently deployable
-fragments.
+The `basePath` is part of each compiled contract path. The host route in the next step must therefore pass `/api/health` and `/api/users` to the adapter without removing `/api`.
 
-## Contract-backed resource route
+See [contracts](./contract-authoring.md) and [server implementations](./server-authoring.md) for the complete authoring APIs.
 
-Declare one splat route in `app/routes.ts`:
+## Mount a resource route
+
+Register the application page and one splat API route in `app/routes.ts`:
 
 ```ts
-import { route, type RouteConfig } from '@react-router/dev/routes'
+// app/routes.ts
+import { index, route, type RouteConfig } from '@react-router/dev/routes'
 
-export default [route('api/*', './routes/api.ts')] satisfies RouteConfig
+export default [
+  index('./routes/home.tsx'),
+  route('api/*', './routes/api.ts'),
+] satisfies RouteConfig
 ```
 
-Mount the implementation in that route module and export its handlers separately:
+Mount the implementation from the API route module:
 
 ```ts
 // app/routes/api.ts
@@ -59,36 +99,130 @@ import { implementation } from '../api/server'
 
 const handlers = reactRouterAdapter().mount(implementation)
 
-export const action = handlers.action
 export const loader = handlers.loader
+export const action = handlers.action
 ```
 
-Do not add a default component export: that keeps the module a resource route. React Router's Framework Mode compiler
-also cannot remove individual route exports from an exported destructuring declaration, so use the two separate
-assignments above rather than `export const { action, loader } = handlers`.
+> A route module with a `loader` or `action` and no default component export is a React Router resource route. Keep the named exports in the direct form shown above so Framework Mode can discover them.
 
-React Router calls `loader` for reads and `action` for mutations. The adapter dispatches the native request method and
-complete URL against the mounted contract. A `HEAD` request executes the matching `GET` contract route and returns the
-same status and headers without a body. The resource route's `action` accepts React Router's supported mutation methods;
-an unimplemented method receives the mounted fragment's protocol-safe `404` or `405` response.
+React Router first matches `api/*`; `@hulla/api` then matches the native request method and complete URL against the mounted contract. The two parameter layers serve different purposes:
 
-The two parameter layers remain separate:
+- `params['*']` is the remainder captured by React Router's host route.
+- A contract handler receives only the decoded parameters declared by its contract route.
 
-- React Router's `params['*']` identifies the remainder of the host resource route.
-- An `@hulla/api` operation handler receives the decoded `params` declared by its contract route.
+## Verify both request paths
 
-React Router resource routes cannot expose `@hulla/api`'s `QUERY` method. `mount()` rejects a complete implementation or
-fragment containing one instead of leaving the operation unreachable. Keep native `OPTIONS` behavior in surrounding
-server middleware when it is needed.
+Start the application with its normal development command. A default React Router Framework Mode application is available at `http://localhost:5173`.
 
-## Native route context
+Call the read route:
 
-Use `adapter.context()` when server context construction needs React Router's load context or host-route params. Pass
-their application-specific types to the adapter:
+```sh
+curl -i http://localhost:5173/api/health
+```
+
+The resource-route `loader` returns the declared response:
+
+```http
+HTTP/1.1 200
+content-type: application/json
+
+{"status":"ok"}
+```
+
+Call the mutation route:
+
+```sh
+curl -i \
+  -X POST \
+  -H 'content-type: application/json' \
+  -d '{"name":"Ada"}' \
+  http://localhost:5173/api/users
+```
+
+The resource-route `action` returns the declared `201` variant:
+
+```http
+HTTP/1.1 201
+content-type: application/json
+
+{"id":"user-1","name":"Ada"}
+```
+
+The adapter maps resource-route methods as follows:
+
+| Incoming request | Resource export | Contract behavior |
+| --- | --- | --- |
+| `GET` | `loader` | Dispatches the matching `GET` route |
+| `HEAD` | `loader` | Dispatches with `GET` semantics, then removes the response body |
+| `POST`, `PUT`, `PATCH`, or `DELETE` | `action` | Dispatches the native method unchanged |
+| `QUERY` contract route | None | `mount()` rejects the implementation or fragment during setup |
+
+React Router's resource-route method support does not include `QUERY`. Handle `OPTIONS` in the surrounding server or deployment middleware when the application needs custom CORS behavior.
+
+## Call a colocated implementation from a page loader
+
+The mounted resource route is the public HTTP boundary. A server-side page loader in the same application can avoid calling that boundary over HTTP.
+
+Create an in-process client in a `.server.ts` module so the implementation cannot enter a browser bundle:
 
 ```ts
+// app/api/client.server.ts
+import { createClient } from '@hulla/api/client'
+import { inProcessTransport } from '@hulla/api/in-process'
+import { contract } from './contract'
+import { implementation } from './server'
+
+export const api = createClient(contract, {
+  transport: inProcessTransport(implementation),
+})
+```
+
+Call it from the index route registered above:
+
+```tsx
+// app/routes/home.tsx
+import type { Route } from './+types/home'
+import { api } from '../api/client.server'
+
+export async function loader() {
+  const result = await api.health()
+
+  if (result.status !== 200) {
+    throw new Response('Health check failed', { status: result.status })
+  }
+
+  return result.body
+}
+
+export default function Home({ loaderData }: Route.ComponentProps) {
+  return <p>API status: {loaderData.status}</p>
+}
+```
+
+In an SSR application, React Router runs this loader on the server and serializes its result to the route component. The in-process transport still applies contract request and response processing, but it does not enter the resource route, run route middleware, or create an HTTP request.
+
+Use the boundary that owns the behavior you need:
+
+| Caller or workflow | Use |
+| --- | --- |
+| External client or browser code that needs the API endpoint | A `fetchTransport()` client calling the resource route |
+| Server loader and portable implementation in the same process | `inProcessTransport(implementation)` |
+| UI mutation that should trigger React Router revalidation | A page action, or `<Form>`/`useFetcher()` targeting an action |
+| Plain browser `fetch()` mutation | The API client plus explicit UI refresh or revalidation |
+
+A plain `fetch()` to the resource route does not automatically revalidate matched UI loaders. Submissions through React Router's `<Form>` or `useFetcher()` participate in its action and revalidation lifecycle.
+
+Read [server and browser calls](./hybrid-rendering.md) for the full transport decision.
+
+## Use native React Router context
+
+Use `adapter.context()` when contract handlers need the native request, load context, or host-route parameters:
+
+```ts
+// app/api/server.ts
 import { defineServer } from '@hulla/api/server'
 import { reactRouterAdapter } from '@hulla/api-react-router'
+import { contract } from './contract'
 
 type LoadContext = {
   readonly session: { readonly userId: string }
@@ -98,91 +232,44 @@ type RouteParams = {
   readonly '*': string | undefined
 }
 
-const adapter = reactRouterAdapter<LoadContext, RouteParams>()
+export const adapter = reactRouterAdapter<LoadContext, RouteParams>()
 
-const server = defineServer(contract, {
-  context: adapter.context(({ request, route, reactRouterContext, reactRouterParams }) => ({
-    operation: route.key,
-    session: reactRouterContext.session,
-    splat: reactRouterParams['*'],
-    userAgent: request.headers.get('user-agent'),
-  })),
+export const server = defineServer(contract, {
+  context: adapter.context(
+    ({ request, route, reactRouterContext, reactRouterParams }) => ({
+      userId: reactRouterContext.session.userId,
+      userAgent: request.headers.get('user-agent'),
+      operation: route.key,
+      splat: reactRouterParams['*'],
+    })
+  ),
 })
 ```
 
-`reactRouterContext` is the `context` supplied to the resource route's loader or action. Its concrete shape follows the
-application's React Router server and middleware configuration. `reactRouterParams` is the host route's parameter map,
-while `route` remains the matched contract operation metadata.
+`reactRouterContext` is the context supplied to the resource route's loader or action. Its concrete type depends on the application's server and middleware configuration. `reactRouterParams` contains host-route parameters; `route` describes the matched contract operation.
 
-A factory wrapped with `adapter.context()` is bound to the `react-router` adapter. Mounting its implementation through
-generic Fetch, another framework adapter, or the in-process transport fails immediately. Keep the context factory
-portable when it needs only contract metadata or request-independent services.
+An implementation created from this server is bound to the React Router adapter. `inProcessTransport()` and other adapters reject it because they cannot supply the native context. Keep context portable if the same implementation must support the local page-loader path shown above.
 
-## Errors
+## Handle adapter failures
 
-Set an error hook on the adapter or override it for one mounted fragment:
+Use `onError` for native logging or to replace `@hulla/api`'s protocol-safe default response:
 
 ```ts
 const adapter = reactRouterAdapter<LoadContext, RouteParams>({
-  onError({ error, phase, request, route, reactRouterContext, reactRouterParams, defaultResponse }) {
-    console.error(phase, request.url, route?.key, reactRouterContext, reactRouterParams, error)
+  onError({ error, phase, request, route, defaultResponse }) {
+    console.error(phase, request.url, route?.key, error)
     return defaultResponse
   },
 })
-
-const handlers = adapter.mount(implementation)
 ```
 
-The hook receives `@hulla/api`'s protocol-safe default `Response`, the native request, React Router load context and
-params, and matched contract metadata when available. Return a replacement `Response` or `undefined` to retain the
-default. Options passed to `mount()` shallowly override adapter defaults.
+Returning `undefined` keeps `defaultResponse`; returning a `Response` replaces it. Declared `4xx` and `5xx` contract results are normal responses and do not invoke this hook.
 
-## Consume the API from page routes
+React Router treats a returned resource-route `Response`, including one with a `4xx` or `5xx` status, as a completed request rather than a thrown route error. If a page should render its `ErrorBoundary`, narrow the API result in that page's loader or action and throw there.
 
-The resource-route adapter does not replace React Router's data APIs. Create the ordinary client and call it from page
-loaders or actions so React Router continues to own navigation loading, form submissions, revalidation, pending state,
-and error boundaries:
+## Mount fragments only for real host boundaries
 
-```ts
-// app/api/client.ts
-import { createClient } from '@hulla/api/client'
-import { fetchTransport } from '@hulla/api/fetch'
-import { contract } from './contract'
-
-export const api = createClient(contract, {
-  transport: fetchTransport({ baseUrl: process.env.API_ORIGIN }),
-})
-```
-
-```tsx
-// app/routes/users.tsx
-import type { Route } from './+types/users'
-import { api } from '../api/client'
-
-export async function loader({ params }: Route.LoaderArgs) {
-  const result = await api.users.byId({ params: { id: params.id } })
-
-  if (result.status !== 200) {
-    throw new Response('User not found', { status: result.status })
-  }
-
-  return result.body
-}
-
-export default function User({ loaderData }: Route.ComponentProps) {
-  return <h1>{loaderData.name}</h1>
-}
-```
-
-Server-side loaders need an absolute API origin and must deliberately forward only the credentials required by the API.
-An ordinary server-side Fetch does not inherit the incoming browser request's cookies or authorization headers. If the
-data is private to one React Router application and does not need a durable HTTP contract, keep that operation directly
-in the page loader or action.
-
-## Split large APIs with fragments
-
-A resource route imports everything in the implementation it mounts. Large contracts can retain code-splitting and
-ownership boundaries by mounting independently executable fragments beneath narrower splat routes:
+`mount()` also accepts an independently executable server fragment. Register a narrower splat route when part of the API needs a separate route module, middleware scope, or server bundle:
 
 ```ts
 // app/routes/api-admin.ts
@@ -191,9 +278,14 @@ import { adminImplementation } from '../api/admin.server'
 
 const handlers = reactRouterAdapter().mount(adminImplementation)
 
-export const action = handlers.action
 export const loader = handlers.loader
+export const action = handlers.action
 ```
 
-Register that module with `route('api/admin/*', './routes/api-admin.ts')`. React Router remains responsible for host
-routing and application data flow; the fragment contains only its selected contract routes and server handlers.
+Map the module with `route('api/admin/*', './routes/api-admin.ts')`, and ensure the fragment's contract paths include the same `/api/admin` prefix received by the adapter. Do not split fragments merely to make the handler tree shorter; use [server fragments and composition](./server-composition.md) for code organization inside one host boundary.
+
+## Next steps
+
+- Read [server context and middleware](./server-context.md) when handlers need shared request policy.
+- Read [errors](./errors.md) to model declared application failures separately from adapter failures.
+- Read [server and browser calls](./hybrid-rendering.md) before adding browser clients or a separately deployed API.

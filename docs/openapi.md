@@ -1,135 +1,41 @@
-# OpenAPI generation
+# OpenAPI
 
-`@hulla/api-openapi` keeps documentation outside the runtime contract. A typical code-first API has two modules:
+`@hulla/api-openapi` converts between a contract and an OpenAPI document. Export a document to share your API, or import one to call an API described by someone else.
 
-```ts
-// api.ts
-import { defineContract, response, route } from '@hulla/api'
-import { z } from 'zod'
+| Workflow                   | Starting point                                             | Result                                                   | Use it when                                                                                           | Focused guide                                         |
+| -------------------------- | ---------------------------------------------------------- | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| Export a contract          | An `@hulla/api` runtime contract and documentation sidecar | An OpenAPI 3.1.2 or 3.2.0 JSON or YAML document          | The TypeScript contract owns the API and external consumers need a standard wire description          | [Export a contract to OpenAPI](./openapi-export.md)   |
+| Import an OpenAPI document | An existing provider-owned OpenAPI document                | A normal `@hulla/api` runtime contract and typed sidecar | An external specification owns the API and the application needs typed calls or a checked-in contract | [Import OpenAPI into a contract](./openapi-import.md) |
 
-export const contract = defineContract({
-  routes: {
-    /**
-     * Returns a user by identifier.
-     *
-     * @summary Get a user
-     * @tag Users
-     */
-    getUser: route.get('/users/:id', {
-      params: z.object({ id: z.string().uuid() }),
-      responses: {
-        200: response.json(z.object({ id: z.string(), name: z.string() })),
-        404: response.json(z.object({ message: z.string() })),
-      },
-    }),
-  },
-})
-```
+## The contract and sidecar have different jobs
 
-```ts
-// api.openapi.ts
-import { defineOpenAPI } from '@hulla/api-openapi'
-import { contract } from './api'
+The runtime contract describes what `@hulla/api` executes: routes, request representations, responses, and errors.
 
-export default defineOpenAPI(contract, {
-  info: { title: 'Users API', version: '1.0.0' },
-  docstrings: { source: new URL('./api.ts', import.meta.url) },
-  routes: {
-    getUser: {
-      request: {
-        path: { id: { description: 'User identifier' } },
-      },
-      responses: {
-        200: { description: 'The requested user' },
-        404: { description: 'No user has that identifier' },
-      },
-    },
-  },
-})
-```
+The documentation sidecar describes how that contract appears in OpenAPI: titles, summaries, descriptions, tags, examples, security metadata, and schema overrides. Generation reads the sidecar; clients, server implementations, and runtime requests do not.
 
-The documentation tree mirrors the contract. Every route must be documented or explicitly excluded with
-`{ include: false, reason: '…' }`, and every declared route or contract-error response needs a description. Direct
-object literals reject unknown keys during type checking; generation performs the same recursive validation at runtime
-so documentation stored in intermediate variables cannot silently drift.
+The two workflows cross the boundary in opposite directions:
 
-Docstrings are build-time fallback values for `summary`, `description`, `tags`, and `deprecated`. Explicit sidecar
-values win. The parser supports direct route declarations and local route variables in the contract module. It fails
-with a source location when composition prevents it from finding a requested route. Docstrings are not attached to
-clients, server bindings, or the runtime contract.
+1. A code-first contract plus its sidecar produces an OpenAPI document.
+2. An OpenAPI document produces a wire-oriented runtime contract plus a typed sidecar.
+3. The generated contract uses the same clients, transports, and server APIs as a hand-written contract.
 
-## Contract to OpenAPI
+> Choose one source of truth. Export from a code-first contract or import from a provider-owned OpenAPI document; do not round-trip generated files as a synchronization strategy. OpenAPI cannot reconstruct application-side codecs or behavior that its schema does not represent.
 
-```ts
-import definition from './api.openapi'
-import { createOpenAPIDocument, writeOpenAPIDocument } from '@hulla/api-openapi'
+## What the package does not own
 
-await writeOpenAPIDocument('./openapi.json', await createOpenAPIDocument(definition))
-```
+`@hulla/api-openapi` reads and generates API descriptions. It does not:
 
-The exporter defaults to OpenAPI 3.1.2 and uses Standard JSON Schema's input conversion for requests and output conversion for responses, including response headers and declared error data, because OpenAPI describes the HTTP representation. `@hulla/api` codecs retain their wire schema's conversion capability. JSON and YAML output are both
-supported. A schema without Standard JSON Schema support produces an exact generation error unless the sidecar supplies
-an explicit request or response `schema` override.
+- serve an OpenAPI document;
+- install or configure Swagger UI, Scalar, Redoc, or another documentation interface;
+- implement authentication or authorization;
+- deploy the API or its documentation;
+- create a separate generated client runtime.
 
-```sh
-hulla-openapi export ./src/api.openapi.ts --output ./openapi.yaml
-```
+Use the host application or deployment platform for serving, UI, authentication, and deployment policy. OpenAPI `security` fields describe a policy; they do not enforce it.
 
-HTTP `QUERY` requires OpenAPI 3.2.0. Raw, streamed, and otherwise non-structural response representations require an
-explicit schema for the complete response. Generated documents can be consumed by Swagger UI, Scalar, Redoc, or any
-other ordinary OpenAPI tooling.
+## Choose the next guide
 
-## OpenAPI to contract
-
-```ts
-import {
-  generateContractFromOpenAPI,
-  readOpenAPIDocument,
-  writeGeneratedOpenAPIContract,
-} from '@hulla/api-openapi'
-
-const generated = generateContractFromOpenAPI(await readOpenAPIDocument('./openapi.yaml'))
-await writeGeneratedOpenAPIContract(generated, {
-  contract: './src/api.generated.ts',
-  openapi: './src/api.generated.openapi.ts',
-})
-```
-
-The reverse generator writes a normal `@hulla/api` runtime contract and a separate typed sidecar. Zod is the default schema
-code generator; `schemaGenerator` is pluggable so the import pipeline is not architecturally tied to it. Local component
-references, request parameters and bodies, all concrete response statuses, descriptions, examples, and common JSON
-Schema forms are supported.
-
-```sh
-hulla-openapi import ./openapi.yaml \
-  --contract ./src/api.generated.ts \
-  --openapi ./src/api.generated.openapi.ts
-
-hulla-openapi check ./openapi.yaml \
-  --contract ./src/api.generated.ts \
-  --openapi ./src/api.generated.openapi.ts
-```
-
-`check` regenerates in memory and fails when committed generated files differ. Unsupported or lossy semantics produce
-structured diagnostics; generation stops on errors instead of emitting permissive placeholder schemas. OpenAPI cannot
-reconstruct application-side `@hulla/api` codecs, so imported schemas describe the wire contract.
-
-Imported object schemas preserve additional JSON fields unless `additionalProperties` forbids or constrains them. Component names that produce invalid or duplicate TypeScript identifiers are reported as errors; rename those components and their references before regenerating.
-
-## Consume an imported contract
-
-The generated contract is a normal runtime contract, so it uses the same client as a code-first contract:
-
-```ts
-import { createClient } from '@hulla/api/client'
-import { fetchTransport } from '@hulla/api/fetch'
-import { contract } from './api.generated'
-
-export const api = createClient(contract, {
-  transport: fetchTransport({ baseUrl: 'https://api.example.com' }),
-})
-```
-
-Route names and request inputs come from the generated contract. Calls return the generated status-discriminated
-response unions, which can be consumed directly or passed through the application's loader or query layer. OpenAPI
-generation does not introduce a separate generated client runtime.
+- If the application already declares an `@hulla/api` contract, [export it to OpenAPI](./openapi-export.md).
+- If another team or service provides the OpenAPI document, [import it into a contract](./openapi-import.md).
+- To define a runtime contract, see [contract authoring](./contract-authoring.md).
+- To consume any contract, see [client authoring](./client-authoring.md).

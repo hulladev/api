@@ -1,176 +1,164 @@
 # SvelteKit
 
-For the recommended local/browser setup and enforced module boundaries, see [hybrid rendering](./hybrid-rendering.md). Its examples link to the production-build fixtures used by this integration.
+Serve your API from a SvelteKit `+server.ts` endpoint. We'll make an HTTP request to check it, then call it from a page's `load` function.
 
-`@hulla/api-sveltekit` mounts an `@hulla/api` server implementation in a SvelteKit `+server.ts` endpoint. SvelteKit owns
-file routing, hooks, rendering, form actions, remote functions, and deployment; `@hulla/api` owns the shared HTTP
-contract, input decoding, middleware and handler execution, and declared response serialization.
+Import endpoint helpers from `@hulla/api-sveltekit/server`. For operations used only by your SvelteKit app, you can also use [remote functions](./sveltekit-remote-functions.md); their helpers live in `@hulla/api-sveltekit/remote`.
 
-Import endpoint APIs from `@hulla/api-sveltekit/server` and the server-only remote-function transport from
-`@hulla/api-sveltekit/remote`. The package intentionally has no mixed root entrypoint because the latter also depends
-on SvelteKit's generated `$app/server` module.
+## Install the integration
 
-Use this adapter for an HTTP boundary shared with generated clients, mobile applications, other services, or an OpenAPI
-description. Prefer SvelteKit form actions or remote functions for application-local operations and native endpoints for
-one-off concerns such as OAuth callbacks, signed webhooks, redirects, or file handling.
+Start with an existing SvelteKit 2 application. The adapter supports `@sveltejs/kit` 2.x and Node.js 22 or newer.
 
-## Prerequisites
+<!-- docs:package-manager -->
+```sh
+# Bun
+bun add @hulla/api @hulla/api-sveltekit zod
 
-Define the shared contract, then implement the server value mounted below:
+# npm
+npm install @hulla/api @hulla/api-sveltekit zod
+
+# pnpm
+pnpm add @hulla/api @hulla/api-sveltekit zod
+
+# Yarn
+yarn add @hulla/api @hulla/api-sveltekit zod
+```
+
+## Define the contract and implementation
+
+Keep the contract in shared code. This example declares `GET /api/health` and `POST /api/rename`:
 
 ```ts
-// src/lib/api/server.ts
-import { defineServer } from '@hulla/api/server'
-import { contract } from './contract'
+// src/lib/api/contract.ts
+import { defineContract, response, route } from '@hulla/api'
+import { z } from 'zod'
 
-export const implementation = defineServer(contract).implement({
-  health: ({ response }) => response(200, 'ok'),
-  users: {
-    byId: ({ params, response }) => response(200, { id: params.id, name: 'Ada' }),
-    rename: ({ params, body, response }) => response(200, { id: params.id, name: body.name }),
+export const renameInput = z.object({ name: z.string().min(1) })
+export const healthUnavailable = z.object({ message: z.string() })
+
+export const contract = defineContract({
+  basePath: '/api',
+  routes: {
+    health: route.get('/health', {
+      responses: {
+        200: response.text(),
+        503: response.json(healthUnavailable),
+      },
+    }),
+    rename: route.post('/rename', {
+      body: renameInput,
+      responses: { 200: response.json(renameInput) },
+    }),
   },
 })
 ```
 
-See [contract authoring](./contract-authoring.md) and [server authoring](./server-authoring.md) for contracts, context,
-middleware, declared errors, and independently deployable fragments.
+Implement the same route tree in server code:
 
-## Catch-all endpoint
+```ts
+// src/lib/server/api.ts
+import { defineServer } from '@hulla/api/server'
+import { contract } from '$lib/api/contract'
 
-Create a rest-parameter endpoint and export the mounted handler under every HTTP method used by the implementation:
+export const implementation = defineServer(contract).implement({
+  health: ({ response }) => response(200, 'ok'),
+  rename: ({ body, response }) => response(200, body),
+})
+```
+
+See [contract authoring](./contract-authoring.md) and [server implementations](./server-authoring.md) for the complete APIs.
+
+## Mount a catch-all endpoint
+
+Create a rest-parameter endpoint and export the mounted handler only under the methods declared by the sample contract:
 
 ```ts
 // src/routes/api/[...api]/+server.ts
 import { svelteKitAdapter } from '@hulla/api-sveltekit/server'
-import { implementation } from '$lib/api/server'
+import { implementation } from '$lib/server/api'
 
 const handler = svelteKitAdapter().mount(implementation)
 
-export { handler as DELETE, handler as GET, handler as PATCH, handler as POST, handler as PUT }
+export { handler as GET, handler as POST }
 ```
 
-Only export methods the mounted implementation contains. SvelteKit discovers endpoint methods from static named exports,
-so the adapter returns one handler rather than a dynamically generated method map. The file route selects the catch-all;
-`@hulla/api` then matches the complete request method and URL against the mounted contract fragment.
+SvelteKit discovers endpoint methods from static named exports, so `mount()` returns one handler rather than a dynamically generated method map. The file route selects the catch-all; `@hulla/api` then matches the complete request method and URL against the mounted contract.
 
-`[...api]` covers paths below `/api`. If the contract declares an operation exactly at `/api`, re-export the same handler
-from `src/routes/api/+server.ts` as well. When a `GET` export exists without `HEAD`, SvelteKit automatically answers `HEAD`
-using that handler. The adapter also supports an explicit `HEAD` re-export: it dispatches through the contract's `GET`
-route and returns the status and headers without a body.
+> Export only the methods present in the mounted implementation. Static method exports are part of SvelteKit's endpoint contract.
 
-SvelteKit endpoints cannot expose `@hulla/api`'s `QUERY` method. `mount()` rejects an implementation or fragment containing
-one rather than leaving it unreachable. Keep framework-specific `OPTIONS` behavior in the endpoint or a server hook when
-it is not part of the shared contract.
+SvelteKit rest parameters can match an empty tail, so this file covers `/api` as well as nested paths such as `/api/health`. When a `GET` export exists without `HEAD`, SvelteKit supplies the GET handler for HEAD. The adapter dispatches that request through the contract's GET route and returns the status and headers without a body.
 
-## Consume the API from SvelteKit
+SvelteKit endpoints cannot expose `@hulla/api`'s `QUERY` method. `mount()` rejects an implementation or fragment containing one. Keep framework-specific `OPTIONS` behavior in the endpoint or a server hook when it is not part of the shared contract.
 
-Use SvelteKit's enhanced `fetch` inside `load` so server rendering inherits credentials, resolves same-origin requests,
-and invokes internal endpoints without a network round trip:
+## Verify the HTTP boundary
+
+Start the application with its normal development command. The port may differ in your project; the examples use `http://localhost:5173`.
+
+```sh
+curl -i http://localhost:5173/api/health
+```
+
+The endpoint returns the declared text response:
+
+```http
+HTTP/1.1 200 OK
+content-type: text/plain
+
+ok
+```
+
+```sh
+curl -i \
+  -X POST \
+  -H 'content-type: application/json' \
+  -d '{"name":"Ada"}' \
+  http://localhost:5173/api/rename
+```
+
+The endpoint returns the declared JSON response:
+
+```http
+HTTP/1.1 200 OK
+content-type: application/json
+
+{"name":"Ada"}
+```
+
+## Consume the endpoint from `load`
+
+Use SvelteKit's enhanced `fetch` inside `load` so server rendering inherits same-origin credentials, resolves relative requests, and can invoke internal endpoints without a network round trip:
 
 ```ts
-// src/routes/users/[id]/+page.ts
+// src/routes/+page.server.ts
 import { createClient } from '@hulla/api/client'
 import { fetchTransport } from '@hulla/api/fetch'
 import { contract } from '$lib/api/contract'
-import type { PageLoad } from './$types'
 
-export const load: PageLoad = async ({ fetch, params, url }) => {
+export async function load({ fetch, url }) {
   const api = createClient(contract, {
     transport: fetchTransport({ baseUrl: url.origin, fetch }),
   })
-  const result = await api.users.byId({ params: { id: params.id } })
+  const result = await api.health()
 
-  if (result.status !== 200) throw new Error(`Could not load user: ${result.status}`)
-  return { user: result.body }
+  if (result.status !== 200) throw new Error(`Could not load health: ${result.status}`)
+  return { health: result.body }
 }
 ```
 
-Keep SvelteKit's form actions and remote functions in charge of progressive enhancement, pending state, invalidation, and
-navigation. They can call the same HTTP client when the deployed HTTP boundary itself should be exercised.
-
-## Remote functions
-
-Remote functions require SvelteKit 2.27 or newer and are still experimental. Enable `kit.experimental.remoteFunctions` in
-`svelte.config.js` before importing this package's `/remote` entrypoint.
-
-Use the `/remote` entrypoint when a SvelteKit `query`, `form`, or `command` should execute the same contract implementation
-without an internal HTTP request. `svelteKitRemoteTransport()` preserves the normal @hulla/api client/server validation and
-codec boundary, but dispatches directly inside the current server process:
-
-```ts
-// src/routes/users/data.remote.ts
-import { createClient } from '@hulla/api/client'
-import { svelteKitRemoteTransport } from '@hulla/api-sveltekit/remote'
-import { command, query } from '$app/server'
-import { renameUserInput, userId } from '$lib/api/schemas'
-import { contract } from '$lib/api/contract'
-import { implementation } from '$lib/api/server'
-
-const api = createClient(contract, {
-  transport: svelteKitRemoteTransport(implementation),
-})
-
-export const getUser = query(userId, async (id) => {
-  const result = await api.users.byId({ params: { id } })
-  if (result.status !== 200) throw new Error(`Could not load user: ${result.status}`)
-  return result.body
-})
-
-export const renameUser = command(renameUserInput, async ({ id, name }) => {
-  const result = await api.users.rename({ params: { id }, body: { name } })
-  if (result.status !== 200) throw new Error(`Could not rename user: ${result.status}`)
-  return result.body
-})
-```
-
-SvelteKit still owns the remote-function protocol, query deduplication, forms, refreshes, single-flight mutations, live
-connections, and `devalue` serialization. @hulla/api owns only the contract call inside the server callback. Share the same
-Standard Schema values between the contract and remote declaration where their input shapes match. SvelteKit must validate
-the generated remote endpoint argument even though @hulla/api independently validates the contract boundary.
-
-The transport accepts complete implementations and fragments. It does not call global `fetch`, construct Fetch requests,
-or route through the catch-all `+server.ts` endpoint. The result remains @hulla/api status-discriminated union, so the remote
-callback must deliberately map non-success statuses into a returned value or thrown SvelteKit error.
-
-When the implementation uses `svelteKitAdapter().context(...)`, the remote transport synchronously reads SvelteKit's
-current `RequestEvent` and supplies the same `svelteKitEvent` context field used by the endpoint adapter:
-
-```ts
-// src/lib/api/server.ts
-import { defineServer } from '@hulla/api/server'
-import { svelteKitAdapter } from '@hulla/api-sveltekit/server'
-import { contract } from './contract'
-
-const adapter = svelteKitAdapter()
-
-export const implementation = defineServer(contract, {
-  context: adapter.context(({ route, svelteKitEvent }) => ({
-    actor: svelteKitEvent.locals.actor,
-    operation: route.key,
-  })),
-}).implement(/* handlers */)
-```
-
-That implementation can be mounted by both `svelteKitAdapter().mount()` and `svelteKitRemoteTransport()`. During a remote
-call, `request` and `svelteKitEvent.request` describe SvelteKit's generated remote-function request, while the @hulla/api `route`
-describes the contract operation being executed. SvelteKit's page route, params, and URL are client-influenced and must not
-be used for authorization; authenticated identity should come from trusted locals or cookies.
-
-SvelteKit does not expose `getRequestEvent()` to `prerender` callbacks. A remote `prerender` function can therefore use the
-transport only with a context-free implementation or fragment. `query.live` can call the same client, but connection and
-iterator lifecycle remain entirely SvelteKit concerns.
+Keep SvelteKit form actions in charge of progressive enhancement and invalidation. They can call the same client when the deployed HTTP boundary itself must be exercised. For SvelteKit's zero-Fetch remote-function path, see [SvelteKit remote functions](./sveltekit-remote-functions.md).
 
 ## Native request-event context
 
 Use `adapter.context()` when context construction needs SvelteKit request state:
 
 ```ts
+// src/lib/api/server-with-context.ts
 import { defineServer } from '@hulla/api/server'
 import { svelteKitAdapter } from '@hulla/api-sveltekit/server'
+import { contract } from '$lib/api/contract'
 
 const adapter = svelteKitAdapter()
 
-const server = defineServer(contract, {
+export const implementation = defineServer(contract, {
   context: adapter.context(({ request, route, svelteKitEvent }) => ({
     actor: svelteKitEvent.locals.actor,
     clientAddress: svelteKitEvent.getClientAddress(),
@@ -178,6 +166,9 @@ const server = defineServer(contract, {
     platform: svelteKitEvent.platform,
     request,
   })),
+}).implement({
+  health: ({ response }) => response(200, 'ok'),
+  rename: ({ body, response }) => response(200, body),
 })
 ```
 
@@ -202,45 +193,40 @@ declare global {
 export {}
 ```
 
-A server `handle` hook should authenticate the request and populate `event.locals`. The `@hulla/api` context can then
-translate framework state into the smaller application context used by contract handlers. A context factory wrapped by
-`adapter.context()` is bound to `sveltekit`; mounting it through another adapter or the generic in-process transport fails
-early. The SvelteKit remote transport deliberately satisfies that same adapter requirement.
+A server `handle` hook should authenticate the request and populate `event.locals`. The `@hulla/api` context can then translate framework state into the smaller application context used by contract handlers. A context factory wrapped by `adapter.context()` is bound to `sveltekit`; mounting it through another adapter or generic `inProcessTransport()` fails early. The SvelteKit remote transport deliberately satisfies that same adapter requirement.
 
 ## Errors
 
 Set a shared error hook on the adapter, or override it for one mounted fragment:
 
 ```ts
+import { svelteKitAdapter } from '@hulla/api-sveltekit/server'
+import { implementation } from '$lib/server/api'
+
 const adapter = svelteKitAdapter({
   onError({ error, phase, request, route, svelteKitEvent, defaultResponse }) {
-    console.error(phase, request.url, route?.key, svelteKitEvent.route.id, error)
+    console.error(
+      phase,
+      request.url,
+      route?.key,
+      svelteKitEvent.route.id,
+      error
+    )
     return defaultResponse
   },
 })
 
 const handler = adapter.mount(implementation)
+
+export { handler as GET, handler as POST }
 ```
 
-The hook receives `@hulla/api`'s protocol-safe default `Response`, the original SvelteKit event, the request, and matched
-contract metadata when available. Return a replacement `Response` or `undefined` to retain the default. Options passed to
-`mount()` shallowly override adapter defaults.
+The hook receives `@hulla/api`'s protocol-safe default `Response`, the original SvelteKit event, the request, and matched contract metadata when available. Return a replacement `Response` to customize the result, or `undefined` to retain the default. Declared contract failures remain normal responses; use this hook for adapter or handler failures.
 
 ## Split large APIs with fragments
 
-A catch-all endpoint imports everything in the implementation it mounts. Large APIs can preserve code-splitting and
-ownership boundaries by mounting independently executable fragments below narrower file routes:
+Use a fragment when a route group needs separate code-splitting, middleware, deployment, or ownership boundaries. Mount it from a narrower `+server.ts` file and export only the methods declared by that fragment. See [fragments and composition](./server-composition.md) for the complete `defineServer(contract.routes...)` patterns.
 
-```ts
-// src/routes/api/admin/[...api]/+server.ts
-import { svelteKitAdapter } from '@hulla/api-sveltekit/server'
-import { adminImplementation } from '$lib/api/admin.server'
+Keep SvelteKit's application data flow native: `load` orchestrates page data, form actions own progressive enhancement, and remote functions own their separate protocol and refresh lifecycle. For the remote transport and its zero-Fetch in-server dispatch, continue to [SvelteKit remote functions](./sveltekit-remote-functions.md).
 
-const handler = svelteKitAdapter().mount(adminImplementation)
-
-export { handler as DELETE, handler as GET, handler as PATCH, handler as POST }
-```
-
-Keep SvelteKit's application data flow native: `load` orchestrates page data, remote functions own their caching, forms,
-mutations, and refresh lifecycle, and server hooks own framework-wide concerns. `@hulla/api` supplies a durable HTTP
-contract where external consumers need one and a zero-hop reuse path inside native remote callbacks.
+Next, read [server and browser calls](./hybrid-rendering.md) to choose a transport, [context and middleware](./server-context.md) for shared policy, and [errors](./errors.md) for declared application failures.

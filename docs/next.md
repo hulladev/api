@@ -1,42 +1,92 @@
 # Next.js
 
-For the recommended local/browser setup and enforced module boundaries, see [hybrid rendering](./hybrid-rendering.md). Its examples link to the production-build fixtures used by this integration.
+The `@hulla/api-next/server` adapter lets a Next.js Route Handler serve your API. Add it to an App Router project to make the contract's routes available over HTTP.
 
-`@hulla/api-next` is a convenience layer over `@hulla/api/fetch` and Next.js's own data APIs. It does not replace
-Next.js caching, generate Server Actions, or introduce another request lifecycle. Import server hosting APIs from
-`@hulla/api-next/server` and client transport/cache APIs from `@hulla/api-next/client`. The package intentionally has
-no mixed root entrypoint, so a client import cannot accidentally pull the server adapter into its graph.
+We'll mount an API at `/api` and try a request. To cache server-side Fetch calls, see [Next.js data and caching](./next-data.md).
 
-## Prerequisites
+## Install the integration
 
-This guide starts at the adapter boundary. First define the shared contract from
-[contract authoring](./contract-authoring.md), then turn it into the server value mounted below:
+Start with an existing Next.js App Router application, then add the API packages and a supported schema library:
+
+<!-- docs:package-manager -->
+```sh
+# Bun
+bun add @hulla/api @hulla/api-next zod
+
+# npm
+npm install @hulla/api @hulla/api-next zod
+
+# pnpm
+pnpm add @hulla/api @hulla/api-next zod
+
+# Yarn
+yarn add @hulla/api @hulla/api-next zod
+```
+
+`@hulla/api-next` has separate `/server` and `/client` entrypoints. Route Handler code imports `/server`; server-side cache policy code imports `/client`. There is no mixed root entrypoint.
+
+## Define an API the application can mount
+
+Keep the contract in shared code. This example declares one read and one mutation under `/api/users`:
+
+```ts
+// src/api/contract.ts
+import { defineContract, request, response, route, router } from '@hulla/api'
+import { z } from 'zod'
+
+const user = z.object({ id: z.string(), name: z.string() })
+
+export const contract = defineContract({
+  basePath: '/api',
+  routes: {
+    users: router('/users', {
+      routes: {
+        byId: route.get('/:id', {
+          params: z.object({ id: z.string() }),
+          responses: {
+            200: response.json(user),
+            404: response.json(z.object({ message: z.string() })),
+          },
+        }),
+        rename: route.patch('/:id', {
+          params: z.object({ id: z.string() }),
+          body: request.json(z.object({ name: z.string().min(1) })),
+          responses: { 200: response.json(user) },
+        }),
+      },
+    }),
+  },
+})
+```
+
+Implement the same route tree in a server-only module:
 
 ```ts
 // src/api/server.ts
+import 'server-only'
+
 import { defineServer } from '@hulla/api/server'
 import { contract } from './contract'
 
 const server = defineServer(contract)
 
 export const implementation = server.implement({
-  health: ({ response }) => response(200, 'ok'),
   users: {
-    byId: ({ params, response }) => response(200, { id: params.id, name: 'Ada' }),
-    rename: ({ params, body, response }) => response(200, { id: params.id, name: body.name }),
+    byId: ({ params, response }) =>
+      params.id === 'ada'
+        ? response(200, { id: 'ada', name: 'Ada' })
+        : response(404, { message: 'User not found' }),
+    rename: ({ params, body, response }) =>
+      response(200, { id: params.id, name: body.name }),
   },
 })
 ```
 
-`defineServer(contract)` creates the server authoring scope. `implement()` requires the handler tree to cover the
-contract and returns the complete `implementation` accepted by `mount()`. See
-[server authoring](./server-authoring.md) for context, middleware, declared errors, and independently deployable
-fragments.
+The contract and implementation are ordinary `@hulla/api` values. See [contracts](./contract-authoring.md) and [server implementations](./server-authoring.md) for their full APIs.
 
-## App Router Route Handlers
+## Mount an App Router Route Handler
 
-Mount a complete implementation or fragment in an optional catch-all Route Handler and alias the same handler to the
-HTTP methods used by the contract:
+Create an optional catch-all Route Handler and export the mounted handler under every HTTP method used by the contract:
 
 ```ts
 // app/api/[[...api]]/route.ts
@@ -45,213 +95,102 @@ import { implementation } from '@/api/server'
 
 const handler = nextAdapter().mount(implementation)
 
-export { handler as GET, handler as POST, handler as PUT, handler as PATCH, handler as DELETE }
+export { handler as GET, handler as PATCH }
 ```
 
-The adapter accepts Next's native `NextRequest` and returns a standard `Response`, so it works in both Node.js and Edge
-Route Handler runtimes when the implementation's own dependencies support that runtime. Export only methods the mounted
-contract uses. Next.js handles methods without a named export, including its automatic `OPTIONS` behavior.
+There are two routing steps:
 
-Next Route Handlers cannot expose `@hulla/api`'s `QUERY` method. `mount()` rejects an implementation or
-fragment containing one, rather than leaving that route silently unreachable. Such a contract needs a host that can
-register the method or a separate HTTP-facing contract using a supported method.
+1. Next matches the host file `app/api/[[...api]]/route.ts`.
+2. `@hulla/api` matches the request method and complete pathname against the mounted contract.
 
-Use `nextAdapter()` when server context needs `NextRequest` features such as `cookies` or `nextUrl`:
+Export each method the contract needs. If the contract declares `HEAD`, export `handler as HEAD`; do not assume `GET` supplies it. When a Route Handler omits `OPTIONS`, Next generates its own `OPTIONS` response and `Allow` header. See Next's [Route Handler reference](https://nextjs.org/docs/app/api-reference/file-conventions/route) for current method behavior.
+
+> Next Route Handlers do not support the custom `QUERY` method. `mount()` rejects any implementation or fragment that contains a `QUERY` route.
+
+Run the Next development server and call the mounted endpoint:
+
+```sh
+curl -i http://localhost:3000/api/users/ada
+```
+
+The response is the declared `200` variant:
+
+```http
+HTTP/1.1 200 OK
+content-type: application/json
+
+{"id":"ada","name":"Ada"}
+```
+
+An unknown user returns the declared `404` JSON response. A known path with a method that is neither exported by Next nor declared by the contract is handled by the boundary that rejects it first.
+
+## Use native Next request context
+
+Use `nextAdapter().context()` when a handler needs `NextRequest` or the catch-all route parameters:
 
 ```ts
+// src/api/server.ts
+import 'server-only'
+
 import { defineServer } from '@hulla/api/server'
-import { nextAdapter } from '@hulla/api-next/server'
+import {
+  nextAdapter,
+  type NextRouteContext,
+} from '@hulla/api-next/server'
+import { contract } from './contract'
 
-type ApiRouteContext = RouteContext<'/api/[[...api]]'>
+type ApiRouteContext = NextRouteContext<{
+  readonly api?: string[]
+}>
 
-const adapter = nextAdapter<ApiRouteContext>()
+export const adapter = nextAdapter<ApiRouteContext>()
+
 const server = defineServer(contract, {
   context: adapter.context(async ({ request, route, routeContext }) => ({
     session: request.cookies.get('session')?.value,
+    path: request.nextUrl.pathname,
     catchAll: (await routeContext.params).api,
-    route,
+    operation: route.key,
   })),
 })
 ```
 
-The generic preserves Next's generated path-specific `RouteContext` parameter type. Omit it when the generic
-`Record<string, string | string[] | undefined>` parameter shape is sufficient.
+The adapter passes the original `NextRequest`, Next's route context, and the matched contract route to the context factory. The package's `NextRouteContext` type works without generated framework types. If you prefer Next's global `RouteContext<'/api/[[...api]]'>` helper, run `next dev`, `next build`, or `next typegen` first so Next can generate it.
 
-The adapter declaration is inherited by every implementation and fragment. Mounting one through Express, generic Fetch,
-or `inProcessAdapter().mount()` fails immediately with an adapter mismatch instead of treating another native request as a
-`NextRequest`. Context factories that use only portable route metadata remain usable through every adapter.
+An implementation that declares `adapter.context()` is intentionally bound to the Next adapter. Generic Fetch, Express, and `inProcessTransport()` reject it during setup because they cannot supply `NextRequest` or the route context. Keep context portable when the same implementation must run through more than one adapter.
 
-Pass `onError` to `nextAdapter()` to share it across mounted fragments. Its single input object contains the native
-`NextRequest`, the typed `routeContext`, route metadata, and a clone of the protocol-safe default `Response`:
+## Observe adapter failures
+
+Use `onError` for Next-aware logging or to replace the protocol-safe default response:
 
 ```ts
 const adapter = nextAdapter<ApiRouteContext>({
-  onError({ error, phase, request, routeContext, defaultResponse }) {
-    console.error(phase, request.nextUrl.pathname, routeContext, error)
+  onError({ error, phase, request, route, defaultResponse }) {
+    console.error(phase, request.nextUrl.pathname, route?.key, error)
     return defaultResponse
   },
 })
-
-const handler = adapter.mount(implementation)
 ```
 
-Options passed to `mount()` shallowly override the adapter defaults for that handler.
+The hook can observe routing, request decoding, context, handler, and response failures. Returning `undefined` keeps `defaultResponse`; returning a `Response` replaces it. Declared `4xx` and `5xx` contract responses are normal results, not adapter failures.
 
-## Server-side fetch and the Data Cache
+Options passed to `adapter.mount()` override the adapter defaults for that one handler.
 
-Server Components and other server-only code can use a contract-bound Next cache. Its contract-shaped `routes` policy
-accepts only declared `GET` routes; route names, literal keys, and callback methods remain typed. Mutations cannot receive
-a Data Cache policy through this high-level API:
+## Choose how application code calls the API
 
-```ts
-import { createClient } from '@hulla/api/client'
-import { createNextCache } from '@hulla/api-next/client'
+Mounting the Route Handler makes the HTTP boundary available; it does not require every caller to use it.
 
-export const cache = createNextCache(contract, {
-  namespace: 'public-api',
-  routes: {
-    users: {
-      byId: (request) => ({
-        cache: 'force-cache',
-        next: {
-          revalidate: 60,
-          tags: [`path:${request.path}`],
-        },
-      }),
-    },
-  },
-})
+| Caller | Use | Why |
+| --- | --- | --- |
+| Browser component | A browser-safe `fetchTransport()` client | The browser must call the mounted endpoint |
+| Server Component calling another service | A server-only Fetch client with an absolute `baseUrl` | The HTTP service is the intended boundary |
+| Server Component colocated with the implementation | `inProcessTransport(implementation)` when context is portable | Avoid an internal HTTP round trip |
+| Server code that needs Next Data Cache tags and policy | `createNextCache()` | Add typed Next fetch options to declared `GET` routes |
 
-export const client = createClient(contract, {
-  transport: cache.fetchTransport({
-    baseUrl: 'https://api.example.com',
-  }),
-})
-```
+Read [server and browser calls](./hybrid-rendering.md) before choosing between HTTP and an in-process call. Read [Next.js data and caching](./next-data.md) for `createNextCache()`, Server Components, invalidation, and browser-cache boundaries.
 
-Call that client directly from a Server Component and narrow the declared response before rendering its body:
+## Scope and runtime compatibility
 
-```tsx
-// app/users/[id]/page.tsx
-import { notFound } from 'next/navigation'
-import { client } from '@/api/client'
+This adapter targets App Router Route Handlers. Pages Router API Routes use the separate `NextApiRequest` and `NextApiResponse` lifecycle and are not adapted by `nextAdapter()`.
 
-export default async function UserPage({ params }: PageProps<'/users/[id]'>) {
-  const { id } = await params
-  const result = await client.users.byId({ params: { id } })
-
-  if (result.status === 404) notFound()
-  if (result.status !== 200) throw new Error(`Could not load user: ${result.status}`)
-
-  return <h1>{result.body.name}</h1>
-}
-```
-
-The policy callback for `users.byId` sees a literal `readonly ['users', 'byId']` key and a literal `GET` method. Policies
-and structural tags are compiled once when `createNextCache()` runs; request dispatch does not serialize route keys or
-walk the contract. The cache adds stable tags for the root and every router prefix. With the namespace above, it adds `public-api`,
-`public-api:users`, and `public-api:users:byId`. Next still derives the actual cache entry key from the complete fetch
-request, including encoded input. `@hulla/api-next` only supplies structural invalidation tags; custom tags are preserved and
-deduplicated.
-
-The default namespace is `hulla-api`. Give separate APIs distinct namespaces when they share one Next.js Data Cache. The
-contract node is the typed selector, so misspelled string paths cannot compile:
-
-```ts
-const adminCache = createNextCache(contract, { namespace: 'admin-api' })
-
-adminCache.tag(contract.routes.users)
-adminCache.tags(contract.routes.users.byId)
-```
-
-Invalidate the same boundaries using `nextRouteTag()`:
-
-```ts
-import { revalidateTag } from 'next/cache'
-import { cache } from '@/api/client'
-import { contract } from '@/api/contract'
-
-revalidateTag(cache.tag(contract.routes.users), 'max')
-```
-
-Cache behavior is opt-in. Routes without a policy receive no added options or tags. The lower-level `nextFetchTransport()`,
-`nextFetchOptions()`, `nextRouteTag()`, and `nextRouteTags()` helpers remain available for dynamic policies and integration
-authors, but contract-bound code should prefer `createNextCache()`. Next cache typing exposes only `force-cache` and
-`no-store`, preventing browser-only `RequestCache` modes from being mistaken for supported server cache policy.
-
-With Cache Components enabled, an `@hulla/api` client call can also live inside a function using the `use cache` directive. In that
-model, use Next's `cacheLife()` and `cacheTag()` APIs directly: directives and their serialization boundaries are lexical
-Next.js concerns and are not safe for an adapter to manufacture.
-
-## Server Actions
-
-Server Actions are application entry points, not an alternative `@hulla/api` transport. Keep them explicit so their
-authorization, form decoding, redirects, optimistic UI, and invalidation remain visible:
-
-```ts
-'use server'
-
-import { updateTag } from 'next/cache'
-import { cache, client } from '@/api/client'
-import { contract } from '@/api/contract'
-
-export async function renameUser(id: string, name: string) {
-  const result = await client.users.rename({ params: { id }, body: { name } })
-  updateTag(cache.tag(contract.routes.users))
-  return result
-}
-```
-
-If the `@hulla/api` server and action share a process, `inProcessAdapter().mount()` can avoid a loopback HTTP request while preserving
-the encoded client/server boundary, provided its server context is portable. An implementation declaring
-`nextAdapter()` intentionally rejects in-process mounting; extract request-independent services or use a portable context
-factory in that case. Calling a shared service directly is also appropriate when an HTTP-shaped response is unnecessary.
-Server Action arguments must still be treated as untrusted and authorization must run inside the action or downstream
-implementation.
-
-## Client consumption and Pages Router
-
-Client Components use a browser-safe ordinary Fetch client. Keep it separate from the server-only Data Cache setup so
-the browser bundle does not import cache policy code:
-
-```ts
-// src/api/browser-client.ts
-import { createClient } from '@hulla/api/client'
-import { fetchTransport } from '@hulla/api/fetch'
-import { createSWR } from '@hulla/api-swr'
-import { contract } from './contract'
-
-export const api = createClient(contract, {
-  transport: fetchTransport(),
-})
-
-export const apiSWR = createSWR(api)
-```
-
-With an omitted `baseUrl`, browser calls use the current origin and the paths declared by the contract. Pass the SWR
-integration's tuple directly to the hook and narrow the declared status before consuming the response body:
-
-```tsx
-'use client'
-
-import useSWR from 'swr'
-import { apiSWR } from '@/api/browser-client'
-
-export function UserName({ id }: { id: string }) {
-  const user = useSWR(...apiSWR.users.byId.queryOptions({ params: { id } }))
-
-  if (user.isLoading) return <p>Loading…</p>
-  if (user.error) return <p>Could not load user.</p>
-  if (user.data?.status === 404) return <p>User not found.</p>
-  if (user.data?.status !== 200) return null
-
-  return <p>{user.data.body.name}</p>
-}
-```
-
-Use `@hulla/api-tanstack-query` instead when the application already uses TanStack Query. The Next adapter does not
-mirror either client-side cache into the server Data Cache; invalidation must target each cache that owns the data.
-
-The initial adapter targets App Router Route Handlers. Pages Router API Routes use Node's `NextApiRequest` and
-`NextApiResponse` lifecycle and are intentionally not adapted. `getServerSideProps` and `getStaticProps` can call a normal
-`@hulla/api` client, but new caching features and route handlers should use the App Router integration above.
+The mounted handler uses Web request and response primitives. It can run in Next's Node.js runtime or Edge runtime only when the implementation and every dependency support the selected runtime. Next owns runtime selection, middleware, deployment, limits, and response delivery; `@hulla/api` owns the contract lifecycle after the Route Handler receives the request.

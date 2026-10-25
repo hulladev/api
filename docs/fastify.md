@@ -1,161 +1,263 @@
 # Fastify
 
-`@hulla/api-fastify` registers a complete server implementation or deployable fragment on a caller-owned Fastify
-application. Fastify continues to own routing, hooks, plugins, content-type parsing, and the server lifecycle; `@hulla/api` owns
-contract input decoding and declared response serialization.
+Add your contract's routes to a Fastify app with `@hulla/api-fastify`. Register them in the plugin scope whose hooks and decorators you want the handlers to use.
 
-## Prerequisites
+## Install the adapter
 
-This guide starts at the adapter boundary. First define the shared contract from
-[contract authoring](./contract-authoring.md), then turn it into the server value mounted below:
+The current adapter supports Fastify `^5.12.1`.
+
+<!-- docs:package-manager -->
+
+```sh
+# Bun
+bun add @hulla/api @hulla/api-fastify fastify zod
+
+# npm
+npm install @hulla/api @hulla/api-fastify fastify zod
+
+# pnpm
+pnpm add @hulla/api @hulla/api-fastify fastify zod
+
+# Yarn
+yarn add @hulla/api @hulla/api-fastify fastify zod
+```
+
+## Mount a route and verify it
+
+Declare the HTTP boundary in a module shared by server and client code:
+
+```ts
+// src/api/contract.ts
+import { defineContract, request, response, route } from '@hulla/api'
+import { z } from 'zod'
+
+export const contract = defineContract({
+  basePath: '/api',
+  routes: {
+    greet: route.post('/greetings', {
+      body: request.json(
+        z.object({ name: z.string().min(1) })
+      ),
+      responses: {
+        200: response.json(
+          z.object({ message: z.string() })
+        ),
+      },
+    }),
+  },
+})
+```
+
+Implement the route in server-only code:
 
 ```ts
 // src/api/server.ts
 import { defineServer } from '@hulla/api/server'
 import { contract } from './contract'
 
-const server = defineServer(contract)
-
-export const implementation = server.implement({
-  health: ({ response }) => response(200, 'ok'),
-  users: {
-    byId: ({ params, response }) => response(200, { id: params.id, name: 'Ada' }),
-    rename: ({ params, body, response }) => response(200, { id: params.id, name: body.name }),
-  },
+export const implementation = defineServer(contract).implement({
+  greet: ({ body, response }) =>
+    response(200, {
+      message: 'Hello, ' + body.name,
+    }),
 })
 ```
 
-`defineServer(contract)` creates the server authoring scope. `implement()` requires the handler tree to cover the
-contract and returns the complete `implementation` accepted by `mount()`. See
-[server authoring](./server-authoring.md) for context, middleware, declared errors, and independently deployable
-fragments.
-
-## Mount on Fastify
+Create the Fastify app and mount the implementation before the app becomes ready:
 
 ```ts
-import Fastify from 'fastify'
+// src/app.ts
 import { fastifyAdapter } from '@hulla/api-fastify'
+import Fastify from 'fastify'
 import { implementation } from './api/server'
 
-const app = Fastify()
+export const app = Fastify()
 
-fastifyAdapter(app).mount(implementation)
-
-await app.listen({ port: 3000 })
+const adapter = fastifyAdapter(app)
+adapter.mount(implementation)
 ```
 
-Install Fastify alongside the adapter:
-
-```bash
-bun add @hulla/api @hulla/api-fastify fastify
-```
-
-## Client consumption
-
-Fastify only hosts the server implementation. A browser, mobile application, or another service consumes the contract
-through the ordinary typed Fetch client:
+`mount()` registers every selected contract route through Fastify's native `app.route()` API and returns that same
+`app`. Verify the integration without opening a network port by using Fastify's native injection API:
 
 ```ts
-import { createClient } from '@hulla/api/client'
-import { fetchTransport } from '@hulla/api/fetch'
-import { contract } from './api/contract'
+// scripts/verify-api.ts
+import { app } from '../src/app'
 
-export const api = createClient(contract, {
-  transport: fetchTransport({ baseUrl: 'https://api.example.com' }),
+const result = await app.inject({
+  method: 'POST',
+  url: '/api/greetings',
+  payload: { name: 'Ada' },
 })
 
-export async function getUser(id: string) {
-  const result = await api.users.byId({ params: { id } })
+console.log(result.statusCode) // 200
+console.log(result.json()) // { message: 'Hello, Ada' }
 
-  if (result.status === 200) return result.body
-  if (result.status === 404) return undefined
-  throw new Error(`Could not load user: ${result.status}`)
-}
+await app.close()
 ```
 
-The host framework does not change the client call surface. The returned value is a status-discriminated union, so each
-declared response narrows its body and headers. Put loading state, caching, retries, and mutations in the consuming
-application; see [client authoring](./client-authoring.md) and [client integrations](./plugins.md).
-
-## Native routes, hooks, and plugins
-
-`mount()` registers each selected contract route through Fastify's native `app.route()` API and returns the same app
-instance. A mounted fragment registers only its selected routes:
+`inject()` boots the Fastify plugin tree and dispatches through its router and hooks. In the production entry point,
+start the same app normally:
 
 ```ts
-const users = server.implement(contract.routes.users, userHandlers)
+import { app } from './app'
 
-app.addHook('preHandler', requireUser)
-adapter.mount(users)
-app.get('/healthz', async () => 'ok')
+await app.listen({ host: '127.0.0.1', port: 3000 })
 ```
 
-Fastify's encapsulation still applies. To give mounted routes a prefix or plugin-scoped hooks and decorators, create the
-adapter inside `register()`:
+## Mount in the right plugin scope
+
+> Mount on the `FastifyInstance` that owns the routes' prefix, hooks, and decorators. Root and plugin instances are
+> different encapsulation scopes.
+
+Mount on the root app when the contract routes should share root-level behavior. Mount inside `register()` when only
+one route group should receive a plugin prefix or scoped hook:
 
 ```ts
-await app.register(
+import { fastifyAdapter } from '@hulla/api-fastify'
+import { userFragment } from './api/users'
+import { requireUser } from './hooks/require-user'
+
+app.register(
   async (instance) => {
     instance.addHook('preHandler', requireUser)
-    fastifyAdapter(instance).mount(implementation)
+    fastifyAdapter(instance).mount(userFragment)
   },
-  { prefix: '/v1' }
+  { prefix: '/account' }
 )
 ```
 
-The adapter uses Fastify's decoded `request.params`, `request.query`, `request.headers`, and `request.body`. Fastify's
-built-in JSON and text parsers therefore run before `@hulla/api` validation. Byte and multipart contracts require a Fastify
-content-type parser or plugin whose `request.body` value matches the contract's wire representation: `Uint8Array` for
-bytes and Web `FormData` for form data. Fastify owns body limits and rejects unsupported content types before the route
-handler runs.
+The fragment's contract paths are registered below `/account`, and `requireUser` runs only in that plugin scope.
+Mounting the same fragment on the parent app would not inherit child-plugin behavior. Register plugins and routes
+before `app.ready()`, `app.inject()`, or `app.listen()` boots the application.
 
-Declared JSON, text, byte, empty, stream, form-data, and raw Fetch responses are sent through `reply`, so response hooks
-remain active. Streaming bodies are exposed to Fastify as Web `ReadableStream` instances without buffering.
+See [server fragments and composition](./server-composition.md) for creating `userFragment`.
 
-## Fastify state in server context
+## Understand the Fastify request lifecycle
 
-Use `adapter.context()` only when the server context factory needs Fastify-specific state:
+For a matched contract route:
+
+1. Fastify applies the route's plugin scope and runs its early lifecycle hooks.
+2. Fastify parses path parameters, query values, headers, and the request body.
+3. The adapter validates those values against the contract.
+4. `@hulla/api` creates server context, runs its middleware, and calls the handler.
+5. The adapter sends the declared result through `reply`, so Fastify response hooks still run.
+
+Native Fastify routes can live beside mounted contract routes. Custom contract `QUERY` routes also use Fastify's
+router.
+
+> Contract schemas are not copied into Fastify route `schema` objects. Fastify parses the request first;
+> `@hulla/api` performs contract validation inside the registered handler.
+
+Use contract schemas as the shared server/client boundary. Configure Fastify route schemas separately only for native
+routes that Fastify itself validates and serializes.
+
+## Configure body parsers in Fastify
+
+The adapter reads the parsed value from `request.body`; it does not read the raw Node stream as a fallback.
+
+| Contract body | Fastify setup | Value expected by the adapter |
+| --- | --- | --- |
+| JSON | Built-in `application/json` parser | Parsed JSON value |
+| Text | Built-in `text/plain` parser | String |
+| Bytes | Matching custom content-type parser | `Uint8Array` or Node `Buffer` |
+| Form data | Multipart plugin plus application mapping | Web `FormData` |
+
+For example, configure an octet-stream parser before mounting a byte route:
 
 ```ts
-const adapter = fastifyAdapter(app)
-
-const server = defineServer(contract, {
-  context: adapter.context(({ request, reply, route }) => ({
-    logger: request.log,
-    requestId: request.id,
-    server: request.server,
-    reply,
-    route,
-  })),
-})
+app.addContentTypeParser(
+  'application/octet-stream',
+  { parseAs: 'buffer' },
+  (_request, body, done) => done(null, body)
+)
 ```
 
-The input contains Fastify's native `request` and `reply` plus `@hulla/api`'s structural route metadata. Fastify request and
-reply decorations remain available through the framework's usual TypeScript module augmentation. Context code should
-not send an independent reply; the declared route result remains the response owned by `@hulla/api` and Fastify.
+Fastify owns `bodyLimit`, unsupported content types, and parser failures. Those failures happen before the adapter
+handler and follow Fastify's error pipeline. If a parser runs but supplies no body for a contract that requires one,
+the adapter returns an `invalid-request-body` problem.
 
-Wrapping a context factory with `adapter.context()` binds that server definition to the `fastify` adapter. Mounting the
-result with another framework adapter or the in-process transport fails immediately. Keep a plain context factory when
-it only needs route metadata or request-independent services and should remain portable.
+Many multipart plugins expose fields and files in their own shape. Convert that result to a native `FormData` before
+a `request.formData()` contract route reaches the adapter.
 
-## Error handling
+## Add Fastify state to server context
 
-The optional second argument to `fastifyAdapter()` sets defaults for every mounted implementation or fragment:
+Keep the context factory portable when it only needs application services or route metadata. When handlers need
+Fastify's native request, reply, logger, ID, or decorations, replace the portable app setup with a Fastify-bound
+context:
+
+```ts
+import { defineServer } from '@hulla/api/server'
+import { fastifyAdapter } from '@hulla/api-fastify'
+import Fastify from 'fastify'
+import { contract } from './api/contract'
+
+const app = Fastify()
+const adapter = fastifyAdapter(app)
+
+const implementation = defineServer(contract, {
+  context: adapter.context(({ request, reply, route }) => {
+    reply.header('x-request-id', request.id)
+    return {
+      logger: request.log,
+      requestId: request.id,
+      routeKey: route.key.join('.'),
+    }
+  }),
+}).implement({
+  greet: ({ body, context, response }) => {
+    context.logger.info(
+      { requestId: context.requestId, route: context.routeKey },
+      'Greeting request'
+    )
+    return response(200, { message: 'Hello, ' + body.name })
+  },
+})
+
+adapter.mount(implementation)
+```
+
+Fastify decorations remain available through the framework's TypeScript declaration merging. `adapter.context()`
+binds this implementation to Fastify, so mounting it through another adapter fails immediately. Context code may
+inspect `reply` or set headers on it, but it should not send a second response; return the declared result from the
+route handler.
+
+## Separate adapter errors from Fastify errors
+
+Use `onError` for failures while `@hulla/api` decodes contract inputs, creates context, runs middleware or the
+handler, and serializes the declared response:
 
 ```ts
 const adapter = fastifyAdapter(app, {
-  onError({ error, phase, request, reply, defaultResponse }) {
-    request.log.error({ error, phase }, '@hulla/api request failed')
-    reply.header('x-request-id', request.id)
+  onError({ error, phase, request, defaultResponse }) {
+    request.log.error({ error, phase }, 'API request failed')
     return defaultResponse
   },
 })
 ```
 
-The hook handles `@hulla/api` request decoding, context, route handler, middleware, and declared response serialization errors.
-It receives the native Fastify request and reply alongside the protocol-safe default adapter response. Return a
-replacement adapter response or `undefined` to keep the default. Errors raised later while the adapter prepares a reply
-continue to Fastify's own error handler, and stream errors propagate through Fastify's response pipeline.
+The hook receives the native Fastify request and reply plus a protocol-safe adapter response. Return another adapter
+response to replace the fallback, or return `undefined` to keep it. Options passed to `mount()` override the adapter
+defaults for that mount; `onError: undefined` disables an inherited hook.
 
-Options passed to `mount()` shallowly override adapter defaults for that fragment. Passing `onError: undefined`
-explicitly disables an inherited hook.
+Fastify owns failures before or after that boundary:
+
+- content-type parser and early-hook failures follow Fastify's error handler;
+- errors while the adapter converts its result for `reply.send()` follow Fastify's handler;
+- stream failures after sending begins propagate through Fastify's response pipeline.
+
+## Handle streams and disconnects
+
+Declared stream bodies must be iterable or async iterable and yield `Uint8Array` chunks. The adapter wraps the source
+in a Web `ReadableStream` for `reply.send()` without first collecting every chunk.
+
+The handler's `signal` aborts when the request is aborted or the response closes early. A stream cancellation also
+calls the source iterator's `return()` method. Use that signal and iterator cleanup to stop database, file, or network
+work when the client disconnects.
+
+## Next steps
+
+- [Server context and middleware](./server-context.md) explains portable context and route policies.
+- [Server fragments and composition](./server-composition.md) shows how to build plugin-owned route groups.
+- [Typed clients](./client-authoring.md) calls the same contract from a browser or another service.
+- [Fastify documentation](https://fastify.dev/docs/latest/) covers plugins, hooks, parsers, and deployment.

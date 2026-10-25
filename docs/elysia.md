@@ -1,111 +1,114 @@
 # Elysia
 
-`@hulla/api-elysia` registers a complete server implementation or deployable fragment on a caller-owned Elysia
-application. Elysia continues to own routing, lifecycle hooks, decorators, stores, and deployment; `@hulla/api` owns contract
-input decoding and declared response serialization.
+Add your contract's routes to an existing Elysia app with `@hulla/api-elysia`. They run alongside your other routes and use the app's hooks and plugins.
 
-## Prerequisites
+## Install the adapter
 
-This guide starts at the adapter boundary. First define the shared contract from
-[contract authoring](./contract-authoring.md), then turn it into the server value mounted below:
+The Elysia adapter supports Elysia 1.4 and later. This example uses Zod for its request and response schemas.
+
+<!-- docs:package-manager -->
+
+```sh
+# Bun
+bun add @hulla/api @hulla/api-elysia elysia zod
+
+# npm
+npm install @hulla/api @hulla/api-elysia elysia zod
+
+# pnpm
+pnpm add @hulla/api @hulla/api-elysia elysia zod
+
+# Yarn
+yarn add @hulla/api @hulla/api-elysia elysia zod
+```
+
+## Mount a contract route
+
+Start with a contract that describes the HTTP boundary. This route accepts a user ID in the path and a new name in a
+JSON body:
+
+```ts
+// src/api/contract.ts
+import { defineContract, request, response, route } from '@hulla/api'
+import { z } from 'zod'
+
+export const contract = defineContract({
+  basePath: '/api',
+  routes: {
+    renameUser: route.patch('/users/:id', {
+      params: z.object({ id: z.string() }),
+      body: request.json(z.object({ name: z.string().min(1) })),
+      responses: {
+        200: response.json(
+          z.object({ id: z.string(), name: z.string(), actor: z.string() })
+        ),
+      },
+    }),
+  },
+})
+```
+
+Implement the route with `defineServer()`. The handler receives validated inputs, and `response()` only accepts statuses
+and body shapes declared by the contract:
 
 ```ts
 // src/api/server.ts
 import { defineServer } from '@hulla/api/server'
 import { contract } from './contract'
 
-const server = defineServer(contract)
-
-export const implementation = server.implement({
-  health: ({ response }) => response(200, 'ok'),
-  users: {
-    byId: ({ params, response }) => response(200, { id: params.id, name: 'Ada' }),
-    rename: ({ params, body, response }) => response(200, { id: params.id, name: body.name }),
-  },
+export const implementation = defineServer(contract, {
+  context: () => ({ actor: 'Ada' }),
+}).implement({
+  renameUser: ({ params, body, context, response }) =>
+    response(200, {
+      id: params.id,
+      name: body.name,
+      actor: context.actor,
+    }),
 })
 ```
 
-`defineServer(contract)` creates the server authoring scope. `implement()` requires the handler tree to cover the
-contract and returns the complete `implementation` accepted by `mount()`. See
-[server authoring](./server-authoring.md) for context, middleware, declared errors, and independently deployable
-fragments.
-
-## Mount on Elysia
+Create the Elysia app, pass it to `elysiaAdapter()`, and mount the implementation:
 
 ```ts
+// src/app.ts
 import { elysiaAdapter } from '@hulla/api-elysia'
 import { Elysia } from 'elysia'
 import { implementation } from './api/server'
 
 const app = new Elysia()
-elysiaAdapter(app).mount(implementation)
+const adapter = elysiaAdapter(app)
+
+adapter.mount(implementation)
 
 export default app
 ```
 
-Install Elysia alongside the adapter:
-
-```bash
-bun add @hulla/api @hulla/api-elysia elysia
-```
-
-The returned value is the same Elysia application. Call `app.listen()`, export `app`, or use `app.handle` with the
-deployment integration appropriate for the target runtime.
-
-## Client consumption
-
-Elysia only hosts the server implementation. A browser, mobile application, or another service consumes the contract
-through the ordinary typed Fetch client:
+`mount()` returns that same `app`. You can keep adding native Elysia routes, call `app.listen()`, export the app for a
+runtime integration, or exercise it directly with `app.handle()`:
 
 ```ts
-import { createClient } from '@hulla/api/client'
-import { fetchTransport } from '@hulla/api/fetch'
-import { contract } from './api/contract'
+const result = await app.handle(
+  new Request('http://localhost/api/users/42', {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name: 'Grace' }),
+  })
+)
 
-export const api = createClient(contract, {
-  transport: fetchTransport({ baseUrl: 'https://api.example.com' }),
-})
-
-export async function getUser(id: string) {
-  const result = await api.users.byId({ params: { id } })
-
-  if (result.status === 200) return result.body
-  if (result.status === 404) return undefined
-  throw new Error(`Could not load user: ${result.status}`)
-}
+console.log(result.status) // 200
+console.log(await result.json())
+// { id: '42', name: 'Grace', actor: 'Ada' }
 ```
 
-The host framework does not change the client call surface. The returned value is a status-discriminated union, so each
-declared response narrows its body and headers. Put loading state, caching, retries, and mutations in the consuming
-application; see [client authoring](./client-authoring.md) and [client integrations](./plugins.md).
+That request enters through Elysia's native router. It is not a direct call to the server implementation.
 
-## Native routes and lifecycle
+## Add Elysia values to server context
 
-`mount()` registers every selected contract route through Elysia's native `app.route(method, path, handler)` API. A
-mounted fragment registers only its selected routes, and `mount()` returns the caller-owned app:
+Keep the context factory portable when it only needs services or route metadata. Use `adapter.context()` when handlers
+need values supplied by Elysia, such as state, decorators, derives, resolves, or the native request context.
 
-```ts
-const users = server.implement(contract.routes.users, userHandlers)
-
-app.onBeforeHandle(requireUser)
-adapter.mount(users)
-app.get('/healthz', () => 'ok')
-```
-
-Elysia route prefixes apply normally. For example, an app created with `new Elysia({ prefix: '/v1' })` mounts the
-contract routes below `/v1`. Custom contract `QUERY` routes are registered through the same native routing API.
-
-The adapter reads decoded path parameters from Elysia's route context. It reads headers and the raw query string from
-the Web `Request`, preserving repeated query values, and decodes the body from that request. When an earlier Elysia
-lifecycle hook has already parsed a JSON, text, or byte body, the adapter reuses that parsed value. Avoid body-aware
-Elysia hooks before a form-data contract route when the exact native `FormData` field structure must be preserved.
-
-Declared results become Web `Response` objects, including streaming responses. Elysia response lifecycle hooks can
-inspect or replace them in the ordinary framework lifecycle.
-
-## Elysia context in server context
-
-Use `adapter.context()` only when the server context factory needs Elysia-specific state:
+> Register Elysia extensions before calling `elysiaAdapter(app)` when the context factory needs their inferred types.
 
 ```ts
 import { defineServer } from '@hulla/api/server'
@@ -113,39 +116,99 @@ import { elysiaAdapter } from '@hulla/api-elysia'
 import { Elysia } from 'elysia'
 import { contract } from './api/contract'
 
-const app = new Elysia().state('requests', 0)
+const app = new Elysia()
+  .state('requestCount', 0)
+  .decorate('serviceName', 'users')
+  .derive(({ request }) => ({
+    actor: request.headers.get('x-actor') ?? 'anonymous',
+  }))
+
 const adapter = elysiaAdapter(app)
 
-const server = defineServer(contract, {
+const implementation = defineServer(contract, {
   context: adapter.context(({ request, elysiaContext, route }) => ({
-    request,
-    store: elysiaContext.store,
-    server: elysiaContext.server,
-    route,
+    actor: elysiaContext.actor,
+    serviceName: elysiaContext.serviceName,
+    requestCount: elysiaContext.store.requestCount,
+    requestId: request.headers.get('x-request-id'),
+    routeKey: route.key.join('.'),
   })),
+}).implement({
+  renameUser: ({ params, body, context, response }) =>
+    response(200, {
+      id: params.id,
+      name: body.name,
+      actor: context.actor,
+    }),
 })
+
+adapter.mount(implementation)
 ```
 
-The input contains:
+The factory receives:
 
-- `request`: Elysia's native Web `Request`;
-- `elysiaContext`: the typed Elysia context, including decorators, derived and resolved properties, store, server, and
-  path parameters;
-- `route`: `@hulla/api`'s structural route key, HTTP method, and full contract path.
+- `request`: the native Web `Request`;
+- `elysiaContext`: Elysia's typed context, including path parameters, state, decorators, derives, and resolves;
+- `route`: the contract route key, HTTP method, and full path.
 
-The app type is inferred by `elysiaAdapter(app)`, so decorators, state, derives, and resolves installed before adapter
-creation remain typed. Register those context extensions before creating the adapter when context code needs them.
+`adapter.context()` binds the implementation to the Elysia adapter. Mounting it with Fetch, another framework adapter,
+or the in-process transport fails immediately. This prevents a handler from running without the host context it expects.
 
-Wrapping a context factory with `adapter.context()` binds that server definition to the `elysia` adapter. Mounting the
-result with the generic Fetch adapter, another framework adapter, or the in-process transport fails immediately. Keep a
-plain context factory when it needs only route metadata or request-independent services and should remain portable.
+## Understand the request lifecycle
 
-Body decoding runs before the `@hulla/api` context factory. For a native Elysia context factory, the adapter decodes through a
-clone so the original `request` body remains readable by the factory.
+Each selected contract route is registered with Elysia's native `app.route(method, path, handler)` API:
 
-## Error handling
+1. Elysia matches the route and runs the lifecycle that precedes its handler.
+2. The adapter reads path parameters, the raw query string, headers, and the declared body representation.
+3. `@hulla/api` validates those inputs, creates server context, runs middleware, and calls the handler.
+4. The declared result is serialized and converted to a Web `Response`.
+5. Elysia's response lifecycle can inspect or replace that response.
 
-The optional second argument to `elysiaAdapter()` sets defaults for every mounted implementation or fragment:
+This native registration has a few practical consequences:
+
+- an Elysia prefix, such as `new Elysia({ prefix: '/v1' })`, also prefixes mounted contract routes;
+- native Elysia routes can live beside contract routes;
+- mounting a [server fragment](./server-composition.md) registers only that fragment's routes;
+- custom contract `QUERY` routes use the same Elysia router;
+- repeated query values are preserved because the adapter reads the raw URL query string.
+
+## Choose who reads the body
+
+Elysia may parse a request body before the mounted handler runs. The adapter checks whether the Web request has already
+been consumed and chooses the available source:
+
+| Request state | Body source | Limit owner |
+| --- | --- | --- |
+| No earlier hook consumed the body | The adapter reads the Web `Request` in the contract's JSON, text, bytes, or form-data representation. | `maxBodyBytes` limits the adapter-owned read. |
+| Elysia already consumed the body | The adapter reuses `elysiaContext.body`. | Elysia's parser and limits own the earlier read. |
+
+For an Elysia-parsed body, JSON and text values are reused directly. Bytes must be an `ArrayBuffer` or `Uint8Array`,
+and form data must still be a native `FormData`. A body-aware hook that turns form data into a plain object therefore
+cannot feed a form-data contract route.
+
+The adapter does not impose a body limit by default. Set `maxBodyBytes` when adapter-owned reads need one:
+
+```ts
+const adapter = elysiaAdapter(app, { maxBodyBytes: 1_048_576 })
+```
+
+The limit is enforced while reading, including when `Content-Length` is missing. It cannot retroactively measure a body
+that Elysia already consumed.
+
+Contract body decoding happens before the server context factory. If an Elysia-bound context factory must also read the
+original request body, mount with `preserveRequestBody: true`:
+
+```ts
+adapter.mount(implementation, { preserveRequestBody: true })
+```
+
+For an adapter-owned read, this decodes a cloned request and leaves the original request readable. Use it only when a
+second consumer needs the body, because cloning can require buffering.
+
+## Handle adapter failures
+
+Pass `onError` to `elysiaAdapter()` for failures inside the adapter pipeline: input decoding, server context, middleware,
+the route handler, declared response serialization, or conversion to the Web response:
 
 ```ts
 const adapter = elysiaAdapter(app, {
@@ -156,10 +219,17 @@ const adapter = elysiaAdapter(app, {
 })
 ```
 
-The hook handles request decoding, `@hulla/api` context, route handler, middleware, and declared response serialization errors.
-It receives the request's Elysia context and a protocol-safe default `Response`. Return a replacement `Response` or
-return `undefined` to keep the default. Errors raised while converting the adapter result to a Web `Response` continue
-to Elysia's own error lifecycle. Errors emitted later by a streaming response body propagate to the stream consumer.
+The hook receives a protocol-safe default `Response`. Return another `Response` to replace it, or return `undefined` to
+keep the default. Options passed to `mount()` shallowly override adapter defaults for that mount. Passing
+`onError: undefined` explicitly disables an inherited hook.
 
-Options passed to `mount()` shallowly override adapter defaults for that fragment. Passing `onError: undefined`
-explicitly disables an inherited hook.
+Failures raised by Elysia outside the adapter call remain part of Elysia's error lifecycle. If a response body is a
+stream, a failure after streaming starts reaches the stream consumer; it cannot replace the response already in flight.
+The request's `AbortSignal` is also passed through, so cancelling the request cancels contract work and response streams.
+
+## Next steps
+
+- [Server context and middleware](./server-context.md) explains portable request context and route policies.
+- [Server fragments and composition](./server-composition.md) shows how to mount selected route groups.
+- [Typed clients](./client-authoring.md) calls the same contract from a browser or another service.
+- [Elysia documentation](https://elysiajs.com/) covers deployment and framework lifecycle details.
