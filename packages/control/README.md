@@ -60,6 +60,16 @@ Client construction errors still throw synchronously. A successful streaming or 
 
 This client reports failure as a resolved Result. Query/cache libraries that rely on rejected promises for retries or error state need an explicit conversion in their query function; do not pass a Result client in place of their ordinary `@hulla/api` client integration.
 
+## AI agent guidance
+
+Use the [hulla-api](https://github.com/hulladev/skills/tree/main/skills/hulla-api) and [hulla-control](https://github.com/hulladev/skills/tree/main/skills/hulla-control) skills together for API boundaries and Result handling:
+
+```sh
+npx skills add hulladev/skills --skill hulla-api --skill hulla-control
+```
+
+The integration behavior is documented above. See the [agent skills guide](https://hulla.dev/docs/cli/agent-skills) for installation and package compatibility.
+
 ## Development
 
 From the workspace root:

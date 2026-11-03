@@ -4,6 +4,16 @@ A typed HTTP contract library and integration ecosystem for TypeScript APIs. Con
 
 The active workspace contains the batteries-included [`@hulla/api`](./packages/core) package. Zod, Valibot, and other Standard Schema implementations remain application dependencies. The previous implementation remains in [`legacy`](./legacy) for behavioral reference and is excluded from the active workspace.
 
+## AI agent guidance
+
+Install the [hulla-api skill](https://github.com/hulladev/skills/tree/main/skills/hulla-api) for package-specific guidance on shared contracts, server/client boundaries, validation, and framework adapters:
+
+```sh
+npx skills add hulladev/skills --skill hulla-api
+```
+
+Choose your coding agent in the installer. See [installation and version compatibility](https://hulla.dev/docs/cli/agent-skills) before adding or updating skills in your application.
+
 ## Start here
 
 ```bash
