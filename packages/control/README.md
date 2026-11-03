@@ -62,10 +62,10 @@ This client reports failure as a resolved Result. Query/cache libraries that rel
 
 ## AI agent guidance
 
-Use the [hulla-api](https://github.com/hulladev/skills/tree/main/skills/hulla-api) and [hulla-control](https://github.com/hulladev/skills/tree/main/skills/hulla-control) skills together for API boundaries and Result handling:
+Use the [api](https://github.com/hulladev/skills/tree/main/skills/api) and [control](https://github.com/hulladev/skills/tree/main/skills/control) skills together for API boundaries and Result handling:
 
 ```sh
-npx skills add hulladev/skills --skill hulla-api --skill hulla-control
+npx skills add hulladev/skills --skill api --skill control
 ```
 
 The integration behavior is documented above. See the [agent skills guide](https://hulla.dev/docs/cli/agent-skills) for installation and package compatibility.

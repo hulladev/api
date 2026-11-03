@@ -6,10 +6,10 @@ The active workspace contains the batteries-included [`@hulla/api`](./packages/c
 
 ## AI agent guidance
 
-Install the [hulla-api skill](https://github.com/hulladev/skills/tree/main/skills/hulla-api) for package-specific guidance on shared contracts, server/client boundaries, validation, and framework adapters:
+Install the [@hulla/api skill](https://github.com/hulladev/skills/tree/main/skills/api) for package-specific guidance on shared contracts, server/client boundaries, validation, and framework adapters:
 
 ```sh
-npx skills add hulladev/skills --skill hulla-api
+npx skills add hulladev/skills --skill api
 ```
 
 Choose your coding agent in the installer. See [installation and version compatibility](https://hulla.dev/docs/cli/agent-skills) before adding or updating skills in your application.
