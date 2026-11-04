@@ -24,6 +24,10 @@ empty cache. Verification checks archive integrity, declared entrypoints, types-
 presence and selected runtime imports. It does not replace the repository's behavioral
 and type tests.
 
+After npm consumer verification, the workflow creates an immutable Git tag pointing to
+the verified source commit. Tags keep schema and registry URLs reproducible. This step
+does not create a GitHub Release; announcements remain a separate opt-in step.
+
 ## GitHub announcements are disabled
 
 npm publication and verification do not create a GitHub Release by default.
