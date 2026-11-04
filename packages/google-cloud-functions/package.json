@@ -1,6 +1,6 @@
 {
   "name": "@hulla/api-google-cloud-functions",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Google Cloud Run functions HTTP adapter for @hulla/api",
   "license": "MIT",
   "repository": {
@@ -38,7 +38,7 @@
   },
   "peerDependencies": {
     "@google-cloud/functions-framework": "^5.0.0",
-    "@hulla/api": "^2.0.1"
+    "@hulla/api": "^2.0.2"
   },
   "engines": {
     "node": ">=22"

@@ -1,6 +1,6 @@
 {
   "name": "@hulla/api-astro",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Astro endpoint and server-island integration for @hulla/api",
   "license": "MIT",
   "repository": {
@@ -38,7 +38,7 @@
     "zod": "^4.4.3"
   },
   "peerDependencies": {
-    "@hulla/api": "^2.0.1",
+    "@hulla/api": "^2.0.2",
     "astro": "^5.0.0 || ^6.0.0 || ^7.0.0"
   },
   "engines": {

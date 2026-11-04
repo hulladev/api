@@ -1,5 +1,12 @@
 # @hulla/api-elysia
 
+## 2.0.2
+
+### Patch Changes
+
+- Updated dependencies [78dd41e]
+  - @hulla/api@2.0.2
+
 ## 2.0.1
 
 ### Patch Changes

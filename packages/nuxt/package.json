@@ -1,6 +1,6 @@
 {
   "name": "@hulla/api-nuxt",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Nuxt and Nitro integration for @hulla/api",
   "license": "MIT",
   "repository": {
@@ -45,7 +45,7 @@
     "zod": "^4.4.3"
   },
   "peerDependencies": {
-    "@hulla/api": "^2.0.1",
+    "@hulla/api": "^2.0.2",
     "nuxt": "^3.0.0 || ^4.0.0"
   },
   "engines": {

@@ -1,5 +1,11 @@
 # @hulla/api
 
+## 2.0.2
+
+### Patch Changes
+
+- 78dd41e: Include a brief consumer README with entrypoint discovery, integration-check commands, and documentation links in the published core package.
+
 ## 2.0.1
 
 ### Patch Changes

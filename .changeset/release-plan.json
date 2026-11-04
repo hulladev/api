@@ -1,141 +1,141 @@
 {
   "repository": "hulladev/api",
-  "version": "2.0.1",
-  "tag": "v2.0.1",
+  "version": "2.0.2",
+  "tag": "v2.0.2",
   "packages": [
     {
       "name": "@hulla/api",
-      "version": "2.0.1",
+      "version": "2.0.2",
       "directory": "packages/core"
     },
     {
       "name": "@hulla/api-astro",
-      "version": "2.0.1",
+      "version": "2.0.2",
       "directory": "packages/astro"
     },
     {
       "name": "@hulla/api-aws-lambda",
-      "version": "2.0.1",
+      "version": "2.0.2",
       "directory": "packages/aws-lambda"
     },
     {
       "name": "@hulla/api-azure-functions",
-      "version": "2.0.1",
+      "version": "2.0.2",
       "directory": "packages/azure-functions"
     },
     {
       "name": "@hulla/api-cloudflare",
-      "version": "2.0.1",
+      "version": "2.0.2",
       "directory": "packages/cloudflare"
     },
     {
       "name": "@hulla/api-control",
-      "version": "2.0.1",
+      "version": "2.0.2",
       "directory": "packages/control"
     },
     {
       "name": "@hulla/api-elysia",
-      "version": "2.0.1",
+      "version": "2.0.2",
       "directory": "packages/elysia"
     },
     {
       "name": "@hulla/api-node",
-      "version": "2.0.1",
+      "version": "2.0.2",
       "directory": "packages/node"
     },
     {
       "name": "@hulla/api-express",
-      "version": "2.0.1",
+      "version": "2.0.2",
       "directory": "packages/express"
     },
     {
       "name": "@hulla/api-fastify",
-      "version": "2.0.1",
+      "version": "2.0.2",
       "directory": "packages/fastify"
     },
     {
       "name": "@hulla/api-google-cloud-functions",
-      "version": "2.0.1",
+      "version": "2.0.2",
       "directory": "packages/google-cloud-functions"
     },
     {
       "name": "@hulla/api-h3",
-      "version": "2.0.1",
+      "version": "2.0.2",
       "directory": "packages/h3"
     },
     {
       "name": "@hulla/api-hono",
-      "version": "2.0.1",
+      "version": "2.0.2",
       "directory": "packages/hono"
     },
     {
       "name": "@hulla/api-koa",
-      "version": "2.0.1",
+      "version": "2.0.2",
       "directory": "packages/koa"
     },
     {
       "name": "@hulla/api-message-port",
-      "version": "2.0.1",
+      "version": "2.0.2",
       "directory": "packages/message-port"
     },
     {
       "name": "@hulla/api-nestjs",
-      "version": "2.0.1",
+      "version": "2.0.2",
       "directory": "packages/nestjs"
     },
     {
       "name": "@hulla/api-netlify-functions",
-      "version": "2.0.1",
+      "version": "2.0.2",
       "directory": "packages/netlify-functions"
     },
     {
       "name": "@hulla/api-next",
-      "version": "2.0.1",
+      "version": "2.0.2",
       "directory": "packages/next"
     },
     {
       "name": "@hulla/api-nuxt",
-      "version": "2.0.1",
+      "version": "2.0.2",
       "directory": "packages/nuxt"
     },
     {
       "name": "@hulla/api-openapi",
-      "version": "2.0.1",
+      "version": "2.0.2",
       "directory": "packages/openapi"
     },
     {
       "name": "@hulla/api-react-router",
-      "version": "2.0.1",
+      "version": "2.0.2",
       "directory": "packages/react-router"
     },
     {
       "name": "@hulla/api-solid-start",
-      "version": "2.0.1",
+      "version": "2.0.2",
       "directory": "packages/solid-start"
     },
     {
       "name": "@hulla/api-sveltekit",
-      "version": "2.0.1",
+      "version": "2.0.2",
       "directory": "packages/sveltekit"
     },
     {
       "name": "@hulla/api-swr",
-      "version": "2.0.1",
+      "version": "2.0.2",
       "directory": "packages/swr"
     },
     {
       "name": "@hulla/api-tanstack-query",
-      "version": "2.0.1",
+      "version": "2.0.2",
       "directory": "packages/tanstack-query"
     },
     {
       "name": "@hulla/api-tanstack-start",
-      "version": "2.0.1",
+      "version": "2.0.2",
       "directory": "packages/tanstack-start"
     },
     {
       "name": "@hulla/api-websocket",
-      "version": "2.0.1",
+      "version": "2.0.2",
       "directory": "packages/websocket"
     }
   ]

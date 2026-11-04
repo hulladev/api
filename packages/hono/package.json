@@ -1,6 +1,6 @@
 {
   "name": "@hulla/api-hono",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Hono server adapter for @hulla/api implementations",
   "license": "MIT",
   "repository": {
@@ -37,7 +37,7 @@
     "zod": "^4.4.3"
   },
   "peerDependencies": {
-    "@hulla/api": "^2.0.1",
+    "@hulla/api": "^2.0.2",
     "hono": "^4.12.31"
   }
 }

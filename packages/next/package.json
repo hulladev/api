@@ -1,6 +1,6 @@
 {
   "name": "@hulla/api-next",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Next.js server and Fetch integrations for @hulla/api",
   "license": "MIT",
   "repository": {
@@ -45,7 +45,7 @@
     "zod": "^4.4.3"
   },
   "peerDependencies": {
-    "@hulla/api": "^2.0.1",
+    "@hulla/api": "^2.0.2",
     "next": "^15.0.0 || ^16.0.0"
   }
 }
