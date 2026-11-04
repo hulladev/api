@@ -52,7 +52,21 @@ export async function registryVersion(name, version, request = globalThis.fetch)
 export async function waitForPublication(pkg, request = globalThis.fetch, wait = setTimeout) {
   for (let attempt = 0; attempt < 120; attempt++) {
     const visible = await registryVersion(pkg.name, pkg.version, request)
-    if (visible) return visible
+    if (visible) {
+      const response = await request(`${registry}/${encodeURIComponent(pkg.name)}`, {
+        signal: globalThis.AbortSignal.timeout(30_000),
+        headers: { accept: 'application/vnd.npm.install-v1+json', 'cache-control': 'no-cache' },
+      })
+      if (response.status !== 404) {
+        assert(response.ok, `Registry install metadata failed for ${pkg.name}: HTTP ${response.status}`)
+        const metadata = await response.json()
+        const installable = metadata.versions?.[pkg.version]
+        if (installable) {
+          assertExistingPackage({ ...pkg, integrity: visible.dist?.integrity }, installable)
+          return visible
+        }
+      }
+    }
     if (attempt < 119) await wait(5000)
   }
   assert.fail(`Publication not visible after ten minutes: ${pkg.name}@${pkg.version}. Rerun this workflow to resume.`)
@@ -254,6 +268,9 @@ async function publish(config) {
       '--tag',
       'latest',
     ])
+  }
+  // Upload the family first; registry processing can overlap across packages.
+  for (const pkg of manifest.packages) {
     console.log(`Waiting for npm visibility: ${pkg.name}@${pkg.version}`)
     const visible = await waitForPublication(pkg)
     assertExistingPackage(pkg, visible)
@@ -263,7 +280,7 @@ async function publish(config) {
 async function verify(config) {
   const manifest = await artifacts(config)
   for (const pkg of manifest.packages) {
-    const published = await registryVersion(pkg.name, pkg.version)
+    const published = await waitForPublication(pkg)
     assert(published, `${pkg.name}@${pkg.version} is missing from npm`)
     assertExistingPackage(pkg, published)
   }
@@ -275,6 +292,7 @@ async function verify(config) {
       [
         'install',
         '--ignore-scripts',
+        '--prefer-online',
         '--legacy-peer-deps',
         '--no-audit',
         '--no-fund',
@@ -308,7 +326,9 @@ async function verify(config) {
       path.join(consumer, 'smoke.mjs'),
       config.smokeImports.map((name) => `await import(${JSON.stringify(name)});`).join('\n')
     )
-    run('node', ['smoke.mjs'], consumer)
+    const runtime = config.smokeRuntime ?? 'node'
+    assert(['node', 'bun'].includes(runtime), 'Unsupported smoke runtime')
+    run(runtime, ['smoke.mjs'], consumer)
     console.log(
       `Fresh registry installation, entrypoints and runtime smoke imports passed for ${manifest.packages.length} packages.`
     )

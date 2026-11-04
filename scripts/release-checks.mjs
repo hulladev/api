@@ -42,23 +42,48 @@ test('only a registry 404 means unpublished; auth failures and outages stop the 
   )
 })
 
-test('accepted publications can take several minutes to become visible, with a bounded wait', async () => {
+test('publication waits for both version and install metadata, with a bounded wait', async () => {
   const pkg = { name: 'pkg', version: '1.0.0' }
-  let lookups = 0
+  let lookups = 0,
+    installLookups = 0
   const published = { ...pkg, dist: { integrity: 'sha512-expected' } }
   const visible = await waitForPublication(
     pkg,
-    async () => (++lookups <= 45 ? { status: 404 } : { status: 200, ok: true, json: async () => published }),
+    async (url, options) => {
+      if (url.endsWith('/1.0.0')) {
+        return ++lookups <= 45 ? { status: 404 } : { status: 200, ok: true, json: async () => published }
+      }
+      assert.equal(options.headers.accept, 'application/vnd.npm.install-v1+json')
+      return {
+        status: 200,
+        ok: true,
+        json: async () => ({ versions: ++installLookups < 3 ? {} : { '1.0.0': published } }),
+      }
+    },
     async () => {}
   )
   assert.deepEqual(visible, published)
+  assert.equal(installLookups, 3)
   await assert.rejects(
     waitForPublication(
       pkg,
-      async () => ({ status: 404 }),
+      async (url) => ({
+        status: 200,
+        ok: true,
+        json: async () => (url.endsWith('/1.0.0') ? published : { versions: {} }),
+      }),
       async () => {}
     ),
     /not visible after ten minutes.*Rerun this workflow to resume/
+  )
+  await assert.rejects(
+    waitForPublication(
+      pkg,
+      async (url) =>
+        url.endsWith('/1.0.0') ? { status: 200, ok: true, json: async () => published } : { status: 503, ok: false },
+      async () => {}
+    ),
+    /Registry install metadata failed.*503/
   )
 })
 
