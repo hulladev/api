@@ -3,6 +3,11 @@
   "version": "2.0.0",
   "description": "Next.js server and Fetch integrations for @hulla/api",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hulladev/api.git",
+    "directory": "packages/next"
+  },
   "files": [
     "dist"
   ],
@@ -17,6 +22,10 @@
       "types": "./dist/server.d.ts",
       "import": "./dist/server.js"
     }
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
     "build": "tsdown",

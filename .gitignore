@@ -214,3 +214,6 @@ examples/.runtime-consumer-*/
 /benchmarks/results/combined-audit-2026-09-08/
 
 /benchmarks/results/response-plans-2026-09-08/
+
+# Release workflow artifacts
+/.release/

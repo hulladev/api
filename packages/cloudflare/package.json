@@ -3,6 +3,11 @@
   "version": "2.0.0",
   "description": "Cloudflare Workers and Pages Functions server adapters for @hulla/api",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hulladev/api.git",
+    "directory": "packages/cloudflare"
+  },
   "files": [
     "dist"
   ],
@@ -17,6 +22,10 @@
       "types": "./dist/pages.d.ts",
       "import": "./dist/pages.js"
     }
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
     "build": "tsdown",

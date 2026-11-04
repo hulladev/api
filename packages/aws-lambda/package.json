@@ -3,6 +3,11 @@
   "version": "2.0.0",
   "description": "AWS Lambda HTTP API v2 and Function URL server adapter for @hulla/api",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hulladev/api.git",
+    "directory": "packages/aws-lambda"
+  },
   "files": [
     "dist"
   ],
@@ -13,6 +18,10 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     }
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
     "build": "tsdown",

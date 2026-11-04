@@ -1,0 +1,157 @@
+name: Release
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  select:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      mode: ${{ steps.mode.outputs.mode }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Select release mode
+        id: mode
+        run: node scripts/release.mjs mode
+
+  version:
+    needs: select
+    if: needs.select.outputs.mode == 'version'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+        env:
+          HUSKY: '0'
+      - name: Open or update release PR
+        uses: changesets/action/version@v2.1.2
+        with:
+          script: bun run version:packages
+          commit-message: ':package: release: version packages'
+          pr-title: ':package: release: version packages'
+          github-token: ${{ secrets.RELEASE_PR_TOKEN || github.token }}
+
+  pack:
+    needs: select
+    if: needs.select.outputs.mode == 'publish'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+        env:
+          HUSKY: '0'
+      - name: Check release sources and consumers
+        run: bun run release:check
+        env:
+          TURBO_CONCURRENCY: '2'
+          HUSKY: '0'
+      - name: Pack reviewed release plan
+        run: bun run release:pack
+      - uses: actions/upload-artifact@v6
+        with:
+          name: npm-release
+          path: |
+            .release/*.tgz
+            .release/manifest.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    needs: pack
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Pin npm with trusted publishing support
+        run: npm install --global npm@12.2.1 --ignore-scripts
+      - uses: actions/download-artifact@v7
+        with:
+          name: npm-release
+          path: .release
+      - name: Publish artifacts with npm OIDC
+        run: node scripts/release.mjs publish
+      - name: Verify fresh registry consumers
+        run: node scripts/release.mjs verify
+
+  announce:
+    if: vars.PUBLISH_GITHUB_RELEASES == 'true'
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - uses: actions/download-artifact@v7
+        with:
+          name: npm-release
+          path: .release
+      - name: Publish one GitHub Release for the complete family
+        run: node scripts/release.mjs announce
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PUBLISH_GITHUB_RELEASES: ${{ vars.PUBLISH_GITHUB_RELEASES }}

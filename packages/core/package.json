@@ -3,6 +3,11 @@
   "version": "2.0.0",
   "description": "Directional Standard Schema contracts with typed client and server bindings",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hulladev/api.git",
+    "directory": "packages/core"
+  },
   "files": [
     "dist"
   ],
@@ -49,6 +54,10 @@
       "types": "./dist/validation.d.ts",
       "import": "./dist/validation.js"
     }
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
     "build": "tsdown",

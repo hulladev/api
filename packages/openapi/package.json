@@ -3,6 +3,11 @@
   "version": "2.0.0",
   "description": "Bidirectional OpenAPI generation for @hulla/api contracts",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hulladev/api.git",
+    "directory": "packages/openapi"
+  },
   "bin": {
     "hulla-openapi": "./dist/cli.js"
   },
@@ -16,6 +21,10 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     }
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
     "build": "tsdown",

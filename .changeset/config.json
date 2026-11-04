@@ -1,0 +1,44 @@
+{
+  "changelog": "@changesets/cli/changelog",
+  "commit": false,
+  "linked": [],
+  "access": "public",
+  "updateInternalDependencies": "patch",
+  "ignore": [],
+  "fixed": [
+    [
+      "@hulla/api-astro",
+      "@hulla/api-aws-lambda",
+      "@hulla/api-azure-functions",
+      "@hulla/api-cloudflare",
+      "@hulla/api-control",
+      "@hulla/api",
+      "@hulla/api-elysia",
+      "@hulla/api-express",
+      "@hulla/api-fastify",
+      "@hulla/api-google-cloud-functions",
+      "@hulla/api-h3",
+      "@hulla/api-hono",
+      "@hulla/api-koa",
+      "@hulla/api-message-port",
+      "@hulla/api-nestjs",
+      "@hulla/api-netlify-functions",
+      "@hulla/api-next",
+      "@hulla/api-node",
+      "@hulla/api-nuxt",
+      "@hulla/api-openapi",
+      "@hulla/api-react-router",
+      "@hulla/api-solid-start",
+      "@hulla/api-sveltekit",
+      "@hulla/api-swr",
+      "@hulla/api-tanstack-query",
+      "@hulla/api-tanstack-start",
+      "@hulla/api-websocket"
+    ]
+  ],
+  "baseBranch": "master",
+  "privatePackages": {
+    "version": false,
+    "tag": false
+  }
+}

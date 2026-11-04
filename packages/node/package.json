@@ -3,6 +3,11 @@
   "version": "2.0.0",
   "description": "Node.js HTTP adapter and shared native HTTP helpers for @hulla/api",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hulladev/api.git",
+    "directory": "packages/node"
+  },
   "files": [
     "dist"
   ],
@@ -17,6 +22,10 @@
       "types": "./dist/http.d.ts",
       "import": "./dist/http.js"
     }
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
     "build": "tsdown",

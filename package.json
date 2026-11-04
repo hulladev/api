@@ -39,9 +39,18 @@
     "check:exports": "bun benchmarks/check-exports.ts",
     "check:packages": "bun scripts/check-packages.ts",
     "check:compatibility": "bun scripts/check-packages.ts",
-    "check:runtimes": "bun scripts/check-runtime-hosts.ts"
+    "check:runtimes": "bun scripts/check-runtime-hosts.ts",
+    "changeset": "changeset",
+    "version:packages": "changeset version && node scripts/release.mjs prepare && bun install --lockfile-only --ignore-scripts && oxfmt .changeset/release-plan.json packages/astro/package.json packages/aws-lambda/package.json packages/azure-functions/package.json packages/cloudflare/package.json packages/control/package.json packages/core/package.json packages/elysia/package.json packages/express/package.json packages/fastify/package.json packages/google-cloud-functions/package.json packages/h3/package.json packages/hono/package.json packages/koa/package.json packages/message-port/package.json packages/nestjs/package.json packages/netlify-functions/package.json packages/next/package.json packages/node/package.json packages/nuxt/package.json packages/openapi/package.json packages/react-router/package.json packages/solid-start/package.json packages/sveltekit/package.json packages/swr/package.json packages/tanstack-query/package.json packages/tanstack-start/package.json packages/websocket/package.json",
+    "test:release": "node --test scripts/release-checks.mjs",
+    "release:check": "bun run check && bun run test:release",
+    "release:pack": "node scripts/release.mjs pack",
+    "release:publish": "node scripts/release.mjs publish",
+    "release:verify": "node scripts/release.mjs verify",
+    "release": "node scripts/release.mjs publish"
   },
   "devDependencies": {
+    "@changesets/cli": "3.0.3",
     "@commitlint/cli": "^21.2.2",
     "@hulla/api": "workspace:*",
     "@types/node": "^26.2.0",
