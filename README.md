@@ -155,3 +155,7 @@ See [WebSocket transport](./docs/websocket.md) and [Bun, Deno and Vercel runtime
 
 Koa middleware is available through [`@hulla/api-koa`](./docs/koa.md).
 [Desktop bridges](./docs/desktop-bridges.md) cover Electron ports, Tauri channels and Dioxus eval messaging.
+
+## Publishing
+
+See [the release workflow](docs/releasing.md) for changesets, version preparation, coordinated releases and npm trusted publishing.
