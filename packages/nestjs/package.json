@@ -1,6 +1,6 @@
 {
   "name": "@hulla/api-nestjs",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Native NestJS controller and dependency-injection integration for @hulla/api",
   "license": "MIT",
   "repository": {
@@ -47,7 +47,7 @@
     "rxjs": "^7.8.2"
   },
   "peerDependencies": {
-    "@hulla/api": "^2.0.0",
+    "@hulla/api": "^2.0.1",
     "@nestjs/common": "^11.1.0 || ^12.0.1",
     "@nestjs/core": "^11.1.0 || ^12.0.1",
     "@types/node": ">=22.0.0",

@@ -1,6 +1,6 @@
 {
   "name": "@hulla/api-openapi",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Bidirectional OpenAPI generation for @hulla/api contracts",
   "license": "MIT",
   "repository": {
@@ -45,6 +45,6 @@
     "zod": "^4.4.3"
   },
   "peerDependencies": {
-    "@hulla/api": "^2.0.0"
+    "@hulla/api": "^2.0.1"
   }
 }

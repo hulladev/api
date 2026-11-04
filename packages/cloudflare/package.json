@@ -1,6 +1,6 @@
 {
   "name": "@hulla/api-cloudflare",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Cloudflare Workers and Pages Functions server adapters for @hulla/api",
   "license": "MIT",
   "repository": {
@@ -40,6 +40,6 @@
     "zod": "^4.4.3"
   },
   "peerDependencies": {
-    "@hulla/api": "^2.0.0"
+    "@hulla/api": "^2.0.1"
   }
 }

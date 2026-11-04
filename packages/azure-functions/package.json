@@ -1,6 +1,6 @@
 {
   "name": "@hulla/api-azure-functions",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Azure Functions v4 HTTP trigger server adapter for @hulla/api",
   "license": "MIT",
   "repository": {
@@ -38,6 +38,6 @@
   },
   "peerDependencies": {
     "@azure/functions": "^4.0.0",
-    "@hulla/api": "^2.0.0"
+    "@hulla/api": "^2.0.1"
   }
 }

@@ -1,6 +1,6 @@
 {
   "name": "@hulla/api-solid-start",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "SolidStart API route integration for @hulla/api",
   "license": "MIT",
   "repository": {
@@ -40,7 +40,7 @@
     "zod": "^4.4.3"
   },
   "peerDependencies": {
-    "@hulla/api": "^2.0.0",
+    "@hulla/api": "^2.0.1",
     "@solidjs/start": "^2.0.0"
   },
   "engines": {

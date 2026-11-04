@@ -1,6 +1,6 @@
 {
   "name": "@hulla/api-elysia",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Elysia server adapter for @hulla/api implementations",
   "license": "MIT",
   "repository": {
@@ -37,7 +37,7 @@
     "zod": "^4.4.3"
   },
   "peerDependencies": {
-    "@hulla/api": "^2.0.0",
+    "@hulla/api": "^2.0.1",
     "elysia": "^1.4.0"
   }
 }

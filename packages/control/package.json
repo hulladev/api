@@ -1,6 +1,6 @@
 {
   "name": "@hulla/api-control",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Result-returning @hulla/api clients powered by @hulla/control",
   "license": "MIT",
   "repository": {
