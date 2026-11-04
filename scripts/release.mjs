@@ -350,6 +350,33 @@ function github(config, suffix, options = {}) {
   })
 }
 
+export async function ensureGitTag(config, manifest, request = github) {
+  const ref = `/git/ref/tags/${encodeURIComponent(manifest.tag)}`
+  const existing = await request(config, ref)
+  if (existing.ok) {
+    const data = await existing.json()
+    assert.equal(data.object?.type, 'commit', 'Release tag must point directly to its source commit')
+    assert.equal(data.object?.sha, manifest.source, `Refusing to move existing tag ${manifest.tag}`)
+    console.log(`Git tag ${manifest.tag} already points to the verified source.`)
+    return
+  }
+  assert.equal(existing.status, 404, `Git tag lookup failed: HTTP ${existing.status}`)
+  const response = await request(config, '/git/refs', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ ref: `refs/tags/${manifest.tag}`, sha: manifest.source }),
+  })
+  assert(response.ok, `Git tag creation failed: HTTP ${response.status}`)
+  console.log(`Created Git tag ${manifest.tag}; no GitHub Release announcement.`)
+}
+
+async function tag(config) {
+  const manifest = await artifacts(config)
+  assert(process.env.GITHUB_TOKEN, 'Git tag creation requires GITHUB_TOKEN')
+  for (const pkg of manifest.packages) assertExistingPackage(pkg, await registryVersion(pkg.name, pkg.version))
+  await ensureGitTag(config, manifest)
+}
+
 async function announce(config) {
   if (process.env.PUBLISH_GITHUB_RELEASES !== 'true') {
     console.log('GitHub Release announcements are disabled.')
@@ -395,7 +422,7 @@ async function announce(config) {
 
 export async function main(command) {
   const config = await json('.changeset/release.config.json')
-  const commands = { mode, prepare, pack, publish, verify, announce }
+  const commands = { mode, prepare, pack, publish, verify, tag, announce }
   assert(commands[command], `Usage: node scripts/release.mjs ${Object.keys(commands).join('|')}`)
   await commands[command](config)
 }

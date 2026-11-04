@@ -4,7 +4,14 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
 import { test } from 'node:test'
-import { assertExistingPackage, main, orderPackages, registryVersion, waitForPublication } from './release.mjs'
+import {
+  assertExistingPackage,
+  ensureGitTag,
+  main,
+  orderPackages,
+  registryVersion,
+  waitForPublication,
+} from './release.mjs'
 
 test('dependencies and peers are published before adapters, independent of input order', () => {
   const packages = [
@@ -176,4 +183,34 @@ test('version preparation keeps a family coordinated and mode never publishes an
     else process.env.GITHUB_OUTPUT = previousOutput
     await rm(root, { recursive: true, force: true })
   }
+})
+
+test('version tags are idempotent and never move an existing tag or announce a release', async () => {
+  const config = { repository: 'test/repo' }
+  const manifest = { tag: 'v1.2.3', source: 'a'.repeat(40) }
+  const calls = []
+  await ensureGitTag(config, manifest, async (_config, endpoint, options) => {
+    calls.push(endpoint)
+    if (!options) return { status: 404, ok: false }
+    assert.equal(endpoint, '/git/refs')
+    assert.deepEqual(JSON.parse(options.body), { ref: 'refs/tags/v1.2.3', sha: manifest.source })
+    return { status: 201, ok: true }
+  })
+  assert.deepEqual(calls, ['/git/ref/tags/v1.2.3', '/git/refs'])
+  await ensureGitTag(config, manifest, async (_config, endpoint, options) => {
+    assert.equal(options, undefined)
+    return { status: 200, ok: true, json: async () => ({ object: { type: 'commit', sha: manifest.source } }) }
+  })
+  await assert.rejects(
+    ensureGitTag(config, manifest, async () => ({
+      status: 200,
+      ok: true,
+      json: async () => ({ object: { type: 'commit', sha: 'b'.repeat(40) } }),
+    })),
+    /Refusing to move existing tag/
+  )
+  await assert.rejects(
+    ensureGitTag(config, manifest, async () => ({ status: 403, ok: false })),
+    /Git tag lookup failed.*403/
+  )
 })

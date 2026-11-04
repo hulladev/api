@@ -131,8 +131,7 @@ jobs:
       - name: Verify fresh registry consumers
         run: node scripts/release.mjs verify
 
-  announce:
-    if: vars.PUBLISH_GITHUB_RELEASES == 'true'
+  finalize:
     needs: publish
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -150,7 +149,12 @@ jobs:
         with:
           name: npm-release
           path: .release
+      - name: Tag verified npm sources without an announcement
+        run: node scripts/release.mjs tag
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
       - name: Publish one GitHub Release for the complete family
+        if: vars.PUBLISH_GITHUB_RELEASES == 'true'
         run: node scripts/release.mjs announce
         env:
           GITHUB_TOKEN: ${{ github.token }}
